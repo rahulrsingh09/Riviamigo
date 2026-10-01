@@ -62,7 +62,9 @@ precise vehicle locations in public issues.
 - `X-Content-Type-Options: nosniff`
 - `X-Frame-Options: DENY`
 - `Referrer-Policy: no-referrer`
-- `Content-Security-Policy: default-src 'self'; ...`
+- The app shell uses a restrictive `Content-Security-Policy`; its `connect-src`
+  permits same-origin services, WebSockets, and `https://api.github.com` for the
+  optional browser-initiated stable release check.
 
 ## Database
 

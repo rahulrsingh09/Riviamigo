@@ -8,7 +8,25 @@ slug: /using-riviamigo/external-connections/
 
 Open **Settings > External Connections** to see every service Riviamigo may contact. All signed-in users can read the inventory and its data disclosures. Administrators and super users control the installation-wide policy.
 
-Riviamigo does not send product analytics. These connections exist only to provide a feature you request. Each card shows the destination, data sent, last sanitized result, daily request count, and what stops if the connection is disabled. **Disable optional** stops weather, geocoding, basemaps, and remote icon catalog access without deleting stored results.
+Riviamigo does not send product analytics. These connections exist only to provide a feature you request. External-provider cards show the destination, data sent, last sanitized result, daily request count, and what stops if the connection is disabled. **Disable optional** stops weather, geocoding, basemaps, and remote icon catalog access without deleting stored results.
+
+## GitHub Releases
+
+The Settings heading shows the running build version and links to the [Riviamigo
+releases page](https://github.com/bballdavis/Riviamigo/releases). The GitHub
+Releases card controls optional checks, while the sidebar download icon always
+opens the release page and does not install or apply an update.
+
+Optional release checks are disabled by default. An administrator or super user
+can enable them for the installation and choose hourly, daily, weekly, or
+monthly checks (every 30 days). While enabled, each browser checks on its first
+open and then at the selected interval while Riviamigo is open. The browser
+requests GitHub's [latest release endpoint](https://docs.github.com/en/rest/releases/releases#get-the-latest-release)
+directly; GitHub's endpoint selects the latest published stable release and
+excludes drafts and prereleases. The request adds no user, vehicle, or usage
+data. GitHub receives the ordinary network metadata needed to serve a browser
+request, while Riviamigo receives no check counts or results. The last attempt
+and release result stay in that browser.
 
 ## Weather and outside temperature
 

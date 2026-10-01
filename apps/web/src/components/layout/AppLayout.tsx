@@ -18,7 +18,7 @@ import {
   useVehicleStatus,
 } from '@riviamigo/hooks';
 import { isVehicleCharging } from '@riviamigo/types';
-import { CalendarClock, Loader2, LogOut, Settings, TriangleAlert, UserCog, Wifi, WifiOff } from 'lucide-react';
+import { CalendarClock, Download, Loader2, LogOut, Settings, TriangleAlert, UserCog, Wifi, WifiOff } from 'lucide-react';
 import { GiRestingVampire } from 'react-icons/gi';
 import {
   TbBattery1,
@@ -32,6 +32,8 @@ import {
 import { FaTruckPickup } from 'react-icons/fa6';
 import { emitToast } from '../feedback/toast';
 import { useThemePreferenceController } from '../../hooks/useThemePreferenceController';
+import { useGithubReleaseCheck } from '../../hooks/useGithubReleaseCheck';
+import { RELEASES_URL } from '../../lib/releaseCheck';
 import {
   getRivianCredentialRenewalNotice,
   type RivianCredentialRenewalNotice,
@@ -75,6 +77,43 @@ function CredentialRenewalNotice({
       <CalendarClock className="h-4 w-4 shrink-0" aria-hidden="true" />
       {!compact ? <span className="min-w-0 text-sm font-medium leading-5">{notice.label}</span> : null}
     </button>
+  );
+}
+
+function GitHubReleasesLink({
+  updateAvailable,
+  latestVersion,
+  size = 'desktop',
+}: {
+  updateAvailable: boolean;
+  latestVersion: string | null;
+  size?: 'desktop' | 'mobile' | 'collapsed';
+}) {
+  const label = updateAvailable && latestVersion
+    ? `New release ${latestVersion} available. View GitHub Releases`
+    : 'View GitHub Releases';
+  const dimensions = size === 'mobile'
+    ? 'h-12 w-12'
+    : size === 'collapsed'
+      ? 'h-8 w-6'
+      : 'h-8 w-8';
+  return (
+    <a
+      href={RELEASES_URL}
+      target="_blank"
+      rel="noopener noreferrer"
+      aria-label={label}
+      title={label}
+      className={`relative flex shrink-0 items-center justify-center rounded-lg text-fg-tertiary transition-colors hover:bg-bg-elevated hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent ${dimensions}`}
+    >
+      <Download className={`${size === 'mobile' ? 'h-5 w-5' : 'h-4 w-4'} shrink-0`} aria-hidden="true" />
+      {updateAvailable ? (
+        <span
+          className="absolute right-0.5 top-0.5 h-2 w-2 rounded-full bg-status-positive ring-2 ring-bg-surface"
+          aria-hidden="true"
+        />
+      ) : null}
+    </a>
   );
 }
 
@@ -145,6 +184,7 @@ function getCompactBatteryIcon(socPercent: number) {
 }
 
 export function AppLayout({ children, activeKey }: AppLayoutProps) {
+  const releaseCheck = useGithubReleaseCheck();
   const navigate = useNavigate();
   const accessToken = useAuth((s) => s.accessToken);
   const logout = useAuth((s) => s.logout);
@@ -314,18 +354,25 @@ export function AppLayout({ children, activeKey }: AppLayoutProps) {
                 size="menu"
               />
 
-              <button
-                type="button"
-                onClick={() => {
-                  navigate({ to: '/settings' });
-                  closeMobileNavigation(false);
-                }}
-                aria-label="Open settings"
-                className="flex h-12 w-full items-center gap-3 rounded-lg px-4 text-sm font-medium text-fg-secondary transition-colors hover:bg-bg-elevated hover:text-fg"
-              >
-                <Settings className="h-5 w-5 shrink-0" />
-                <span>Settings</span>
-              </button>
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigate({ to: '/settings' });
+                    closeMobileNavigation(false);
+                  }}
+                  aria-label="Open settings"
+                  className="flex h-12 min-w-0 flex-1 items-center gap-3 rounded-lg px-4 text-sm font-medium text-fg-secondary transition-colors hover:bg-bg-elevated hover:text-fg"
+                >
+                  <Settings className="h-5 w-5 shrink-0" />
+                  <span>Settings</span>
+                </button>
+                <GitHubReleasesLink
+                  size="mobile"
+                  updateAvailable={releaseCheck.updateAvailable}
+                  latestVersion={releaseCheck.status.latestVersion}
+                />
+              </div>
 
               <button
                 type="button"
@@ -404,15 +451,22 @@ export function AppLayout({ children, activeKey }: AppLayoutProps) {
                 />
               ) : null}
 
-              <button
-                type="button"
-                onClick={() => navigate({ to: '/settings' })}
-                title="Settings"
-                aria-label="Open settings"
-                className="-mx-1 flex h-8 w-[calc(100%+0.5rem)] items-center justify-center rounded-lg text-fg-tertiary transition-colors hover:bg-bg-elevated hover:text-fg"
-              >
-                <Settings className="h-4 w-4 shrink-0" />
-              </button>
+              <div className={collapsedFooterRow}>
+                <button
+                  type="button"
+                  onClick={() => navigate({ to: '/settings' })}
+                  title="Settings"
+                  aria-label="Open settings"
+                  className="flex h-8 w-6 items-center justify-center rounded-lg text-fg-tertiary transition-colors hover:bg-bg-elevated hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                >
+                  <Settings className="h-4 w-4 shrink-0" />
+                </button>
+                <GitHubReleasesLink
+                  size="collapsed"
+                  updateAvailable={releaseCheck.updateAvailable}
+                  latestVersion={releaseCheck.status.latestVersion}
+                />
+              </div>
 
               <div className={collapsedFooterRow}>
                 <button
@@ -443,16 +497,22 @@ export function AppLayout({ children, activeKey }: AppLayoutProps) {
                 compact={collapsed}
               />
 
-              <button
-                type="button"
-                onClick={() => navigate({ to: '/settings' })}
-                title="Settings"
-                aria-label="Open settings"
-                className="flex w-full items-center gap-2 rounded-lg px-3 py-2 text-fg-tertiary transition-colors hover:bg-bg-elevated hover:text-fg"
-              >
-                <Settings className="h-4 w-4 shrink-0" />
+              <div className="flex items-center gap-1">
+                <button
+                  type="button"
+                  onClick={() => navigate({ to: '/settings' })}
+                  title="Settings"
+                  aria-label="Open settings"
+                  className="flex min-w-0 flex-1 items-center gap-2 rounded-lg px-3 py-2 text-fg-tertiary transition-colors hover:bg-bg-elevated hover:text-fg focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+                >
+                  <Settings className="h-4 w-4 shrink-0" />
                   <span className="text-sm font-medium">Settings</span>
-              </button>
+                </button>
+                <GitHubReleasesLink
+                  updateAvailable={releaseCheck.updateAvailable}
+                  latestVersion={releaseCheck.status.latestVersion}
+                />
+              </div>
 
               <div className="flex items-center justify-between">
                 <button

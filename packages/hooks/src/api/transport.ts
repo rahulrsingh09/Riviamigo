@@ -68,6 +68,7 @@ import type {
   DashboardChartFavorites,
   AppTimezone,
   AppVersionResponse,
+  UpdateCheckSettings,
   CreateBackupRestoreRequestBody,
   BackupRestoreRequest,
   RestoreJob,
@@ -742,6 +743,14 @@ export class AuthenticatedTransport {
 
   async getAppVersion(): Promise<AppVersionResponse> {
     return this.request('GET', '/v1/app/version');
+  }
+
+  async getUpdateCheckSettings(): Promise<UpdateCheckSettings> {
+    return this.request('GET', '/v1/settings/update-check');
+  }
+
+  async updateUpdateCheckSettings(body: UpdateCheckSettings): Promise<UpdateCheckSettings> {
+    return this.request('PUT', '/v1/settings/update-check', body);
   }
 
   async updateAppTimezone(timezone: string): Promise<AppTimezone> {

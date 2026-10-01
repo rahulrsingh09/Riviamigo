@@ -70,6 +70,7 @@ export const systemClient = client(
   'listApiKeys', 'createApiKey', 'revokeApiKey', 'listPlaces', 'searchPlaceAddresses',
   'createPlace', 'updatePlace', 'deletePlace', 'getApiCatalog', 'getBackupOverview',
   'getExternalConnections', 'updateExternalConnection', 'testExternalConnection',
+  'getUpdateCheckSettings', 'updateUpdateCheckSettings',
   'purgeExternalConnectionCache', 'disableOptionalExternalConnections',
   'updateBackupSettings', 'runBackupNow', 'testBackupS3', 'requestBackupRestore',
   'uploadBackupArtifact', 'deleteUploadedBackup', 'preflightBackupRestore',

@@ -142,6 +142,7 @@ Common usage:
 - Preserve icon family consistency inside a page and within shared admin/dashboard surfaces.
 - Use the full battery glyph for the shared Battery main-navigation destination; reserve level-specific battery glyphs for live status indicators.
 - Prefer icon-plus-label patterns already established by shared primitives instead of inventing one-off controls.
+- The sidebar footer places the GitHub Releases download icon at the far right of the Settings row, at the Settings icon's size. Keep both icons together when collapsed and in the mobile navigation drawer; preserve touch-sized link targets and visible keyboard focus. An available release uses a small accessible status marker without changing the icon's footprint.
 - Keep control order stable when editing existing flows unless the redesign intentionally updates the documented pattern.
 - Text inputs and textareas use the active theme surface for normal, focused, selected, and browser-autofilled values. The caret and selection use the accent token; browser-default autofill colors are not part of the product palette.
 - New-password inputs keep their real requirement directly below the field. Start neutral, show unmet requirements while the user types, and use the positive status treatment only once every displayed rule is satisfied; do not make users discover password policy through a failed submission.

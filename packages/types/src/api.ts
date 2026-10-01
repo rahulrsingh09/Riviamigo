@@ -1327,6 +1327,13 @@ export interface AppVersionResponse {
   version: string;
 }
 
+export type UpdateCheckFrequency = 'hourly' | 'daily' | 'weekly' | 'monthly';
+
+export interface UpdateCheckSettings {
+  enabled: boolean;
+  frequency: UpdateCheckFrequency;
+}
+
 export type ApiAccessLevel = 'read' | 'view' | 'edit' | 'admin' | (string & {});
 export type ApiAccessLevelState = 'supported' | 'legacy_unmigrated' | 'unknown';
 

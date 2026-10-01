@@ -6,6 +6,9 @@ import type { ExternalConnectionsResponse } from '@riviamigo/types';
 
 const apiMocks = vi.hoisted(() => ({
   getExternalConnections: vi.fn(),
+  getAppVersion: vi.fn(),
+  getUpdateCheckSettings: vi.fn(),
+  updateUpdateCheckSettings: vi.fn(),
   updateExternalConnection: vi.fn(),
   testExternalConnection: vi.fn(),
   purgeExternalConnectionCache: vi.fn(),
@@ -14,6 +17,10 @@ const apiMocks = vi.hoisted(() => ({
 
 vi.mock('@riviamigo/hooks', () => ({
   api: apiMocks,
+  queryKeys: {
+    appVersion: { current: ['app-version'] },
+    updateCheck: { current: ['update-check-settings'] },
+  },
   BASEMAP_CONFIG_QUERY_KEY: ['external', 'basemap', 'config', 'v2'],
 }));
 
@@ -92,6 +99,36 @@ function basemapResponse(overrides: Partial<ExternalConnectionsResponse['connect
 describe('ExternalConnectionsSection', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    apiMocks.getAppVersion.mockResolvedValue({ version: '2026.09.4+dev' });
+    apiMocks.getUpdateCheckSettings.mockResolvedValue({ enabled: false, frequency: 'daily' });
+    apiMocks.updateUpdateCheckSettings.mockImplementation(async (settings) => settings);
+  });
+
+  it('puts the opt-in GitHub Releases card first and leaves checks disabled for read-only users', async () => {
+    apiMocks.getExternalConnections.mockResolvedValue(response(false));
+    renderSection();
+
+    const releasesCardTitle = await screen.findByText('GitHub Releases');
+    expect(releasesCardTitle.compareDocumentPosition(screen.getByText('External Connections')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    expect(screen.getByRole('switch', { name: 'Enable GitHub release checks' })).toHaveAttribute('aria-checked', 'false');
+    expect(screen.getByRole('switch', { name: 'Enable GitHub release checks' })).toBeDisabled();
+    const releaseLink = screen.getByRole('link', { name: 'View releases' });
+    expect(releaseLink).toHaveAttribute('href', 'https://github.com/bballdavis/Riviamigo/releases');
+    expect(releaseLink).toHaveAttribute('target', '_blank');
+  });
+
+  it('lets administrators enable release checks and select a frequency', async () => {
+    apiMocks.getExternalConnections.mockResolvedValue(response(true));
+    renderSection();
+
+    const enabledSwitch = await screen.findByRole('switch', { name: 'Enable GitHub release checks' });
+    await waitFor(() => expect(enabledSwitch).toBeEnabled());
+    fireEvent.click(enabledSwitch);
+    await waitFor(() => expect(apiMocks.updateUpdateCheckSettings).toHaveBeenCalledWith({ enabled: true, frequency: 'daily' }));
+
+    fireEvent.click(await screen.findByRole('button', { name: 'GitHub release check frequency' }));
+    fireEvent.click(screen.getByRole('option', { name: 'Hourly' }));
+    await waitFor(() => expect(apiMocks.updateUpdateCheckSettings).toHaveBeenLastCalledWith({ enabled: true, frequency: 'hourly' }));
   });
 
   it('shows disclosures and feature loss without controls to read-only users', async () => {

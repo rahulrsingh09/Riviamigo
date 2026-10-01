@@ -30,6 +30,7 @@ export const queryKeys = {
   },
   appTimezone: { current: ['app-timezone'] as const },
   appVersion: { current: ['app-version'] as const },
+  updateCheck: { current: ['update-check-settings'] as const },
   backups: {
     all: ['backup-overview'] as const,
     overview: (page?: number, perPage?: number) => ['backup-overview', page, perPage] as const,
