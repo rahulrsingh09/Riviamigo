@@ -144,6 +144,15 @@ Owners and managers can record an ingestion capture for a vehicle. `GET /v1/vehi
 All historical endpoints accept a bounded timeframe where applicable. Use UTC
 RFC 3339 timestamps and URL-encode query parameters.
 
+## Running application version
+
+Signed-in browser sessions can read `GET /v1/app/version`, which returns
+`{"version":"2026.09.4+dev"}` for a development build or the stamped release
+version for a tagged build. The value comes from image build metadata. When an
+image has no version metadata, the endpoint returns `{"version":"unknown"}`;
+it does not report the package version as if that were the running image.
+Integration API keys cannot access this session-only endpoint.
+
 Raw Rivian WebSocket event payloads, vehicle membership lists, invitations, and
 all configuration routes remain session-only. They are diagnostic or account
 management surfaces rather than a stable integration contract.

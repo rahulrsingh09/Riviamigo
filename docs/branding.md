@@ -135,6 +135,7 @@ Common usage:
 - Prefer existing primitives and shared dashboard widgets over route-local card systems.
 - Keep route files thin; visual composition belongs in components and shared seams, not branching routes.
 - Use consistent card radius, padding, and surface hierarchy across pages.
+- The Settings page may show a compact, monospaced running-version badge at the far right of its heading. Keep it exclusive to Settings and link it to GitHub Releases in a new tab; missing build metadata reads “Version unknown.”
 
 ## Icon And Control Rules
 

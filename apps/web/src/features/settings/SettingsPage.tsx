@@ -666,6 +666,19 @@ export function SettingsContent({ initialSection, oidcFeedback, oidcFeedbackKind
     navigate({ to: '/settings', search: next === 'vehicles' ? {} : { section: next } });
   }
 
+  const appVersion = useQuery({
+    queryKey: queryKeys.appVersion.current,
+    queryFn: () => api.getAppVersion(),
+    enabled: authReady && !!accessToken,
+    retry: false,
+    staleTime: 5 * 60_000,
+  });
+  const runningVersionLabel = appVersion.isLoading
+    ? 'Loading version…'
+    : appVersion.data?.version && appVersion.data.version !== 'unknown'
+      ? appVersion.data.version
+      : 'Version unknown';
+
   const apiKeys = useQuery({
     queryKey: queryKeys.apiKeys.all,
     queryFn: () => api.listApiKeys(),
@@ -1030,7 +1043,26 @@ export function SettingsContent({ initialSection, oidcFeedback, oidcFeedbackKind
 
   return (
     <AppLayout activeKey="settings">
-      <PageLayout title="Settings" subtitle="Account, vehicle, and API controls for local troubleshooting.">
+      <PageLayout
+        title="Settings"
+        subtitle="Account, vehicle, and API controls for local troubleshooting."
+        actions={(
+          <a
+            href="https://github.com/bballdavis/Riviamigo/releases"
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={appVersion.isLoading
+              ? 'Loading current version. View GitHub releases'
+              : `Current version ${runningVersionLabel === 'Version unknown' ? 'unknown' : runningVersionLabel}. View GitHub releases`}
+            title="View GitHub releases"
+            className="rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+          >
+            <Badge variant="default" size="sm" className="cursor-pointer whitespace-nowrap font-mono">
+              {runningVersionLabel}
+            </Badge>
+          </a>
+        )}
+      >
         {oidcFeedback && (
           <p
             role={oidcFeedbackKind === 'error' ? 'alert' : 'status'}

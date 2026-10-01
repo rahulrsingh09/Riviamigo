@@ -1323,6 +1323,10 @@ export interface AppTimezone {
   timezone: string;
 }
 
+export interface AppVersionResponse {
+  version: string;
+}
+
 export type ApiAccessLevel = 'read' | 'view' | 'edit' | 'admin' | (string & {});
 export type ApiAccessLevelState = 'supported' | 'legacy_unmigrated' | 'unknown';
 

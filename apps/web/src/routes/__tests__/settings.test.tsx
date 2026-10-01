@@ -94,6 +94,7 @@ vi.mock('@riviamigo/hooks', () => ({
     apiKeys: { all: ['api-keys'] },
     apiCatalog: { all: ['api-catalog'] },
     appTimezone: { current: ['app-timezone'] },
+    appVersion: { current: ['app-version'] },
     backups: {
       all: ['backup-overview'],
       overview: (page: number, perPage: number) => ['backup-overview', page, perPage],
@@ -135,8 +136,9 @@ vi.mock('@riviamigo/hooks', () => ({
     }),
     create: vi.fn(),
   },
-    api: {
+  api: {
     me: vi.fn().mockResolvedValue({ role: 'user' }),
+    getAppVersion: vi.fn().mockResolvedValue({ version: '2026.09.4+dev' }),
     getUnitPreferences: vi.fn().mockImplementation(() => Promise.resolve(settingsMocks.preferences)),
     updateThemePreferences: vi.fn().mockImplementation(async (theme) => {
       settingsMocks.preferences.theme = theme;
@@ -655,6 +657,26 @@ describe('Settings page', () => {
   it('renders the Vehicles section heading', () => {
     renderSettings();
     expect(screen.getAllByText('Vehicles').length).toBeGreaterThan(0);
+  });
+
+  it('shows the running version in a Settings-only link to GitHub Releases', async () => {
+    settingsMocks.auth.accessToken = 'session-token';
+    renderSettings();
+
+    const versionLink = await screen.findByRole('link', { name: /current version 2026\.09\.4\+dev/i });
+    expect(versionLink).toHaveAttribute('href', 'https://github.com/bballdavis/Riviamigo/releases');
+    expect(versionLink).toHaveAttribute('target', '_blank');
+    expect(versionLink).toHaveAttribute('rel', 'noopener noreferrer');
+    expect(versionLink).toHaveTextContent('2026.09.4+dev');
+  });
+
+  it('labels missing running build metadata as unknown', async () => {
+    settingsMocks.auth.accessToken = 'session-token';
+    const hooks = await import('@riviamigo/hooks');
+    vi.mocked(hooks.api.getAppVersion).mockResolvedValueOnce({ version: 'unknown' });
+    renderSettings();
+
+    expect(await screen.findByRole('link', { name: /current version unknown/i })).toHaveTextContent('Version unknown');
   });
 
   it('uses a chart icon for the Charts settings section', () => {
