@@ -66,7 +66,6 @@ export function useGithubReleaseCheck() {
   const version = useQuery({
     queryKey: queryKeys.appVersion.current,
     queryFn: () => api.getAppVersion(),
-    enabled: settings.data?.enabled === true,
     staleTime: 5 * 60_000,
     retry: false,
   });

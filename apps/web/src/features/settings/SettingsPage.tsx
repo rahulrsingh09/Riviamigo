@@ -34,6 +34,8 @@ import {
   Button, Badge, Input, SelectPicker, Tooltip,
 } from '@riviamigo/ui/primitives';
 import { AppLayout } from '../../components/layout/AppLayout';
+import { useReleaseCheckStatus } from '../../hooks/useGithubReleaseCheck';
+import { RELEASES_URL } from '../../lib/releaseCheck';
 import { AccountIdentitySection } from '../../components/settings/AccountIdentitySection';
 import { AuthenticationSection } from '../../components/settings/AuthenticationSection';
 import { BackupSection } from '../../components/settings/BackupSection';
@@ -677,7 +679,26 @@ export function SettingsContent({ initialSection, oidcFeedback, oidcFeedbackKind
     ? 'Loading version…'
     : appVersion.data?.version && appVersion.data.version !== 'unknown'
       ? appVersion.data.version
-      : 'Version unknown';
+      : 'Unknown version';
+  const releaseCheck = useReleaseCheckStatus();
+  const updateCheckSettings = useQuery({
+    queryKey: queryKeys.updateCheck.current,
+    queryFn: () => api.getUpdateCheckSettings(),
+    enabled: authReady && !!accessToken,
+    staleTime: 60_000,
+    retry: false,
+  });
+  const versionSubtitle = releaseCheck.updateAvailable && releaseCheck.latestVersion
+    ? `${releaseCheck.latestVersion} available`
+    : releaseCheck.latestVersion
+      ? 'Up to date'
+      : updateCheckSettings.data?.enabled === false
+        ? 'Update checks off'
+        : releaseCheck.error
+          ? 'Update check failed'
+          : releaseCheck.checking || updateCheckSettings.data?.enabled
+            ? 'Checking for updates…'
+            : ' ';
 
   const apiKeys = useQuery({
     queryKey: queryKeys.apiKeys.all,
@@ -1048,18 +1069,19 @@ export function SettingsContent({ initialSection, oidcFeedback, oidcFeedbackKind
         subtitle="Account, vehicle, and API controls for local troubleshooting."
         actions={(
           <a
-            href="https://github.com/bballdavis/Riviamigo/releases"
+            href={RELEASES_URL}
             target="_blank"
             rel="noopener noreferrer"
-            aria-label={appVersion.isLoading
-              ? 'Loading current version. View GitHub releases'
-              : `Current version ${runningVersionLabel === 'Version unknown' ? 'unknown' : runningVersionLabel}. View GitHub releases`}
+            aria-label={`${runningVersionLabel}. ${versionSubtitle}. View GitHub releases`}
             title="View GitHub releases"
-            className="rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
+            className="rounded-md text-right focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent"
           >
-            <Badge variant="default" size="sm" className="cursor-pointer whitespace-nowrap font-mono">
+            <span className="block font-mono text-2xl font-semibold font-display tracking-tight text-fg">
               {runningVersionLabel}
-            </Badge>
+            </span>
+            <span className={`mt-0.5 block text-sm ${releaseCheck.updateAvailable ? 'text-status-warning' : 'text-fg-tertiary'}`}>
+              {versionSubtitle}
+            </span>
           </a>
         )}
       >

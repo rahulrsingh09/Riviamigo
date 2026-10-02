@@ -1,6 +1,6 @@
 import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import type { ExternalConnectionsResponse } from '@riviamigo/types';
 
@@ -104,12 +104,14 @@ describe('ExternalConnectionsSection', () => {
     apiMocks.updateUpdateCheckSettings.mockImplementation(async (settings) => settings);
   });
 
-  it('puts the opt-in GitHub Releases card first and leaves checks disabled for read-only users', async () => {
+  it('lists GitHub Releases as a connection and leaves checks disabled for read-only users', async () => {
     apiMocks.getExternalConnections.mockResolvedValue(response(false));
     renderSection();
 
-    const releasesCardTitle = await screen.findByText('GitHub Releases');
-    expect(releasesCardTitle.compareDocumentPosition(screen.getByText('External Connections')) & Node.DOCUMENT_POSITION_FOLLOWING).toBeTruthy();
+    const nav = await screen.findByRole('navigation', { name: 'External connections' });
+    const releasesEntry = within(nav).getByRole('button', { name: /GitHub Releases/ });
+    expect(releasesEntry).toHaveTextContent('Disabled');
+    fireEvent.click(releasesEntry);
     expect(screen.getByRole('switch', { name: 'Enable GitHub release checks' })).toHaveAttribute('aria-checked', 'false');
     expect(screen.getByRole('switch', { name: 'Enable GitHub release checks' })).toBeDisabled();
     const releaseLink = screen.getByRole('link', { name: 'View releases' });
@@ -121,6 +123,7 @@ describe('ExternalConnectionsSection', () => {
     apiMocks.getExternalConnections.mockResolvedValue(response(true));
     renderSection();
 
+    fireEvent.click(await screen.findByRole('button', { name: /GitHub Releases/ }));
     const enabledSwitch = await screen.findByRole('switch', { name: 'Enable GitHub release checks' });
     await waitFor(() => expect(enabledSwitch).toBeEnabled());
     fireEvent.click(enabledSwitch);

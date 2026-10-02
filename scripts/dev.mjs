@@ -3,6 +3,7 @@ import { spawn } from 'node:child_process';
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { resolveBuildVersionFromGit } from './resolve-build-version.mjs';
 
 const scriptDir = dirname(fileURLToPath(import.meta.url));
 const rootDir = resolve(scriptDir, '..');
@@ -641,6 +642,7 @@ function apiEnv() {
     // session continuity and trigger repeated 401/WS reconnect churn.
     COOKIE_INSECURE: 'true',
     RIVIAMIGO_ENV: 'development',
+    RIVIAMIGO_BUILD_VERSION: resolveBuildVersionFromGit(),
     RESTORE_AGENT_URL: `http://127.0.0.1:${ports.restoreAgent}`,
     RESTORE_AGENT_KEY_FILE: devRestoreAgentKeyFile,
     RESTORE_AGENT_PORT: String(ports.restoreAgent),

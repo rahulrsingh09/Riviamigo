@@ -10,6 +10,7 @@ const { updateThemePreferences } = vi.hoisted(() => ({
 const releaseCheck = vi.hoisted(() => ({
   updateAvailable: false,
   status: { latestVersion: null as string | null },
+  version: { data: { version: '2026.10.1+dev' } },
 }));
 let currentStatusData: Record<string, unknown> | null = null;
 let liveConnected = true;
@@ -82,24 +83,36 @@ describe('AppLayout sidebar collapse', () => {
     releaseCheck.status.latestVersion = null;
   });
 
-  it('keeps the release link beside Settings in expanded and collapsed desktop footers', () => {
+  it('shows no release link when the build is not behind a newer release', () => {
     render(
       <AppLayout activeKey="dashboard">
         <div>Dashboard content</div>
       </AppLayout>
     );
 
-    const expandedLink = screen.getByRole('link', { name: 'View GitHub Releases' });
+    expect(screen.queryByRole('link', { name: /GitHub Releases/ })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByLabelText('Collapse sidebar'));
+    expect(screen.queryByRole('link', { name: /GitHub Releases/ })).not.toBeInTheDocument();
+  });
+
+  it('shows the warning release link beside Settings in expanded and collapsed footers when an update exists', () => {
+    releaseCheck.updateAvailable = true;
+    releaseCheck.status.latestVersion = '2026.10.2';
+    render(
+      <AppLayout activeKey="dashboard">
+        <div>Dashboard content</div>
+      </AppLayout>
+    );
+
+    const expandedLink = screen.getByRole('link', { name: /GitHub Releases/ });
     expect(expandedLink).toHaveAttribute('href', 'https://github.com/bballdavis/Riviamigo/releases');
     expect(expandedLink).toHaveAttribute('target', '_blank');
-    const expandedSettings = screen.getByRole('button', { name: 'Open settings' });
-    expect(expandedSettings.parentElement).toContainElement(expandedLink);
-    expect(expandedSettings.querySelector('svg')).toHaveClass('h-4', 'w-4');
-    expect(expandedLink.querySelector('svg')).toHaveClass('h-4', 'w-4');
+    expect(expandedLink).toHaveClass('text-status-warning');
+    expect(screen.getByRole('button', { name: 'Open settings' }).parentElement).toContainElement(expandedLink);
 
     fireEvent.click(screen.getByLabelText('Collapse sidebar'));
-    const collapsedLink = screen.getByRole('link', { name: 'View GitHub Releases' });
-    expect(collapsedLink.parentElement).toHaveClass('grid-cols-[24px_24px]');
+    const collapsedLink = screen.getByRole('link', { name: /GitHub Releases/ });
+    expect(collapsedLink.closest('[class*="grid-cols-[24px_24px]"]')).toBeInTheDocument();
   });
 
   it('shows a versioned update marker on the keyboard-accessible link in the mobile drawer', () => {
@@ -118,9 +131,12 @@ describe('AppLayout sidebar collapse', () => {
     expect(releases).toHaveAttribute('target', '_blank');
     expect(releases).toHaveClass('h-12', 'w-12');
     expect(releases.querySelector('svg')).toHaveClass('h-5', 'w-5');
-    expect(releases.querySelector('.bg-status-positive')).toBeInTheDocument();
+    expect(releases).toHaveClass('text-status-warning');
     releases.focus();
     expect(releases).toHaveFocus();
+    fireEvent.focus(releases);
+    expect(screen.getByRole('tooltip')).toHaveTextContent('2026.10.1+dev');
+    expect(screen.getByRole('tooltip')).toHaveTextContent('Latest2026.10.1');
   });
 
   it('keeps the main content centered inside the current sidebar width', () => {

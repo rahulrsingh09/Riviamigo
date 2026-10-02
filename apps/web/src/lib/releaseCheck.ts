@@ -31,7 +31,7 @@ export const EMPTY_RELEASE_CHECK: ReleaseCheckSnapshot = {
 };
 
 function parseVersion(value: string): [number, number, number] | null {
-  const match = /^v?(\d{4})\.(\d{1,2})\.(\d+)(?:\+dev)?$/.exec(value.trim());
+  const match = /^v?(\d{4})\.(\d{1,2})\.(\d+)(?:\+dev(?:\.\d+)?)?$/.exec(value.trim());
   if (!match) return null;
   const year = Number(match[1]);
   const month = Number(match[2]);
@@ -116,7 +116,7 @@ export async function fetchLatestStableRelease(fetcher: typeof fetch = fetch): P
       throw new Error('GitHub returned an invalid stable release response.');
     }
     const version = payload.tag_name.trim();
-    if (!parseVersion(version) || version.endsWith('+dev')) {
+    if (!parseVersion(version) || version.includes('+')) {
       throw new Error('GitHub returned an invalid stable release version.');
     }
     return version;

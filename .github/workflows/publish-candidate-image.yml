@@ -46,17 +46,7 @@ jobs:
           echo "source_sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
           echo "source_ref=$REQUESTED_SOURCE_REF" >> "$GITHUB_OUTPUT"
           echo "platform=$REQUESTED_PLATFORM" >> "$GITHUB_OUTPUT"
-          release_tag=$(git describe --tags --abbrev=0 --match '[0-9][0-9][0-9][0-9].[0-9][0-9].[0-9]*' --exclude '*-*' 2>/dev/null || true)
-          if [[ ! "$release_tag" =~ ^[0-9]{4}\.[0-9]{2}\.[0-9]+$ ]]; then
-            build_version=unknown
-          else
-            exact_tag=$(git describe --tags --exact-match --match '[0-9][0-9][0-9][0-9].[0-9][0-9].[0-9]*' --exclude '*-*' 2>/dev/null || true)
-            if [[ "$REQUESTED_SOURCE_REF" == "$release_tag" && "$exact_tag" == "$release_tag" ]]; then
-              build_version=$release_tag
-            else
-              build_version="${release_tag}+dev"
-            fi
-          fi
+          build_version=$(node scripts/resolve-build-version.mjs --candidate)
           echo "build_version=$build_version" >> "$GITHUB_OUTPUT"
 
   build-amd64:

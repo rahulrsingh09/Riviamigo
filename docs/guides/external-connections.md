@@ -13,9 +13,10 @@ Riviamigo does not send product analytics. These connections exist only to provi
 ## GitHub Releases
 
 The Settings heading shows the running build version and links to the [Riviamigo
-releases page](https://github.com/bballdavis/Riviamigo/releases). The GitHub
-Releases card controls optional checks, while the sidebar download icon always
-opens the release page and does not install or apply an update.
+releases page](https://github.com/bballdavis/Riviamigo/releases). GitHub
+Releases is listed alongside the other external connections and controls the
+optional checks. The sidebar download icon appears only when a newer release
+exists, opens the release page, and does not install or apply an update.
 
 Optional release checks are disabled by default. An administrator or super user
 can enable them for the installation and choose hourly, daily, weekly, or

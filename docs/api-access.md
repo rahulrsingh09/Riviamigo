@@ -146,11 +146,17 @@ RFC 3339 timestamps and URL-encode query parameters.
 
 ## Running application version
 
-Signed-in browser sessions can read `GET /v1/app/version`, which returns
-`{"version":"2026.09.4+dev"}` for a development build or the stamped release
-version for a tagged build. The value comes from image build metadata. When an
-image has no version metadata, the endpoint returns `{"version":"unknown"}`;
-it does not report the package version as if that were the running image.
+Signed-in browser sessions can read `GET /v1/app/version`, which returns the
+running build's version:
+
+- Release images report the exact release, for example `2026.10.1`.
+- `riviamigo:dev` candidate images report the latest release plus the commits
+  since it, for example `2026.10.1+dev.7`.
+- The local `pnpm run dev:stack` reports the latest release tag with `+dev`.
+
+The value comes from image build metadata. When a build has no version
+metadata, the endpoint returns `{"version":"unknown"}`; it does not report the
+package version as if that were the running image.
 Integration API keys cannot access this session-only endpoint.
 
 ## Installation-wide GitHub release-check settings

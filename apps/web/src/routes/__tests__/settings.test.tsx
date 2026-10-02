@@ -95,6 +95,7 @@ vi.mock('@riviamigo/hooks', () => ({
     apiCatalog: { all: ['api-catalog'] },
     appTimezone: { current: ['app-timezone'] },
     appVersion: { current: ['app-version'] },
+    updateCheck: { current: ['update-check'] },
     backups: {
       all: ['backup-overview'],
       overview: (page: number, perPage: number) => ['backup-overview', page, perPage],
@@ -139,6 +140,7 @@ vi.mock('@riviamigo/hooks', () => ({
   api: {
     me: vi.fn().mockResolvedValue({ role: 'user' }),
     getAppVersion: vi.fn().mockResolvedValue({ version: '2026.09.4+dev' }),
+    getUpdateCheckSettings: vi.fn().mockResolvedValue({ enabled: false, frequency: 'daily' }),
     getUnitPreferences: vi.fn().mockImplementation(() => Promise.resolve(settingsMocks.preferences)),
     updateThemePreferences: vi.fn().mockImplementation(async (theme) => {
       settingsMocks.preferences.theme = theme;
@@ -663,11 +665,28 @@ describe('Settings page', () => {
     settingsMocks.auth.accessToken = 'session-token';
     renderSettings();
 
-    const versionLink = await screen.findByRole('link', { name: /current version 2026\.09\.4\+dev/i });
+    const versionLink = await screen.findByRole('link', { name: /^2026\.09\.4\+dev\. Update checks off/i });
     expect(versionLink).toHaveAttribute('href', 'https://github.com/bballdavis/Riviamigo/releases');
     expect(versionLink).toHaveAttribute('target', '_blank');
     expect(versionLink).toHaveAttribute('rel', 'noopener noreferrer');
     expect(versionLink).toHaveTextContent('2026.09.4+dev');
+    expect(versionLink).toHaveTextContent('Update checks off');
+  });
+
+  it('shows up to date or the newer remote version as the version subtitle', async () => {
+    settingsMocks.auth.accessToken = 'session-token';
+    const snapshot = (latestVersion: string, updateAvailable: boolean) => JSON.stringify({
+      lastAttemptAt: 1, lastSuccessfulAt: 1, latestVersion, updateAvailable, error: null,
+    });
+    localStorage.setItem('rm-github-release-check-v1', snapshot('2026.09.4', false));
+    const { unmount } = renderSettings();
+    expect(await screen.findByRole('link', { name: /Up to date/ })).toBeInTheDocument();
+    unmount();
+
+    localStorage.setItem('rm-github-release-check-v1', snapshot('2026.10.1', true));
+    renderSettings();
+    expect(await screen.findByRole('link', { name: /2026\.10\.1 available/ })).toBeInTheDocument();
+    localStorage.removeItem('rm-github-release-check-v1');
   });
 
   it('labels missing running build metadata as unknown', async () => {
@@ -676,7 +695,7 @@ describe('Settings page', () => {
     vi.mocked(hooks.api.getAppVersion).mockResolvedValueOnce({ version: 'unknown' });
     renderSettings();
 
-    expect(await screen.findByRole('link', { name: /current version unknown/i })).toHaveTextContent('Version unknown');
+    expect(await screen.findByRole('link', { name: /^Unknown version\./i })).toHaveTextContent('Unknown version');
   });
 
   it('uses a chart icon for the Charts settings section', () => {

@@ -73,3 +73,10 @@ describe('GitHub release checks', () => {
     await expect(fetchLatestStableRelease(limited as unknown as typeof fetch)).rejects.toThrow('HTTP 403');
   });
 });
+
+describe('candidate build versions', () => {
+  it('treats +dev.N as its base release', () => {
+    expect(isNewerRelease('2026.10.1+dev.7', '2026.10.1')).toBe(false);
+    expect(isNewerRelease('2026.10.1+dev.7', '2026.10.2')).toBe(true);
+  });
+});

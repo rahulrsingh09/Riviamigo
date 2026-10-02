@@ -36,7 +36,7 @@ describe('network proxy URL resolution', () => {
   it('allows the optional browser release check through the SPA content security policy', () => {
     const nginxConfig = readFileSync(resolve(process.cwd(), '../../compose/nginx/nginx.conf'), 'utf8');
 
-    for (const shellLocation of [/location\s+=\s+\/index\.html\s*\{([\s\S]*?)\n        \}/, /location\s+\/\s*\{([\s\S]*?)\n        \}/]) {
+    for (const shellLocation of [/location\s+=\s+\/index\.html\s*\{([\s\S]*?)\n {8}\}/, /location\s+\/\s*\{([\s\S]*?)\n {8}\}/]) {
       const match = nginxConfig.match(shellLocation);
       expect(match?.[1]).toContain('add_header Content-Security-Policy');
       expect(match?.[1]).toContain('connect-src \'self\' https://api.github.com wss:');
