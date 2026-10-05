@@ -45,6 +45,7 @@ struct HealthResponse {
     vehicle: HealthVehicle,
     generated_at: DateTime<Utc>,
     runtime: Option<RuntimeHealth>,
+    trip_capture: TripCaptureHealth,
     latest: Option<LatestHealthTelemetry>,
     tires: Option<TirePressures>,
     closures: Option<Closures>,
@@ -163,6 +164,43 @@ struct RuntimeHealth {
 }
 
 #[derive(Serialize, sqlx::FromRow)]
+pub(crate) struct TripCaptureHealth {
+    ready: bool,
+    collector_heartbeat_at: Option<DateTime<Utc>>,
+    checkpoint_at: Option<DateTime<Utc>>,
+    pending_completions: i64,
+    persistence_error: Option<String>,
+}
+
+pub(crate) async fn fetch_trip_capture_health(
+    pool: &sqlx::PgPool,
+    vehicle_id: Uuid,
+) -> Result<TripCaptureHealth, AppError> {
+    Ok(sqlx::query_as(
+        r#"SELECT
+            COALESCE(r.collector_heartbeat_at >= now()-interval '60 seconds'
+                AND r.auth_state = 'authorized'
+                AND r.worker_health = 'connected'
+                AND r.trip_persistence_error IS NULL
+                AND c.vehicle_id IS NOT NULL
+                AND pending.count = 0, false) AS ready,
+            r.collector_heartbeat_at, c.updated_at AS checkpoint_at,
+            pending.count AS pending_completions,
+            r.trip_persistence_error AS persistence_error
+           FROM riviamigo.vehicles v
+           LEFT JOIN riviamigo.vehicle_runtime_state r ON r.vehicle_id=v.id
+           LEFT JOIN riviamigo.active_trip_checkpoints c ON c.vehicle_id=v.id
+           CROSS JOIN LATERAL (
+               SELECT count(*) FROM riviamigo.pending_trip_completions p WHERE p.vehicle_id=v.id
+           ) pending
+           WHERE v.id=$1"#,
+    )
+    .bind(vehicle_id)
+    .fetch_one(pool)
+    .await?)
+}
+
+#[derive(Serialize, sqlx::FromRow)]
 struct LatestHealthTelemetry {
     ts: DateTime<Utc>,
     twelve_volt_health: Option<String>,
@@ -226,6 +264,7 @@ async fn health(
     )?;
 
     let ota_release_notes_url = vehicle.ota_release_notes_url.clone();
+    let trip_capture = fetch_trip_capture_health(&state.pool, vehicle_id).await?;
 
     let current_version = sw_history
         .iter()
@@ -238,6 +277,7 @@ async fn health(
         vehicle,
         generated_at: Utc::now(),
         runtime,
+        trip_capture,
         latest,
         tires,
         closures,
