@@ -62,6 +62,34 @@ Follow [Rivian account setup](./rivian-account.md), then confirm:
   restarting the entire stack.
 - Persistent authentication or MFA errors are handled through the Rivian connection flow.
 
+## Check trip capture recovery
+
+Container health confirms the secure-session store is reachable; it does not
+guarantee vehicle connectivity or trip capture. The authenticated
+`GET /v1/vehicles/{vehicle_id}/health` response includes `trip_capture`.
+Its `ready` flag requires a connected, authorized collector, a heartbeat within
+60 seconds, a saved detector checkpoint, and no pending trip writes. Parked
+vehicles do not need to emit continuous trip samples to remain ready.
+
+If `pending_completions` stays above zero or `persistence_error` is present,
+inspect application logs for `trip checkpoint failed` or
+`completed trip persistence failed`. Check database connectivity and available
+storage. Keep the checkpoint and pending-completion tables intact: they hold
+the recovery state. Successful DB writes clear pending completions automatically;
+restarting repeatedly or rebuilding trip history is not a repair procedure.
+An exited collector retries automatically, with delays capped at five minutes.
+An offline upstream can leave readiness false while the application stays
+healthy; do not configure container restarts from this vehicle readiness flag.
+
+After a restart, recent active trips resume from their saved checkpoint.
+Fragments whose last observation is over five minutes old end at that
+observation, and later telemetry starts a separate trip. Missing telemetry is
+not filled in. Trips under 0.1 mile remain filtered, and addresses may appear
+later through periodic enrichment. No setup can promise every trip: if Rivian
+does not deliver samples, or the app stops while the database is unavailable,
+observations not yet committed may be lost. Maintain tested backups of the
+database, including its checkpoint and pending-completion tables.
+
 ## Verify the gateway before remote use
 
 After local verification, configure the authenticated HTTPS gateway described in [Secure deployment](./secure-deployment.md). From the final public address, confirm:

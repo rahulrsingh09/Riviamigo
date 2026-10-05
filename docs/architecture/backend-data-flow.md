@@ -25,6 +25,64 @@ feed unhealthy. Older battery, range, or charging timestamps are reported as
 field freshness diagnostics instead; parked vehicles are not expected to emit
 continuous trip or charging telemetry.
 
+## Trip capture and worker recovery
+
+Migration `0028_active_trip_checkpoints.sql` adds versioned detector snapshots,
+a pending-completion queue, and collector heartbeat/persistence diagnostics.
+Each accepted trip sample advances the checkpoint before telemetry processing
+continues. When the detector closes a trip, the same transaction saves the
+completed payload to `pending_trip_completions` and advances the checkpoint.
+The worker retains the candidate in memory and retries failed checkpoint writes
+at 1–30 second intervals without processing another trip sample. Acquisition
+channels remain bounded; this backpressure does not provide an unlimited outage
+buffer.
+
+The completion consumer runs at startup, before credentials or Redis are needed,
+and every 15 seconds during collection. In one transaction it inserts the trip
+with its original UUID, enqueues weather enrichment, and removes the completion.
+A conflicting UUID must have matching vehicle/start/end identity; retry never
+overwrites an existing trip or user edits. Failed completion writes retain the
+queue row and report a persistence error. The existing 0.1-mile minimum still
+applies. Optional address/geofence matching runs through the existing periodic
+location reconciler after capture; geocoding availability cannot prevent the
+canonical trip write.
+
+Restart rehydrates the detector before starting acquisition. Replayed samples
+at or before the checkpoint's observation watermark cannot advance it again.
+Recovery clears energy/elevation integration boundaries and cached gear anchors,
+and starts signal fusion afresh. If the last observation is over five minutes
+old at recovery or at the first new sample, the old fragment ends at that last
+observation, with its original UUID and observed endpoints. A later trip starts
+from fresh observations. No samples, intermediate route points, or energy
+integration are synthesized across downtime. Short gaps can still conceal a
+stop/restart; heuristic boundaries cannot prove that two observations are the
+same real-world trip.
+
+The supervisor checks exited tasks every second and restarts them with
+exponential delays from 5 seconds to 5 minutes. Five minutes of worker lifetime
+resets the failure count. Explicit stop, shutdown, and command-channel closure
+remove desired workers and cancel retries; shutdown waits up to five seconds
+before aborting a stuck task. Acquisition tasks abort when their worker drops,
+and the advisory-lock connection closes instead of returning a held session
+lock to the pool. A broken checkpoint connection must reacquire ownership and
+verify the saved snapshot before retrying.
+
+The authenticated vehicle health response includes `trip_capture`: `ready`,
+`collector_heartbeat_at`, `checkpoint_at`, `pending_completions`, and
+`persistence_error`. Readiness requires an authorized, connected collector, a
+heartbeat within 60 seconds, an existing checkpoint, and no pending completion
+or persistence error. It is evidence of current collection/persistence, not a
+promise of every trip. `/health` retains its Redis-backed liveness behavior;
+upstream outages must not cause application restart storms.
+
+Snapshots only cover successfully committed observations. Samples never
+delivered by Rivian, channel overflow/disconnection under backpressure, and
+uncommitted memory lost when the process stops while the database is unavailable
+cannot be recovered by this mechanism. There is no disk spool independent of
+the database. Previously committed trips are never rebuilt or deleted.
+
+## Telemetry storage and enrichment
+
 Telemetry is written to the `timeseries.telemetry` hypertable. The
 `telemetry_1min` continuous aggregate incrementally materializes the prior
 seven days once an hour, ending five minutes before the present. It remains a
