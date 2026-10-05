@@ -13,7 +13,7 @@ use axum::{
 use riviamigo_api::{
     config::Config,
     ingestion::supervisor::SupervisorHandle,
-    keys::bootstrap_keys,
+    keys::bootstrap_development_keys,
     middleware::auth::{AppState, JwtKeys},
     routes,
     services::trip_enrichment::{
@@ -69,7 +69,7 @@ impl TestApp {
             .await
             .expect("migrate schema");
 
-        let keys = bootstrap_keys(&pool, None, None, None)
+        let keys = bootstrap_development_keys(&pool)
             .await
             .expect("bootstrap keys");
         let jwt_keys =

@@ -259,7 +259,7 @@ function resetTestData(plan) {
 }
 
 function imageEnvLines(image) {
-  const lines = [`RIVIAMIGO_IMAGE_REF=${image.ref}`];
+  const lines = [`RIVIAMIGO_IMAGE=${image.ref}`, `RIVIAMIGO_IMAGE_REF=${image.ref}`];
   const match = image.ref.match(/^(.*)\/([^/:]+):([^@]+)@sha256:([a-f0-9]{64})$/i);
   if (match) {
     lines.push(`RIVIAMIGO_IMAGE_REGISTRY=${match[1]}`);
@@ -272,7 +272,7 @@ export function writeHarnessEnv(source, destination, image, plan) {
   const sourceLines = readFileSync(source, 'utf8').split(/\r?\n/);
   const isDevelopment = sourceLines.some((line) => /^\s*RIVIAMIGO_ENV\s*=\s*development\s*$/i.test(line));
   const overrideKeys = new Set([
-    'RIVIAMIGO_IMAGE_REF', 'RIVIAMIGO_IMAGE_REGISTRY', 'IMAGE_TAG', 'RIVIAMIGO_DATA_DIR',
+    'RIVIAMIGO_IMAGE', 'RIVIAMIGO_IMAGE_REF', 'RIVIAMIGO_IMAGE_REGISTRY', 'IMAGE_TAG', 'RIVIAMIGO_DATA_DIR',
     'RIVIAMIGO_ORIGIN_PORT', 'RIVIAMIGO_HOST_BIND_ADDRESS', 'COMPOSE_PROJECT_NAME', 'RIVIAMIGO_ENV_FILE',
     'RIVIAMIGO_HEALTH_HOST',
   ]);

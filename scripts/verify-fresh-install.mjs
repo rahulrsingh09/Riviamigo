@@ -4,7 +4,9 @@
  *   node scripts/verify-fresh-install.mjs --mode standard --production-env /path/to/fresh.env --source-build
  *   node scripts/verify-fresh-install.mjs --mode production --production-env /path/to/fresh.env
  * The env file is intentionally caller-owned: it must contain valid production
- * secrets and is never copied into this repository or logged by this script.
+ * secrets (including the complete external RSA/AGE bundle) and is never copied
+ * into this repository or logged by this script. --keys-source may instead mount
+ * a caller-owned bundle directory through the read-only key overlay.
  */
 import { execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
@@ -20,6 +22,7 @@ const productionEnv = value('--production-env');
 const imageTag = value('--image-tag');
 const imageRef = value('--image-ref');
 const sourceBuild = args.includes('--source-build');
+const keysSource = value('--keys-source');
 const project = `riviamigo-fresh-${Date.now().toString(36)}`;
 const port = String(18080 + Math.floor(Math.random() * 1000));
 const composeFile = 'compose/docker-compose.yml';
@@ -30,6 +33,7 @@ const compose = [
   '-f',
   composeFile,
   ...(sourceBuild ? ['-f', 'compose/docker-compose.build.yml'] : []),
+  ...(keysSource ? ['-f', 'compose/docker-compose.keys.yml'] : []),
 ];
 let productionStarted = false;
 let productionEnvironment;
@@ -178,8 +182,10 @@ async function verifyProduction() {
     RIVIAMIGO_ORIGIN_PORT: port,
     RIVIAMIGO_ENV_FILE: resolve(productionEnv),
     RIVIAMIGO_DATA_DIR: productionDataRoot.replaceAll('\\', '/'),
-    ...(imageTag ? { IMAGE_TAG: imageTag } : {}),
+    ...(imageTag ? { RIVIAMIGO_IMAGE: `${process.env.RIVIAMIGO_IMAGE_REGISTRY ?? 'ghcr.io/bballdavis'}/riviamigo:${imageTag}` } : {}),
     ...(imageRef ? { RIVIAMIGO_IMAGE: imageRef } : {}),
+    ...(sourceBuild ? { RIVIAMIGO_IMAGE: 'riviamigo:local' } : {}),
+    ...(keysSource ? { RIVIAMIGO_KEYS_SOURCE: resolve(keysSource) } : {}),
   };
   productionEnvironment = environment;
   run('docker', [...compose, '--env-file', productionEnv, 'config', '--quiet'], {

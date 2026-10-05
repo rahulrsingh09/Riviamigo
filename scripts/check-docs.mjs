@@ -391,8 +391,8 @@ function checkProductionDeploymentContract() {
   }
 
   for (const requiredSnippet of [
-    '"${RIVIAMIGO_HOST_BIND_ADDRESS:-0.0.0.0}:${RIVIAMIGO_ORIGIN_PORT:-8080}:8080"',
-    "ghcr.io/bballdavis}/riviamigo:${IMAGE_TAG:-latest}",
+    '"${RIVIAMIGO_HOST_BIND_ADDRESS:-127.0.0.1}:${RIVIAMIGO_ORIGIN_PORT:-8080}:8080"',
+    "RIVIAMIGO_IMAGE:?Set RIVIAMIGO_IMAGE",
     "RIVIAMIGO_DB_SOURCE",
     "RIVIAMIGO_BACKUPS_SOURCE",
     "RIVIAMIGO_CACHE_SOURCE",

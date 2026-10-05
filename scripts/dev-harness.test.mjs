@@ -81,7 +81,7 @@ test('development harness env keeps HTTP refresh cookies across browser reloads'
   const dir = root();
   const source = join(dir, '.env.source');
   const destination = join(dir, '.harness', 'dev.env');
-  writeFileSync(source, 'RIVIAMIGO_ENV=development\nCOOKIE_INSECURE=false\n');
+  writeFileSync(source, 'RIVIAMIGO_ENV=development\nCOOKIE_INSECURE=false\nRIVIAMIGO_IMAGE=old:image\n');
   const plan = buildPlan(base(dir, { envFile: source }));
 
   writeHarnessEnv(source, destination, plan.images.dev, plan);
@@ -89,4 +89,6 @@ test('development harness env keeps HTTP refresh cookies across browser reloads'
   const generated = readFileSync(destination, 'utf8');
   assert.match(generated, /^COOKIE_INSECURE=true$/m);
   assert.equal((generated.match(/^COOKIE_INSECURE=/gm) ?? []).length, 1);
+  assert.ok(generated.includes(`RIVIAMIGO_IMAGE=${plan.images.dev.ref}\n`));
+  assert.equal((generated.match(/^RIVIAMIGO_IMAGE=/gm) ?? []).length, 1);
 });

@@ -42,6 +42,13 @@ async fn main() -> anyhow::Result<()> {
         "database schema is current"
     );
 
+    let active_keys = keys::bootstrap_keys_for_config(&pool, &config).await?;
+    tracing::info!(
+        cryptographic_key_source = config.cryptographic_key_source(),
+        database_key_shared_fate = config.cryptographic_key_source() == "database",
+        "application cryptographic keys ready"
+    );
+
     match services::backups::reconcile_running_runs(&pool).await {
         Ok(reconciled) if reconciled > 0 => tracing::warn!(
             reconciled,
@@ -69,19 +76,6 @@ async fn main() -> anyhow::Result<()> {
 
     services::external_connections::ensure_defaults(&pool).await?;
     tracing::info!("external connection defaults ensured");
-
-    let active_keys = keys::bootstrap_keys(
-        &pool,
-        config.jwt_secret.clone(),
-        config.jwt_public_key.clone(),
-        config.age_encryption_key.clone(),
-    )
-    .await?;
-    tracing::info!(
-        cryptographic_key_source = config.cryptographic_key_source(),
-        database_key_shared_fate = config.cryptographic_key_source() == "database",
-        "application cryptographic keys ready"
-    );
 
     let jwt_keys = Arc::new(JwtKeys::new(
         &active_keys.jwt_private_pem,

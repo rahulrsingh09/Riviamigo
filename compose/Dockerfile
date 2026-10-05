@@ -23,6 +23,7 @@ COPY apps/api/Cargo.toml apps/api/Cargo.lock ./
 RUN mkdir -p src/bin && printf 'fn main() {}\n' > src/main.rs \
     && printf 'fn main() {}\n' > src/bin/riviamigo-restore-agent.rs \
     && printf 'fn main() {}\n' > src/bin/rebaseline_db.rs \
+    && printf 'fn main() {}\n' > src/bin/riviamigo-keys.rs \
     && printf 'pub fn __riviamigo_dummy() {}\n' > src/lib.rs \
     && target_flag='' \
     && if [ "$TARGETARCH" = "arm64" ] && [ "$BUILDARCH" != "arm64" ]; then \
@@ -41,9 +42,10 @@ RUN mkdir -p src/bin && printf 'fn main() {}\n' > src/main.rs \
         --bin riviamigo-api \
         --bin riviamigo-restore-agent \
         --bin rebaseline_db \
+        --bin riviamigo-keys \
     && rm -rf src
 COPY apps/api/ ./
-RUN touch src/lib.rs src/main.rs src/bin/riviamigo-restore-agent.rs src/bin/rebaseline_db.rs migrations/0001_initial_schema.sql \
+RUN touch src/lib.rs src/main.rs src/bin/riviamigo-restore-agent.rs src/bin/rebaseline_db.rs src/bin/riviamigo-keys.rs migrations/0001_initial_schema.sql \
     && target_flag='' \
     && binary_path=target/container/riviamigo-api \
     && if [ "$TARGETARCH" = "arm64" ] && [ "$BUILDARCH" != "arm64" ]; then \
@@ -63,13 +65,17 @@ RUN touch src/lib.rs src/main.rs src/bin/riviamigo-restore-agent.rs src/bin/reba
         --bin riviamigo-api \
         --bin riviamigo-restore-agent \
         --bin rebaseline_db \
+        --bin riviamigo-keys \
     && cp "$binary_path" /build/apps/api/riviamigo-api \
     && restore_binary_path=target/container/riviamigo-restore-agent \
     && if [ "$TARGETARCH" = "arm64" ] && [ "$BUILDARCH" != "arm64" ]; then restore_binary_path=target/aarch64-unknown-linux-gnu/container/riviamigo-restore-agent; fi \
     && cp "$restore_binary_path" /build/apps/api/riviamigo-restore-agent \
     && rebaseline_binary_path=target/container/rebaseline_db \
     && if [ "$TARGETARCH" = "arm64" ] && [ "$BUILDARCH" != "arm64" ]; then rebaseline_binary_path=target/aarch64-unknown-linux-gnu/container/rebaseline_db; fi \
-    && cp "$rebaseline_binary_path" /build/apps/api/rebaseline_db
+    && cp "$rebaseline_binary_path" /build/apps/api/rebaseline_db \
+    && custody_binary_path=target/container/riviamigo-keys \
+    && if [ "$TARGETARCH" = "arm64" ] && [ "$BUILDARCH" != "arm64" ]; then custody_binary_path=target/aarch64-unknown-linux-gnu/container/riviamigo-keys; fi \
+    && cp "$custody_binary_path" /build/apps/api/riviamigo-keys
 
 FROM --platform=$BUILDPLATFORM node:24.18.0-alpine@sha256:a0b9bf06e4e6193cf7a0f58816cc935ff8c2a908f81e6f1a95432d679c54fbfd AS web-builder
 RUN corepack enable
@@ -111,6 +117,7 @@ WORKDIR /app
 COPY --chown=1001:1001 --from=api-builder /build/apps/api/riviamigo-api ./riviamigo-api
 COPY --chown=1001:1001 --from=api-builder /build/apps/api/riviamigo-restore-agent ./riviamigo-restore-agent
 COPY --chown=1001:1001 --from=api-builder /build/apps/api/rebaseline_db ./rebaseline_db
+COPY --chown=1001:1001 --from=api-builder /build/apps/api/riviamigo-keys ./riviamigo-keys
 COPY --chown=1001:1001 --from=api-builder /build/apps/api/migrations ./migrations
 COPY --chown=1001:1001 --from=web-builder /build/apps/web/dist ./dist
 COPY compose/nginx/nginx.conf /etc/nginx/nginx.conf
