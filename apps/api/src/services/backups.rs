@@ -1439,6 +1439,7 @@ fn extract_recovery_package_sync(package_path: &Path, destination: &Path) -> Res
                 )));
             }
             if entry_type.is_dir() {
+                std::fs::create_dir_all(destination.join(&path))?;
                 continue;
             }
             let entry_size = entry.size();
@@ -2586,6 +2587,56 @@ mod tests {
             .iter()
             .any(|name| name.ends_with("vehicle-1/artwork.webp")));
         let _ = std::fs::remove_dir_all(root);
+    }
+
+    #[tokio::test]
+    async fn recovery_extraction_preserves_an_empty_artwork_cache() {
+        let root = std::env::temp_dir().join(format!("riviamigo-empty-cache-{}", Uuid::new_v4()));
+        std::fs::create_dir_all(&root).unwrap();
+        let dump = root.join("database.dump");
+        let settings = root.join("backup-settings.json");
+        let history = root.join("operational-history.json");
+        std::fs::write(&dump, b"PGDMPsynthetic").unwrap();
+        std::fs::write(&settings, b"{}").unwrap();
+        std::fs::write(&history, b"{}").unwrap();
+        let manifest = serde_json::json!({
+            "format": "riviamigo-recovery-v1",
+            "format_version": 1,
+            "components": {
+                "database": {
+                    "path": "database.dump",
+                    "sha256": sha256_file(&dump).unwrap(),
+                    "size_bytes": std::fs::metadata(&dump).unwrap().len()
+                },
+                "backup_settings": {
+                    "path": "backup-settings.json",
+                    "sha256": sha256_file(&settings).unwrap(),
+                    "size_bytes": std::fs::metadata(&settings).unwrap().len()
+                },
+                "vehicle_image_cache": { "files": [] }
+            }
+        });
+        let archive = root.join("empty-cache.rma.tar.gz");
+        write_recovery_archive(
+            &archive,
+            &dump,
+            &settings,
+            &history,
+            &root.join("absent-cache"),
+            &serde_json::to_vec(&manifest).unwrap(),
+        )
+        .await
+        .unwrap();
+        let extracted = root.join("extracted");
+        super::extract_recovery_package_sync(&archive, &extracted).unwrap();
+        let cache = extracted.join("vehicle-image-cache");
+        assert!(cache.is_dir());
+        assert_eq!(std::fs::read_dir(cache).unwrap().count(), 0);
+        assert_eq!(
+            std::fs::read(extracted.join("database.dump")).unwrap(),
+            b"PGDMPsynthetic"
+        );
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[tokio::test]
