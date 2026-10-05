@@ -127,6 +127,8 @@ part of rollback.
 - Restored data is present; provider credentials and live sessions remain absent
   until deliberately reauthenticated.
 - Development migrations affect only the clone.
-- Restart preserves test data and generated application keys.
+- Restart preserves test data and the selected application keys. Production-mode
+  clones require their own external bundle from the [key-custody procedure](./key-custody.md);
+  only explicit local development may generate database-backed keys.
 - Komodo and source-control read-back match the recorded lock.
 - Production remains unchanged.

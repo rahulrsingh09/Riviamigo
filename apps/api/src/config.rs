@@ -13,7 +13,7 @@ pub struct Config {
     pub database_url: String,
     pub redis_url: String,
     /// Optional externally managed RSA private key PEM. Supply all three key
-    /// overrides together; otherwise Riviamigo uses its database-backed keys.
+    /// values together (or their _FILE alternatives). Required in production.
     pub jwt_secret: Option<String>,
     /// Optional externally managed RSA public verification key PEM.
     pub jwt_public_key: Option<String>,
@@ -328,8 +328,22 @@ fn default_heavy_read_burst() -> u32 {
 impl Config {
     pub fn from_env() -> anyhow::Result<Self> {
         populate_compose_connection_urls()?;
-        let config =
+        let mut config =
             envy::from_env::<Config>().map_err(|e| anyhow::anyhow!("Config error: {e}"))?;
+        for (name, value) in [
+            ("JWT_SECRET", &mut config.jwt_secret),
+            ("JWT_PUBLIC_KEY", &mut config.jwt_public_key),
+            ("AGE_ENCRYPTION_KEY", &mut config.age_encryption_key),
+        ] {
+            let file =
+                std::env::var(format!("{name}_FILE"))
+                    .map(Some)
+                    .or_else(|error| match error {
+                        std::env::VarError::NotPresent => Ok(None),
+                        _ => Err(anyhow::anyhow!("{name}_FILE must be valid Unicode")),
+                    })?;
+            *value = resolve_key_source(name, value.take(), file)?;
+        }
         config.validate()?;
         Ok(config)
     }
@@ -354,18 +368,21 @@ impl Config {
         // production installation stays healthy but registration fails closed.
         let _ = load_setup_token()?;
 
-        let supplied_key_count = [
+        if !self.is_development()
+            && !self
+                .riviamigo_env
+                .as_deref()
+                .is_some_and(|value| value.eq_ignore_ascii_case("production"))
+        {
+            anyhow::bail!("RIVIAMIGO_ENV must be production or development; development is for local use only");
+        }
+        let external = crate::keys::external_keys(
             self.jwt_secret.as_deref(),
             self.jwt_public_key.as_deref(),
             self.age_encryption_key.as_deref(),
-        ]
-        .into_iter()
-        .filter(|value| value.is_some_and(|value| !value.trim().is_empty()))
-        .count();
-        if supplied_key_count != 0 && supplied_key_count != 3 {
-            anyhow::bail!(
-                "JWT_SECRET, JWT_PUBLIC_KEY, and AGE_ENCRYPTION_KEY must be supplied together or all omitted so Riviamigo can persist generated keys"
-            );
+        )?;
+        if is_production && external.is_none() {
+            anyhow::bail!("production requires external JWT_SECRET, JWT_PUBLIC_KEY, and AGE_ENCRYPTION_KEY (or _FILE alternatives); migrate existing database keys explicitly");
         }
 
         if is_production {
@@ -636,6 +653,25 @@ impl OidcEnvOverrides {
     }
 }
 
+fn resolve_key_source(
+    name: &str,
+    direct: Option<String>,
+    file: Option<String>,
+) -> anyhow::Result<Option<String>> {
+    match (direct, file) {
+        (Some(_), Some(_)) => anyhow::bail!("{name} and {name}_FILE are mutually exclusive"),
+        (None, Some(path)) => {
+            if path.trim().is_empty() {
+                anyhow::bail!("{name}_FILE must name a readable key file");
+            }
+            std::fs::read_to_string(path)
+                .map(Some)
+                .map_err(|_| anyhow::anyhow!("{name}_FILE cannot be read as UTF-8 key material"))
+        }
+        (value, None) => Ok(value),
+    }
+}
+
 fn optional_env(name: &str) -> anyhow::Result<Option<String>> {
     Ok(std::env::var(name)
         .ok()
@@ -833,13 +869,16 @@ mod tests {
     use redis::IntoConnectionInfo;
 
     fn production_config() -> Config {
+        static KEYS: std::sync::OnceLock<crate::keys::BootstrappedKeys> =
+            std::sync::OnceLock::new();
+        let keys = KEYS.get_or_init(|| crate::keys::generate_keys().expect("test keys"));
         Config {
             database_url: "postgresql://riviamigo:strong-password@timescaledb:5432/riviamigo"
                 .into(),
             redis_url: "redis://:strong-redis-password@redis:6379".into(),
-            jwt_secret: Some("private".into()),
-            jwt_public_key: Some("public".into()),
-            age_encryption_key: Some("age-key".into()),
+            jwt_secret: Some(keys.jwt_private_pem.clone()),
+            jwt_public_key: Some(keys.jwt_public_pem.clone()),
+            age_encryption_key: Some(keys.age_key.clone()),
             port: 3001,
             allowed_origins: vec!["https://riviamigo.example.com".into()],
             s3_endpoint: None,
@@ -896,14 +935,61 @@ mod tests {
     }
 
     #[test]
-    fn production_allows_database_bootstrapped_keys() {
+    fn production_requires_external_keys() {
         let mut config = production_config();
         config.jwt_secret = None;
         config.jwt_public_key = None;
         config.age_encryption_key = None;
-        config
+        assert!(config
             .validate()
-            .expect("production keys may bootstrap into the database");
+            .unwrap_err()
+            .to_string()
+            .contains("production requires external"));
+    }
+
+    #[test]
+    fn unknown_blank_or_missing_runtime_modes_never_weaken_production() {
+        for mode in [None, Some(""), Some("staging"), Some("prodution")] {
+            let mut config = production_config();
+            config.riviamigo_env = mode.map(str::to_owned);
+            assert!(config.validate().is_err());
+        }
+        let mut config = production_config();
+        config.riviamigo_env = Some("PRODUCTION".into());
+        assert!(config.validate().is_ok());
+        config.riviamigo_env = Some("development".into());
+        config.jwt_secret = Some(String::new());
+        assert!(
+            config.validate().is_err(),
+            "development must validate any supplied overrides"
+        );
+    }
+
+    #[test]
+    fn key_file_sources_reject_conflicts_missing_files_and_empty_material() {
+        assert!(
+            resolve_key_source("JWT_SECRET", Some(String::new()), Some("unused".into())).is_err()
+        );
+        assert!(resolve_key_source("JWT_SECRET", None, Some(String::new())).is_err());
+        let file = std::env::temp_dir().join(format!("custody-config-{}", uuid::Uuid::new_v4()));
+        let path = file.to_string_lossy().into_owned();
+        assert!(resolve_key_source("JWT_SECRET", None, Some(path.clone())).is_err());
+        std::fs::write(&file, "").unwrap();
+        let mut config = production_config();
+        config.age_encryption_key =
+            resolve_key_source("AGE_ENCRYPTION_KEY", None, Some(path.clone())).unwrap();
+        assert!(config.validate().is_err());
+        let valid = production_config();
+        // Exercise all file names, including PEM newlines, without mutating process environment.
+        for (name, value) in [
+            ("JWT_SECRET", valid.jwt_secret),
+            ("JWT_PUBLIC_KEY", valid.jwt_public_key),
+            ("AGE_ENCRYPTION_KEY", valid.age_encryption_key),
+        ] {
+            std::fs::write(&file, value.as_deref().unwrap()).unwrap();
+            assert!(resolve_key_source(name, None, Some(path.clone())).unwrap() == value);
+        }
+        std::fs::remove_file(file).unwrap();
     }
 
     #[test]

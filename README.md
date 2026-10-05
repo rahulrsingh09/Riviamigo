@@ -60,7 +60,7 @@ These are live, redacted views of Riviamigo at desktop and mobile sizes.
 
 Riviamigo runs as a Docker Compose stack. You will need Git, Docker Engine with Docker Compose v2, a trusted host with persistent storage, and a safe way to reach the app.
 
-> **Keep it private:** Riviamigo is meant to run on a trusted home network. The standard stack publishes port 8080, so protect it with a host firewall and an authenticated HTTPS tunnel or identity-aware reverse proxy before allowing remote access. Read the [secure remote access guide](https://riviamigo.com/docs/operations/secure-remote-access/) before making the app available outside your local network.
+> **Keep it private:** Riviamigo is meant to run on a trusted home network. The standard stack publishes port 8080 on host loopback by default, so protect it with a host firewall and an authenticated HTTPS tunnel or identity-aware reverse proxy before allowing remote access. Read the [secure remote access guide](https://riviamigo.com/docs/operations/secure-remote-access/) before making the app available outside your local network.
 
 1. Clone the repository and enter it:
 
@@ -75,7 +75,7 @@ Riviamigo runs as a Docker Compose stack. You will need Git, Docker Engine with 
    cp compose/.env.example .env
    ```
 
-3. Start the published stack:
+3. Provision the complete external RSA/AGE key bundle using the [key-custody runbook](./docs/runbooks/key-custody.md), and set `RIVIAMIGO_IMAGE` to the reviewed digest built from the tested source. Existing DB-backed installations must export and migrate their original keys first. Start with securely injected key values (mounted files also require the `compose/docker-compose.keys.yml` overlay):
 
    ```bash
    docker compose --env-file .env -f compose/docker-compose.yml up -d

@@ -23,7 +23,7 @@ use uuid::Uuid;
 use riviamigo_api::{
     config::Config,
     ingestion::supervisor::SupervisorHandle,
-    keys::bootstrap_keys,
+    keys::bootstrap_development_keys,
     middleware::auth::{AppState, JwtKeys},
     routes,
     services::restore_compatibility,
@@ -74,7 +74,7 @@ impl TestApp {
         let backup_dir =
             std::env::temp_dir().join(format!("riviamigo-backups-{}", Uuid::new_v4().simple()));
 
-        let keys = bootstrap_keys(&pool, None, None, None)
+        let keys = bootstrap_development_keys(&pool)
             .await
             .expect("bootstrap keys");
         let jwt_keys =

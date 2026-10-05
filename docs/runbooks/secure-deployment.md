@@ -8,9 +8,9 @@ changes the requirements in this runbook.
 ## Supported exposure model
 
 Riviamigo is not approved for direct Internet exposure. The standard production
-Compose stack publishes its web origin on port `8080` using normal Docker host
-publication; set `RIVIAMIGO_HOST_BIND_ADDRESS` to limit the host interface and
-runs the app as UID/GID `1001`, with a read-only root filesystem, all Linux
+Compose stack publishes its web origin on `127.0.0.1:8080` by default.
+`RIVIAMIGO_HOST_BIND_ADDRESS` explicitly overrides the Docker host interface.
+The stack runs the app as UID/GID `1001`, with a read-only root filesystem, all Linux
 capabilities dropped, `no-new-privileges`, and a bounded `/tmp` tmpfs. Database
 initialization and migrations run inside that same unprivileged app container;
 the production stack has no root init service. Do not weaken these defaults to
@@ -18,9 +18,9 @@ make an origin public.
 
 Place an authenticated tunnel or identity-aware reverse proxy and host firewall
 rule in front of that origin. A tunnel that only publishes the port
-without an access policy is not sufficient. A non-loopback bind requires both
-`RIVIAMIGO_BIND_ADDRESS` and the explicit
-`ALLOW_PUBLIC_ORIGIN_BIND=true` opt-in; it remains unsupported as a direct
+without an access policy is not sufficient. A non-loopback API listener requires both
+`RIVIAMIGO_BIND_ADDRESS` and `ALLOW_PUBLIC_ORIGIN_BIND=true`. Docker host
+publication is controlled separately by `RIVIAMIGO_HOST_BIND_ADDRESS`; it remains unsupported as a direct
 Internet exposure pattern.
 
 The outer gateway must terminate public HTTPS, require an identity policy, and
@@ -37,12 +37,12 @@ the gateway itself is operated and patched by the self-hoster.
   endpoint reports availability but never reveals which source is used. Before
   a user exists, registration fails closed without a valid proof; after the
   first owner claims the instance, remove or rotate the bootstrap proof.
-- Let Riviamigo generate and persist its application keys in PostgreSQL, or
-  supply `JWT_SECRET`, `JWT_PUBLIC_KEY`, and `AGE_ENCRYPTION_KEY` together from
-  a secret manager. Partial overrides fail startup. Database-persisted keys are
-  an explicitly accepted P2 shared-fate risk; preserve PostgreSQL backups and,
-  for externally managed keys, document and test the secret-manager recovery
-  path.
+- Supply a complete valid external `JWT_SECRET`, `JWT_PUBLIC_KEY`, and
+  `AGE_ENCRYPTION_KEY` bundle, using injected values or their `_FILE` alternatives.
+  Production refuses DB-backed keys. Follow the [key-custody runbook](../runbooks/key-custody.md)
+  before upgrading an existing database; preserve the original keys and ciphertexts.
+  Keep an independently protected key backup; a paid secret manager is not required.
+- Set `RIVIAMIGO_IMAGE` to the reviewed digest of the image built from the tested source.
 - Set `ALLOWED_ORIGINS` to the exact public HTTPS origin, with no path.
 - Set strong `POSTGRES_PASSWORD` and `REDIS_PASSWORD` values. Standard Compose
   safely constructs its internal URLs; custom `DATABASE_URL` values must be valid URLs.
@@ -57,6 +57,7 @@ HTTPS cannot be provided on an isolated trusted LAN, set all of these in the
 Compose environment file:
 
 ```dotenv
+RIVIAMIGO_HOST_BIND_ADDRESS=192.168.1.20
 RIVIAMIGO_BIND_ADDRESS=0.0.0.0
 ALLOW_PUBLIC_ORIGIN_BIND=true
 ALLOWED_ORIGINS=http://192.168.1.20:8080

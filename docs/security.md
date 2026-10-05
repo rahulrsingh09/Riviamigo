@@ -67,9 +67,9 @@ precise vehicle locations in public issues.
 
 ## Transport Security
 
-- Production nginx is an HTTP origin on port 8080, loopback-bound by default,
-  not a public TLS endpoint. Non-loopback binding requires the explicit
-  `ALLOW_PUBLIC_ORIGIN_BIND=true` opt-in.
+- Production nginx is an HTTP origin on port 8080, published on host loopback by
+  default through `RIVIAMIGO_HOST_BIND_ADDRESS`. The separate internal API listener
+  needs `ALLOW_PUBLIC_ORIGIN_BIND=true` for a non-loopback bind. Neither is a public TLS endpoint.
 - Public HTTPS and HSTS are enforced by the authenticated outer gateway
 - `Secure` cookie flag enforced; `COOKIE_INSECURE` is local-development-only.
   The narrow `ALLOW_INSECURE_LAN_HTTP_AUTH=true` production exception accepts
@@ -99,11 +99,18 @@ precise vehicle locations in public issues.
 
 - Durable Rivian credential bundles are encrypted before storage in `riviamigo.vehicle_credentials`
 - Short-lived connect / OTP staging data should stay encrypted at rest in Redis and Redis should remain internal-only
-- Production may generate `AGE_ENCRYPTION_KEY`, `JWT_SECRET`, and
-  `JWT_PUBLIC_KEY` on first start and persist them in PostgreSQL; externally
-  managed overrides must supply all three together. The database-backed option
-  is an explicitly accepted P2 shared-fate risk, mitigated by tested database
-  recovery; a secret manager is the optional separate-custody recovery path.
+- Production requires externally provisioned `AGE_ENCRYPTION_KEY`, `JWT_SECRET`,
+  and `JWT_PUBLIC_KEY` (direct values or mutually exclusive `_FILE` sources).
+  Startup validates the AGE identity and RSA pair and refuses missing/partial keys.
+  Database key storage is limited to explicit local development.
+- A public AGE recipient in `system_config` detects accidental replacement. Existing
+  DB private key rows require the explicit, transactional [custody migration](./runbooks/key-custody.md).
+  It authenticates stored ciphertexts and preserves their bytes before removing only
+  the matched key rows. A failed migration leaves the originals intact.
+- External keys need independent protected backups. Logical row removal does not
+  erase older raw dumps, snapshots, PostgreSQL pages, or WAL containing legacy keys.
+  Runtime/host compromise can still expose in-memory keys; separate custody reduces
+  database-only compromise risk and does not make a perfect-security claim.
 
 ## Audit Logging
 
@@ -171,4 +178,4 @@ precise vehicle locations in public issues.
 - [ ] Host firewall rules restrict direct access to port 8080
 - [ ] Redis is reachable only on a private/internal network
 - [ ] Firewall blocks API, PostgreSQL, Redis, and origin ports from external access
-- [ ] `RIVIAMIGO_IMAGE` uses the digest-qualified `images.lock` reference when exact repeatability matters, or `IMAGE_TAG` is pinned to a Calendar Version for version-level stability
+- [ ] `RIVIAMIGO_IMAGE` explicitly selects the reviewed digest built from the tested source

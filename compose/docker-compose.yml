@@ -1,6 +1,6 @@
 services:
   riviamigo:
-    image: ${RIVIAMIGO_IMAGE:-${RIVIAMIGO_IMAGE_REGISTRY:-ghcr.io/bballdavis}/riviamigo:${IMAGE_TAG:-latest}}
+    image: ${RIVIAMIGO_IMAGE:?Set RIVIAMIGO_IMAGE to the reviewed image digest, or riviamigo:local with the source-build overlay}
     restart: unless-stopped
     env_file:
       - ${RIVIAMIGO_ENV_FILE:-../.env}
@@ -14,7 +14,7 @@ services:
       redis:
         condition: service_healthy
     ports:
-      - "${RIVIAMIGO_HOST_BIND_ADDRESS:-0.0.0.0}:${RIVIAMIGO_ORIGIN_PORT:-8080}:8080"
+      - "${RIVIAMIGO_HOST_BIND_ADDRESS:-127.0.0.1}:${RIVIAMIGO_ORIGIN_PORT:-8080}:8080"
     user: "1001:1001"
     read_only: true
     cap_drop:

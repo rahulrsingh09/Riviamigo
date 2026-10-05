@@ -642,14 +642,9 @@ async fn perform_restore(config: &Config, job_id: Uuid) -> anyhow::Result<()> {
 }
 
 async fn config_with_active_keys(config: &Config, pool: &sqlx::PgPool) -> anyhow::Result<Config> {
-    let active_keys = riviamigo_api::keys::bootstrap_keys(
-        pool,
-        config.jwt_secret.clone(),
-        config.jwt_public_key.clone(),
-        config.age_encryption_key.clone(),
-    )
-    .await
-    .context("bootstrap restore cryptographic keys")?;
+    let active_keys = riviamigo_api::keys::bootstrap_keys_for_config(pool, config)
+        .await
+        .context("bootstrap restore cryptographic keys")?;
     let mut config = config.clone();
     config.age_encryption_key = Some(active_keys.age_key);
     Ok(config)

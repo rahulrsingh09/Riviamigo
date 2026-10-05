@@ -52,11 +52,11 @@ The release posture remains: do not expose Riviamigo directly to the Internet.
 - The internal origin deliberately does not trust arbitrary forwarded client-IP
   headers. Configure client-IP trust only at the outer gateway after validating
   its network boundary.
-- Application signing/encryption keys may be persisted in PostgreSQL when the
-  complete external key trio is omitted. This is an explicitly accepted P2
-  shared-fate risk: database compromise or loss can affect both state and
-  locally generated keys. Tested database recovery is required; a secret
-  manager supplying all three keys is the optional separate-custody path.
+- Production now requires a complete validated external key bundle. Existing
+  database key rows block startup until the explicit custody migration preserves
+  the originals externally, checks stored ciphertexts, and removes matched key
+  rows transactionally. The public AGE binding rejects accidental replacement.
+  Development alone may retain DB-backed keys; external key recovery must be tested.
 - Security events are structured, redacted, and retained in the live database
   for 365 days by the application retention worker. Backup retention remains
   an operator policy and may preserve older events inside recovery packages.

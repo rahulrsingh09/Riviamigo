@@ -7,14 +7,14 @@ sidebar_label: Deployment and updates
 
 # Deployment and updates
 
-The standard self-hosted stack runs TimescaleDB, Redis, and one unified Riviamigo container containing the API, web app, nginx origin, and backup tools. Only the unified app is published to the host, on port `8080` by default. Set `RIVIAMIGO_HOST_BIND_ADDRESS` when a specific host interface is required.
+The standard self-hosted stack runs TimescaleDB, Redis, and one unified Riviamigo container containing the API, web app, nginx origin, and backup tools. Only the unified app is published to the host, on `127.0.0.1:8080` by default. `RIVIAMIGO_HOST_BIND_ADDRESS` explicitly overrides the host interface.
 
 Place an authenticated HTTPS tunnel or identity-aware reverse proxy in front of the app and restrict direct port `8080` access with your host firewall. Never publish the API listener, database, or Redis directly.
 
 ## Initial deployment
 
 1. Copy `compose/.env.example` to `.env`. Set separate strong database and Redis passwords, your exact public HTTPS `ALLOWED_ORIGINS` value, and a one-time `RIVIAMIGO_SETUP_TOKEN` of at least 32 bytes.
-2. Start the stack. The example uses Docker-managed volumes, so no host preparation script is required:
+2. Provision the complete external RSA/AGE bundle using the [key-custody runbook](../runbooks/key-custody.md), and set `RIVIAMIGO_IMAGE` to the reviewed digest built from the tested source. Existing DB-backed installs must export and migrate their original keys first. With injected key values, start the stack; mounted key files also require the `docker-compose.keys.yml` overlay. The example uses Docker-managed volumes, so no host preparation script is required:
 
    ```bash
    docker compose --env-file .env -f compose/docker-compose.yml up -d
@@ -40,6 +40,9 @@ New installations use Docker-managed volumes:
 | `riviamigo-redis`   | `/data`        | Redis append-only state                            |
 | `riviamigo-backups` | `/backups`     | Downloadable recovery packages                     |
 | `riviamigo-cache`   | `/data/cache`  | Application cache files, including vehicle artwork |
+
+External key files are deliberately outside these volumes. Back them up separately
+and restore the same AGE identity with raw database backups.
 
 Do not delete Docker volumes during updates. Copy recovery packages off-host for disaster recovery. Existing installations that omit the four `*_SOURCE` variables continue using their existing `RIVIAMIGO_DATA_DIR` bind paths.
 
@@ -71,9 +74,8 @@ introduced this policy, perform one hard refresh in each browser that may have
 cached the previous SPA shell.
 
 The app applies immutable, forward-only database migrations on startup. Set
-`RIVIAMIGO_IMAGE` to the digest-qualified reference in the release's
-`images.lock` for an exact deployment, or pin `IMAGE_TAG` to a Calendar Version
-for normal version-level stability. Existing pre-release installations must
+`RIVIAMIGO_IMAGE` to the reviewed digest of the new tested source image before
+pulling. There is no automatic `latest` fallback. Existing pre-release installations must
 complete the one-time explicit baseline
 adoption in the [release database cutover runbook](../runbooks/release-database-cutover.md)
 before starting the flattened public release; startup never edits migration
@@ -106,7 +108,7 @@ Redis 8 can read the tested Redis 7 append-only snapshot format. Preserve a copy
 ## Build from source
 
 ```bash
-docker compose --env-file .env -f compose/docker-compose.yml -f compose/docker-compose.build.yml up -d --build
+RIVIAMIGO_IMAGE=riviamigo:local docker compose --env-file .env -f compose/docker-compose.yml -f compose/docker-compose.build.yml up -d --build
 ```
 
 Local development continues to use `pnpm dev:stack` and

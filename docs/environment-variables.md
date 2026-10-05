@@ -7,7 +7,7 @@ sidebar_label: Environment variables
 
 # Environment variables
 
-Most installations need only `POSTGRES_PASSWORD`, `REDIS_PASSWORD`, and `ALLOWED_ORIGINS`. Copy `compose/.env.example` to the repository-root `.env`; use `compose/.env.full.example` as the complete override template. The standard production service passes that root `.env` through its `env_file`, so supported optional values do not need matching entries in `compose/docker-compose.yml`.
+Production requires `POSTGRES_PASSWORD`, `REDIS_PASSWORD`, `ALLOWED_ORIGINS`, an external application key bundle, and an explicitly selected image. Copy `compose/.env.example` to the repository-root `.env`; use `compose/.env.full.example` as the complete override template. The standard production service passes that root `.env` through its `env_file`, so supported optional values do not need matching entries in `compose/docker-compose.yml`.
 
 ## Standard production values
 
@@ -24,11 +24,9 @@ Most installations need only `POSTGRES_PASSWORD`, `REDIS_PASSWORD`, and `ALLOWED
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `RIVIAMIGO_IMAGE` | Unset | Complete image reference override, including an optional `@sha256:` digest. When set, it takes precedence over `RIVIAMIGO_IMAGE_REGISTRY` and `IMAGE_TAG`. |
-| `RIVIAMIGO_IMAGE_REGISTRY` | `ghcr.io/bballdavis` | Registry namespace containing the unified `riviamigo` image. |
-| `IMAGE_TAG` | `latest` | Image tag; use a Calendar Version for repeatable deployments. |
+| `RIVIAMIGO_IMAGE` | Required; no default | Complete reviewed `image@sha256:...` reference built from the tested source. Compose refuses an absent value; it does not validate the digest syntax. `riviamigo:local` is for the source-build overlay only. Legacy IMAGE_TAG and RIVIAMIGO_IMAGE_REGISTRY no longer select the image. |
 | `RIVIAMIGO_ORIGIN_PORT` | `8080` | Host port mapped to the unified app container. Protect it with host firewall rules when using a remote gateway. |
-| `RIVIAMIGO_HOST_BIND_ADDRESS` | `0.0.0.0` | Docker host-side address for the published origin port. This Compose-only setting is separate from the application's internal listener. Restrict it with a host firewall. |
+| `RIVIAMIGO_HOST_BIND_ADDRESS` | `127.0.0.1` | Docker host-side address for the published origin port. Keep loopback for a host gateway; an explicit non-loopback override needs a private network boundary and firewall. This is separate from the internal API listener. |
 | `RIVIAMIGO_BIND_ADDRESS` | `127.0.0.1` | Application listener address inside the container. It is not the Docker host publication address. |
 | `ALLOW_PUBLIC_ORIGIN_BIND` | `false` | Required, with the literal value `true`, before a non-loopback application `RIVIAMIGO_BIND_ADDRESS` is accepted. This is an explicit exposure opt-in, not a substitute for the authenticated gateway and firewall. |
 | `ALLOW_INSECURE_LAN_HTTP_AUTH` | `false` | **LAN-only exception.** With the literal value `true`, permits non-Secure refresh cookies only when `ALLOW_PUBLIC_ORIGIN_BIND=true`, the API binds to an unspecified/private/loopback/link-local IP, and every `ALLOWED_ORIGINS` entry is an exact `http://` private/loopback/link-local IP literal. It rejects hostnames, public IPs, HTTPS/HTTP mixes, paths, and credentials. Browser credentials and telemetry can be intercepted; prefer HTTPS. |
@@ -42,12 +40,16 @@ Most installations need only `POSTGRES_PASSWORD`, `REDIS_PASSWORD`, and `ALLOWED
 
 | Variable | Default | Purpose |
 |---|---|---|
-| `JWT_SECRET` | Generated and stored in PostgreSQL | RSA private signing key. If overridden, the public and age keys must also be supplied. |
-| `JWT_PUBLIC_KEY` | Generated and stored in PostgreSQL | RSA public verification key. Supply only as part of the complete three-key override. |
-| `AGE_ENCRYPTION_KEY` | Generated and stored in PostgreSQL | age X25519 identity used to encrypt provider credentials. Supply only as part of the complete three-key override. |
+| `JWT_SECRET` | Required externally in production | RSA private signing PEM (RS256, at least 2048 bits). Must match `JWT_PUBLIC_KEY`. |
+| `JWT_PUBLIC_KEY` | Required externally in production | RSA public verification PEM. Supply the complete RSA/AGE bundle. |
+| `AGE_ENCRYPTION_KEY` | Required externally in production | One age X25519 secret identity, preserved for the lifetime of the encrypted data. Replacement fails against the stored public identity binding. |
+| `JWT_SECRET_FILE` | Unset | UTF-8 file containing the private PEM, mutually exclusive with `JWT_SECRET`. |
+| `JWT_PUBLIC_KEY_FILE` | Unset | UTF-8 file containing the public PEM, mutually exclusive with `JWT_PUBLIC_KEY`. |
+| `AGE_ENCRYPTION_KEY_FILE` | Unset | UTF-8 file containing one age secret identity, mutually exclusive with `AGE_ENCRYPTION_KEY`. One-line key text with trailing whitespace is accepted; an age-keygen comment/header file is not. |
+| `RIVIAMIGO_KEYS_SOURCE` | Unset | Host bundle directory for `compose/docker-compose.keys.yml`. The overlay mounts it read-only and supplies the three `_FILE` paths. Standard Compose alone does not mount key files. |
 | `RIVIAMIGO_SETUP_TOKEN` | Unset | One-time first-owner proof for production registration. Mutually exclusive with `RIVIAMIGO_SETUP_TOKEN_FILE`; must be at least 32 bytes. Known example placeholders are rejected. Keep this value out of shell history where possible. |
 | `RIVIAMIGO_SETUP_TOKEN_FILE` | Unset | File containing the one-time first-owner proof. Mutually exclusive with `RIVIAMIGO_SETUP_TOKEN`; one trailing line ending is accepted. Prefer a mounted secret file. |
-| `RIVIAMIGO_ENV` | `production` | Enables production configuration validation. Use `development` only for local development. |
+| `RIVIAMIGO_ENV` | `production` | Only `production` and `development` are accepted (case-insensitive). Unknown/blank modes fail startup. Only explicit local development permits database key generation. |
 | `PORT` | `3001` | Internal API listener port. The unified production nginx expects `3001`. |
 | `RUST_LOG` | `riviamigo_api=debug,tower_http=info` | Rust tracing filter. Structured `[riviamigo][LEVEL]` key-value logs are written to stdout. |
 | `TZ` | UTC | Docker/container timezone used by nginx and other runtime processes. This does not control Riviamigo’s user-facing application timezone, which is configured in Settings → Units. |
@@ -123,16 +125,16 @@ The setup endpoint reports whether a proof is required and available, but never
 reveals its source or value. An unclaimed production installation without a
 configured proof remains healthy but refuses registration.
 
-Generated application keys are part of the PostgreSQL backup and therefore
-survive restore. This is an explicitly accepted **P2 shared-fate risk**: a
-database compromise or loss can affect both application state and locally
-generated keys. Operators who need separate key custody should supply all three
-external overrides from their secret manager and maintain a tested recovery path
-for that manager. Administrators can inspect the active source through
-`GET /v1/admin/security/status`; startup logs expose only the source category,
-never key material. Supplying a new explicit
-age key to an existing database can make stored encrypted credentials unreadable;
-treat key changes as a migration.
+Production never generates or persists application private keys in PostgreSQL.
+Missing, partial, empty, invalid, conflicting file/direct, or mismatched bundles
+fail startup. Existing DB-backed key rows also block external startup until the
+explicit [key-custody migration](./runbooks/key-custody.md) completes. Keep the
+same AGE identity across restarts and raw database restores; the database stores
+only its public recipient binding. Administrators can inspect the source through
+`GET /v1/admin/security/status`; logs disclose only the source category.
+Back up external keys separately from database/recovery storage. Recovery packages
+exclude installation keys and credentials; raw database dumps can retain both
+legacy keys and ciphertext. See the migration runbook before upgrading or restoring.
 
 ## Rivian telemetry behavior
 

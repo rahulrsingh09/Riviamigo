@@ -73,6 +73,7 @@ const sidebars: SidebarsConfig = {
       items: [
         'runbooks/README',
         'runbooks/secure-deployment',
+        'runbooks/key-custody',
         'runbooks/backup-restore',
         'runbooks/dev-harness',
         'runbooks/dependency-maintenance',

@@ -24,6 +24,8 @@ This directory is canonical for operational and process runbooks. Update it when
   How the one-off vehicle history rebuild works, what it replays, and how post-replay trip enrichment is restored.
 - [`secure-deployment.md`](./secure-deployment.md)
   Required authenticated-gateway posture, production secret requirements, and verification steps for shared instances.
+- [`key-custody.md`](./key-custody.md)
+  External key provisioning, preserving legacy keys during migration, and recovery requirements.
 - [`release-images.md`](./release-images.md)
   Calendar Version releases, public GHCR images, pre-release images from `dev`, and recovery steps.
 - [`backup-restore.md`](./backup-restore.md)
