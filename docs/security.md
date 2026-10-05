@@ -116,7 +116,7 @@ precise vehicle locations in public issues.
 
 - Weekly automated dependency audits via Dependabot
 - `cargo audit --deny warnings` in CI
-- `pnpm audit --prod --audit-level=high` in CI
+- `pnpm audit --json` in CI (production and development dependencies; raw findings retained and narrowly reviewed exceptions checked by `scripts/check-dependency-audits.mjs`)
 - Semgrep SAST is blocking on trusted branches and same-repository pull
   requests; fork pull requests use a separate secret-free blocking scan.
 - Fixable critical and high Trivy findings are blocking after the unified production image builds; unfixed base-image findings remain visible for review and base-digest refreshes.

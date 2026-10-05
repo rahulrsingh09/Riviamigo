@@ -3,6 +3,7 @@
 import { readFileSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join, relative, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { parse } from 'yaml';
 
 const root = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const catalogsOnly = process.argv.includes('--catalogs-only');
@@ -87,6 +88,37 @@ for (const manifestPath of walk(root, 'package.json')) {
 }
 
 if (!catalogsOnly) {
+  const workspace = parse(workspaceYaml);
+  if (Object.keys(workspace.auditConfig ?? {}).length) {
+    failures.push(
+      'Native pnpm audit ignores hide findings; use config/dependency-audit-exceptions.json.'
+    );
+  }
+  if (
+    JSON.stringify(workspace.allowBuilds) !== JSON.stringify({ 'core-js': false, esbuild: true })
+  ) {
+    failures.push(
+      'Review dependency install scripts before changing the core-js/esbuild build allowlist.'
+    );
+  }
+  if (
+    workspace.patchedDependencies?.['image-size@2.0.2'] ||
+    workspace.overrides?.['image-size'] !== '2.0.4'
+  ) {
+    failures.push('Use the published image-size 2.0.4 fix, not the retired partial patch.');
+  }
+  const cargoLock = readFileSync(resolve(root, 'apps/api/Cargo.lock'), 'utf8');
+  if (/name = "proc-macro-error(?:2|-attr2)?"/.test(cargoLock)) {
+    failures.push('Unmaintained proc-macro-error returned; review the age/i18n dependency path.');
+  }
+  const today = new Date().toISOString().slice(0, 10);
+  for (const entry of readJson('config/dependency-audit-exceptions.json')) {
+    if (!entry.expires || today > entry.expires) {
+      failures.push(
+        `${entry.id}: audit exception expired ${entry.expires}; reassess applicability and upstream fixes.`
+      );
+    }
+  }
   const baseline = readJson('config/dependency-baselines.json');
   const rootPackage = readJson('package.json');
   const packageManager = rootPackage.packageManager?.match(/^pnpm@([^+]+)/)?.[1];
