@@ -1,3 +1,4 @@
+import './iconPolicy';
 // Side-effect: registers all widgets into the registry.
 import './widgets/index';
 
