@@ -74,6 +74,7 @@ const sidebars: SidebarsConfig = {
         'runbooks/README',
         'runbooks/secure-deployment',
         'runbooks/key-custody',
+        'runbooks/private-fork-maintenance',
         'runbooks/backup-restore',
         'runbooks/dev-harness',
         'runbooks/dependency-maintenance',
