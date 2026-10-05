@@ -8,8 +8,8 @@ import { test } from 'node:test';
 
 const docsRequire = createRequire(new URL('../apps/docs/package.json', import.meta.url));
 const coreRequire = createRequire(docsRequire.resolve('@docusaurus/core/package.json'));
-const utilsRequire = createRequire(coreRequire.resolve('@docusaurus/utils'));
-let packageRoot = dirname(utilsRequire.resolve('image-size'));
+const mdxRequire = createRequire(coreRequire.resolve('@docusaurus/mdx-loader'));
+let packageRoot = dirname(mdxRequire.resolve('image-size'));
 while (
   !existsSync(join(packageRoot, 'package.json')) ||
   JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8')).name !== 'image-size'

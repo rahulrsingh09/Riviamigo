@@ -90,8 +90,8 @@ async fn authorization_user_deletion_removes_sessions_and_memberships_preserving
     .await
     .unwrap();
     sqlx::query(
-        "INSERT INTO riviamigo.vehicle_credentials (vehicle_id, encrypted_tokens)
-         VALUES ($1, $2)",
+        "INSERT INTO riviamigo.vehicle_credentials (vehicle_id, encrypted_tokens, token_created_at)
+         VALUES ($1, $2, now())",
     )
     .bind(vehicle)
     .bind(b"synthetic-vehicle-credentials".as_slice())

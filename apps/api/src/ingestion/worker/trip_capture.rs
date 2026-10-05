@@ -385,10 +385,21 @@ mod tests {
             .unwrap();
         let (shutdown_tx, mut shutdown_rx) = tokio::sync::broadcast::channel(1);
         shutdown_tx.send(()).unwrap();
-        assert!(super::super::save_trip_checkpoint(
-            &db.pool, db.vehicle_id, &mut conn, &mut capture, &mut shutdown_rx,
-        ).await, "intentional stop must first attempt to commit the observed completion");
-        assert!(shutdown_rx.try_recv().is_ok(), "the worker must still observe the stop");
+        assert!(
+            super::super::save_trip_checkpoint(
+                &db.pool,
+                db.vehicle_id,
+                &mut conn,
+                &mut capture,
+                &mut shutdown_rx,
+            )
+            .await,
+            "intentional stop must first attempt to commit the observed completion"
+        );
+        assert!(
+            shutdown_rx.try_recv().is_ok(),
+            "the worker must still observe the stop"
+        );
         capture.save(&mut conn).await.unwrap();
         assert!(capture.pending.is_empty());
         assert_eq!(db.counts().await, (0, 1, 0));

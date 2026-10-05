@@ -91,8 +91,8 @@ async fn authorization_enrollment_cannot_hijack_existing_vehicle_or_escalate_vie
     let attacker = f.user("user").await;
     let vehicle_id = f.vehicle(owner, "demo-owned").await;
     sqlx::query(
-        "INSERT INTO riviamigo.vehicle_credentials (vehicle_id, encrypted_tokens)
-         VALUES ($1, $2)",
+        "INSERT INTO riviamigo.vehicle_credentials (vehicle_id, encrypted_tokens, token_created_at)
+         VALUES ($1, $2, now())",
     )
     .bind(vehicle_id)
     .bind(b"original-owner-credentials".as_slice())
