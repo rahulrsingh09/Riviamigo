@@ -12,8 +12,10 @@ exports outside Git. The repository is public.
 - `hardening/private-telemetry` holds the reviewed security changes and is the
   fork's default branch.
 - `sync/upstream` combines incoming upstream commits with the hardened branch.
-  After review and passing checks, fast-forward the hardened branch to the tested
-  candidate commit. A pull request is optional; no user approval step is required.
+- `review/*` holds reviewed candidates. Push the candidate there using maintainer
+  credentials to start the required validation checks. After they pass, fast-forward
+  the hardened branch to that exact commit. A pull request is optional; no user
+  approval step is required.
 
 The fork upstream workflow checks daily and can be run manually. It does not
 automatically merge, create a pull request, or deploy an image. A failed run or merge conflict needs
@@ -55,10 +57,24 @@ Candidate application code runs in the separate validation workflow with read-on
 repository permission and no stored checkout credentials.
 
 Commits created with GitHub's workflow token do not automatically start ordinary push
-workflows. The sync job explicitly dispatches validation only when the candidate
-has not changed any `fork-*.yml` workflow or `fork-*.mjs` control script. Otherwise
-the branch remains available for manual workflow review. No upstream code executes
-inside the job holding write permission.
+workflows. The sync job explicitly dispatches preview validation only when the
+candidate has not changed any `fork-*.yml` workflow or `fork-*.mjs` control script.
+Otherwise the branch remains available for manual workflow review. No upstream
+code executes inside the job holding write permission.
+
+GitHub does not accept `workflow_dispatch` job checks as required branch checks.
+Preview runs therefore do not authorize promotion. After reviewing the candidate,
+push its exact commit to a `review/*` branch using maintainer credentials; that
+`push` event produces eligible checks. For an upstream candidate:
+
+```sh
+git fetch origin
+git push origin refs/remotes/origin/sync/upstream:refs/heads/review/upstream
+```
+
+Wait for both fork validation jobs to pass for that SHA, then fast-forward
+`hardening/private-telemetry` to it. Do not disable branch protection or fabricate
+commit statuses to bypass a failed or missing check.
 
 ## Release and data checks
 

@@ -4,7 +4,7 @@ on:
   pull_request:
     branches: [hardening/private-telemetry]
   push:
-    branches: [hardening/private-telemetry]
+    branches: [hardening/private-telemetry, 'review/**']
   workflow_dispatch:
 
 permissions:

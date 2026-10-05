@@ -22,6 +22,9 @@ const result = syncFork({ apply: true });
 console.log(JSON.stringify(result, null, 2));
 if (result.status === 'review-required') {
   console.log(`Review and test ${SYNC_BRANCH} at ${result.candidate} before promoting it.`);
+  console.log(
+    'After review, push the candidate to review/upstream with maintainer credentials for required checks.'
+  );
   if (result.safeToValidate) {
     gh(['workflow', 'run', 'fork-ci.yml', '--ref', SYNC_BRANCH]);
   } else {
