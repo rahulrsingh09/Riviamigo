@@ -12,17 +12,18 @@ exports outside Git. The repository is public.
 - `hardening/private-telemetry` holds the reviewed security changes and is the
   fork's default branch.
 - `sync/upstream` combines incoming upstream commits with the hardened branch.
-  Changes enter the hardened branch through a reviewed pull request.
+  After review and passing checks, fast-forward the hardened branch to the tested
+  candidate commit. A pull request is optional; no user approval step is required.
 
 The fork upstream workflow checks daily and can be run manually. It does not
-automatically merge a PR or deploy an image. A failed run or merge conflict needs
+automatically merge, create a pull request, or deploy an image. A failed run or merge conflict needs
 maintainer attention; a schedule is not a guarantee that the fork is current.
 GitHub can disable scheduled workflows in inactive public repositories.
 
 Use merge commits for upstream integrations. Do not reset the hardened branch to
 upstream, force-push the mirror, or squash away upstream ancestry. Disable force
 pushes and deletions on the hardened branch, require fork validation checks, and
-review security-sensitive changes before merging.
+review security-sensitive changes before promoting a tested commit.
 
 For a local check:
 
@@ -49,14 +50,14 @@ runners. A private repository needs a fresh cost review; both workflows refuse t
 run when the repository is private.
 
 The synchronization job needs repository write permission to publish its branch
-and open a PR. It executes only the trusted sync script and Git operations.
+and dispatch validation. It executes only the trusted sync script and Git operations.
 Candidate application code runs in the separate validation workflow with read-only
 repository permission and no stored checkout credentials.
 
-PRs created with GitHub's workflow token do not automatically start ordinary PR
+Commits created with GitHub's workflow token do not automatically start ordinary push
 workflows. The sync job explicitly dispatches validation only when the candidate
 has not changed any `fork-*.yml` workflow or `fork-*.mjs` control script. Otherwise
-the PR remains available for manual workflow review. No upstream code executes
+the branch remains available for manual workflow review. No upstream code executes
 inside the job holding write permission.
 
 ## Release and data checks

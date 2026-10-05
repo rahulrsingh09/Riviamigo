@@ -21,56 +21,10 @@ if (
 const result = syncFork({ apply: true });
 console.log(JSON.stringify(result, null, 2));
 if (result.status === 'review-required') {
-  const body = [
-    `Integrate upstream commit ${result.upstream} into ${HARDENED_BRANCH}.`,
-    '',
-    'The main branch mirrors upstream. This PR preserves the fork security changes through a merge.',
-    'Review the complete diff, security regressions, migrations and dependency findings before merging.',
-    'No deployment is triggered by this workflow.',
-    '',
-    result.safeToValidate
-      ? 'Fork validation has been requested for this candidate.'
-      : `Manual workflow review is required before validation: ${result.changedControls.join(', ')}.`,
-  ].join('\n');
-  const existing = JSON.parse(
-    gh([
-      'pr',
-      'list',
-      '--head',
-      SYNC_BRANCH,
-      '--base',
-      HARDENED_BRANCH,
-      '--state',
-      'open',
-      '--json',
-      'number',
-    ])
-  );
-  if (existing.length) {
-    gh([
-      'pr',
-      'edit',
-      String(existing[0].number),
-      '--title',
-      'Review upstream updates',
-      '--body',
-      body,
-    ]);
-  } else {
-    gh([
-      'pr',
-      'create',
-      '--head',
-      SYNC_BRANCH,
-      '--base',
-      HARDENED_BRANCH,
-      '--title',
-      'Review upstream updates',
-      '--body',
-      body,
-    ]);
-  }
+  console.log(`Review and test ${SYNC_BRANCH} at ${result.candidate} before promoting it.`);
   if (result.safeToValidate) {
     gh(['workflow', 'run', 'fork-ci.yml', '--ref', SYNC_BRANCH]);
+  } else {
+    console.log(`Review changed workflow controls first: ${result.changedControls.join(', ')}`);
   }
 }

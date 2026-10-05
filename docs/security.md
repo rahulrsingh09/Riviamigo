@@ -172,10 +172,52 @@ precise vehicle locations in public issues.
 - [ ] `ALLOW_INSECURE_LAN_HTTP_AUTH` remains `false`, or the documented trusted-LAN exception and host firewall controls are in place
 - [ ] `POSTGRES_PASSWORD` changed from default
 - [ ] `REDIS_PASSWORD` is strong and Redis is not host-published
-- [ ] Generated application keys are protected by database backups, or all three explicit key overrides are stored safely
+- [ ] Production AGE identity and RSA signing keys are stored safely outside the database and backed up separately
 - [ ] `ALLOWED_ORIGINS` set to exact frontend domain(s)
 - [ ] An authenticated tunnel or identity-aware reverse proxy terminates public HTTPS
 - [ ] Host firewall rules restrict direct access to port 8080
 - [ ] Redis is reachable only on a private/internal network
 - [ ] Firewall blocks API, PostgreSQL, Redis, and origin ports from external access
 - [ ] `RIVIAMIGO_IMAGE` explicitly selects the reviewed digest built from the tested source
+
+### Rivian error logging
+
+The telemetry fork withholds raw Rivian GraphQL error messages, codes and reasons
+from returned error strings and logs. Those fields can reflect request inputs.
+Authentication categories are classified internally before details are discarded.
+Production container builds enforce the committed Cargo lockfile.
+
+Request tracing uses matched route templates, including for invitation URLs,
+without query strings or request headers. The proxy records coarse API prefixes
+and response status only. Raw proxy error logging is disabled because Nginx embeds
+request URLs in those messages; application error logs and proxy status records
+remain available. The same security headers are included on the HTML shell and
+static responses, with a same-origin Content Security Policy and local blob
+workers for map rendering.
+
+Dashboard startup disables Iconify network loading before widgets render, and
+opening the icon picker cannot restore that transport. Uncached remote icons and
+online icon searches remain unavailable. The initial theme uses static HTML
+attributes, so the page does not need an inline-script exception.
+
+### Runtime packages and recovery
+
+The runtime installs current distribution security updates, retains the PostgreSQL
+client tools needed for recovery, and removes the unused database server, JIT,
+XML/SQLite libraries and GPG tooling. Setuid and setgid executable bits are removed.
+Review the finished image before each deployment; a pinned base digest alone does
+not include later distribution fixes.
+
+The October 5, 2026 image scan still reports distribution advisories. The remaining
+critical entry, [CVE-2023-45853](https://security-tracker.debian.org/tracker/CVE-2023-45853),
+concerns MiniZip: Debian documents that the affected code is not built into
+Bookworm's zlib binary packages. Remaining high entries include privileged host
+utilities, archive/LDAP paths not used by the application, curl modes beyond the
+fixed local health probe, and OpenSSL DTLS, which this deployment does not use.
+These are applicability observations for this configuration, not blanket
+exclusions or a clean vulnerability scan. Reassess them when changing the image,
+networking, subprocesses or runtime privileges.
+
+Recovery extraction preserves validated empty directory entries, including an
+empty vehicle-image cache. An installation with third-party artwork disabled can
+restore a backup without previously downloaded images.
