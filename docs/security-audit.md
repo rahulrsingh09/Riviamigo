@@ -27,13 +27,13 @@ The release posture remains: do not expose Riviamigo directly to the Internet.
 
 ## Findings resolved in this release
 
-| Severity | Finding                                                                                                 | Resolution                                                                                                                   |
-| -------- | ------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------- |
-| High | An unclaimed production installation could accept its first owner without an out-of-band proof. | Production registration now requires a configured 32-byte setup proof while no user exists; its source/value is never exposed. |
-| High | The origin could be published more broadly than the intended gateway boundary. | Standard Compose binds the origin to loopback and requires an explicit public-bind opt-in; the app service is rootless, read-only, capability-dropped, and `no-new-privileges`. |
-| High     | The former separate nginx image originally used the wrong upstream boundary.                            | The unified production image now runs nginx and the API together and intentionally proxies over container-local loopback.    |
-| High     | The production Compose topology omitted its Redis dependency and had stale ports/service documentation. | Redis is included as an internal password-protected service; Compose, user guide, runbook, and env documentation now agree.  |
-| High     | The API production image could not install matching PostgreSQL client tools from its Debian base.       | The runtime now uses the pinned `postgres:18.4-bookworm` image, which includes matching `pg_dump`.                           |
+| Severity | Finding                                                                                                 | Resolution                                                                                                                                                                      |
+| -------- | ------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| High     | An unclaimed production installation could accept its first owner without an out-of-band proof.         | Production registration now requires a configured 32-byte setup proof while no user exists; its source/value is never exposed.                                                  |
+| High     | The origin could be published more broadly than the intended gateway boundary.                          | Standard Compose binds the origin to loopback and requires an explicit public-bind opt-in; the app service is rootless, read-only, capability-dropped, and `no-new-privileges`. |
+| High     | The former separate nginx image originally used the wrong upstream boundary.                            | The unified production image now runs nginx and the API together and intentionally proxies over container-local loopback.                                                       |
+| High     | The production Compose topology omitted its Redis dependency and had stale ports/service documentation. | Redis is included as an internal password-protected service; Compose, user guide, runbook, and env documentation now agree.                                                     |
+| High     | The API production image could not install matching PostgreSQL client tools from its Debian base.       | The runtime now uses the pinned `postgres:18.4-bookworm` image, which includes matching `pg_dump`.                                                                              |
 
 ## Residual risks and release requirements
 
@@ -64,10 +64,13 @@ The release posture remains: do not expose Riviamigo directly to the Internet.
   high/critical Trivy image scans. Fork pull requests run the separate
   secret-free blocking Semgrep scan. Reviewed exceptions must be documented in
   the PR with an owner, expiry, and remediation link. Local
-  dependency validation in this audit found no unignored high-severity
-  production npm vulnerabilities after updating MapLibre and pinned transitive
-  dependencies to their patched releases. RustSec warning exceptions are
+  dependency validation on **2026-10-05** reports two unresolved high npm
+  findings (`braces` and disputed `http-cache-semantics`) in Docusaurus tooling and one unresolved Cargo `rsa`
+  vulnerability whose private-key operation is not reached by the reviewed
+  OIDC verifier. Raw findings remain visible; scoped policy exceptions are
   listed in the [maintenance register](./runbooks/dependency-maintenance.md#maintenance-register).
+  The `proc-macro-error2` and image-size exceptions were removed using
+  published compatible fixes. See the [dated dependency review](./dependency-review-2026-10-05.md).
 - Gitleaks suppressions remain exact commit/path/rule/line fingerprints in
   `.gitleaksignore`. The OIDC security run surfaced two historical false
   positives: a `JWT_PUBLIC_KEY` placeholder in a [removed environment-variable
@@ -79,12 +82,12 @@ The release posture remains: do not expose Riviamigo directly to the Internet.
   review them by 2026-12-31 against the [Gitleaks run report](https://github.com/bballdavis/Riviamigo/actions/runs/36056391392)
   and remove them if source history is rewritten or the scanner no longer
   reports those exact lines.
-- `RUSTSEC-2023-0071` is temporarily ignored for `openidconnect`'s transitive
+- `RUSTSEC-2023-0071` has a bounded policy exception for `openidconnect`'s transitive
   `rsa` dependency. The OIDC callback verifies provider ID-token signatures
   with public keys and does not use RSA private-key signing or decryption. The
   [RustSec advisory](https://rustsec.org/advisories/RUSTSEC-2023-0071.html)
   reports no fixed release. **Owner:** release maintainer. **Expiry:**
-  2026-12-31. Remove the ignore when upstream publishes a fixed release or the
+  2026-12-31 (unchanged after the October 5 review). Remove the exception when upstream publishes a fixed release or the
   OIDC verifier no longer depends on `rsa`; then rerun `cargo audit`.
 - Before a wider exposure or multi-tenant use case, commission an independent
   authenticated penetration test and review gateway, host, backup, and secret
@@ -115,7 +118,7 @@ The security-hardening branch additionally requires:
   ID-token signature/issuer/audience/nonce validation, explicit account
   linking, and auto-signup policy against a supported provider.
 - `pnpm dashboards:sync-defaults --check`
-- `pnpm audit --prod --audit-level=high`
+- `pnpm audit --json` (all dependencies; retain raw findings and evaluate the bounded policy register)
 - `docker compose --env-file .env -f compose/docker-compose.yml config --quiet`
 - `docker run --rm postgres:16-bookworm pg_dump --version`
 - `docker run --rm -v <repo>/compose/nginx/nginx.conf:/etc/nginx/nginx.conf:ro nginx:1.27-alpine nginx -t`
