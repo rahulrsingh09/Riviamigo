@@ -22,13 +22,37 @@ precise vehicle locations in public issues.
 ## Authentication
 
 - JWT (RS256) with 15-minute access tokens
+- Every authenticated request requires an existing, enabled user. Deleting or
+  disabling an account denies its access tokens immediately on subsequent requests.
 - 30-day HttpOnly refresh tokens, rotated on use
+- Disabling an account revokes its refresh tokens and API keys in the same database
+  transaction. Deletion removes memberships, vehicle preferences, refresh tokens,
+  API keys and OIDC identities, and revokes pending invitations for that account.
+  Vehicle records, credential bundles, telemetry and trip history remain intact for
+  surviving members. A failed deletion rolls back all database cleanup; existing
+  foreign-key restrictions on shared trip tags or referenced cost profiles can
+  still require reassignment before deletion. Disable the account to deny access
+  while resolving those references.
 - API keys are SHA256-hashed, read-only, and bound to exactly one vehicle; keys
   never authorize dashboard, account, administrative, or vehicle-setting writes
 - Argon2 password hashing
 - Vehicle membership roles are capability boundaries: `viewer` is telemetry and
   history read-only, `manager` may run operational changes such as schedules
-  and backfills, and `owner` alone manages credentials and membership.
+  and backfills. Owners manage membership; owners and managers may refresh
+  credentials after proving the Rivian account includes the vehicle.
+- Enrollment verifies the selected vehicle against the caller's staged Rivian
+  account before any membership, credential or vehicle mutation. An upstream
+  lookup failure or a vehicle absent from that account fails closed. A vehicle
+  already stored locally requires an existing owner or manager membership;
+  enrollment never grants access to another local owner's vehicle. Shared access
+  must use the membership/invitation flow.
+- Live WebSockets require a valid JWT and an enabled vehicle member at the handshake.
+  They recheck membership and account status every five seconds and immediately
+  before forwarding each telemetry frame, and close when the JWT expires. Failed
+  or timed-out database authorization checks close the connection without forwarding
+  the pending frame. Checks and socket writes have two-second timeouts. Data already
+  sent before revocation cannot be recalled. Clients must refresh their access token
+  and reconnect after expiry. There is no SSE telemetry endpoint.
 - Protected-route bootstrap uses `POST /v1/auth/bootstrap`, which returns fresh tokens when a valid refresh cookie exists and `204 No Content` when no resumable session exists, so first-load logged-out state does not depend on a visible refresh 401.
 - The web app attempts one refresh on protected 401s, then emits a single auth-expired flow: toast, session clear, redirect to `/login`, and resume to the original in-app route after successful sign-in.
 - Optional OIDC SSO is configured by a super-user under **Settings > Authentication**.
@@ -104,6 +128,12 @@ precise vehicle locations in public issues.
 
 ## Security regression controls
 
+- Backend authorization regressions use synthetic Rivian responses, real local
+  PostgreSQL/Redis and actual WebSocket clients. From `apps/api`, run
+  `cargo test --locked --lib authorization_ -- --ignored --test-threads=1`
+  with disposable TimescaleDB `DATABASE_URL` (including `CREATEDB` permission) and
+  `REDIS_URL`. Each test creates and removes its own migrated database; no real
+  Rivian credentials or vehicle connection are needed.
 - `pnpm security:routes` verifies that every API route module is mounted through
   the intended protected router composition. The authentication module must
   have separate public, metadata, and protected mounts.
