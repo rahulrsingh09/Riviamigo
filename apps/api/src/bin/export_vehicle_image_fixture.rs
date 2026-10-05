@@ -46,6 +46,7 @@ struct DemoFixtureImageEntry {
 
 #[tokio::main]
 async fn main() -> anyhow::Result<()> {
+    riviamigo_api::services::outbound_policy::require_optional_traffic()?;
     let mut args = std::env::args().skip(1);
     let vehicle_id = args.next().ok_or_else(|| {
         anyhow::anyhow!(
@@ -159,6 +160,7 @@ async fn download_fixture_asset(
     source_url: &str,
     used_filenames: &mut HashSet<String>,
 ) -> anyhow::Result<String> {
+    riviamigo_api::services::outbound_policy::require_optional_traffic()?;
     let response = client.get(source_url).send().await?.error_for_status()?;
     let content_type = response
         .headers()
@@ -166,7 +168,8 @@ async fn download_fixture_asset(
         .and_then(|value| value.to_str().ok())
         .unwrap_or("image/webp")
         .to_string();
-    let bytes = response.bytes().await?;
+    let bytes =
+        riviamigo_api::services::outbound_policy::read_limited(response, 5 * 1024 * 1024).await?;
 
     let basename = source_url
         .split('/')

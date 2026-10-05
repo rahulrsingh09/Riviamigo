@@ -3674,6 +3674,9 @@ async fn cache_vehicle_images(
     vehicle_id: Uuid,
     tokens: &crate::ingestion::session_store::RivianTokenBundle,
 ) {
+    if !crate::services::outbound_policy::optional_traffic_allowed() {
+        return;
+    }
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
         .build()
@@ -3753,6 +3756,9 @@ async fn ensure_vehicle_images_cached(
     age_key: &str,
     force_manifest_refresh: bool,
 ) {
+    if !crate::services::outbound_policy::optional_traffic_allowed() {
+        return;
+    }
     let rows = sqlx::query_as::<_, VehicleImageRow>(
         "SELECT placement, design, size, resolution, url, overlays, metadata
          FROM riviamigo.vehicle_images
@@ -3898,13 +3904,14 @@ async fn download_and_store_asset(
     vehicle_id: Uuid,
     source_url: &str,
 ) -> Result<MirroredFileAsset, anyhow::Error> {
+    crate::services::outbound_policy::require_optional_traffic()?;
     let response = client.get(source_url).send().await?.error_for_status()?;
     let content_type = response
         .headers()
         .get(reqwest::header::CONTENT_TYPE)
         .and_then(|value| value.to_str().ok())
         .map(str::to_owned);
-    let bytes = response.bytes().await?;
+    let bytes = crate::services::outbound_policy::read_limited(response, 5 * 1024 * 1024).await?;
     let sha256 = hex::encode(Sha256::digest(&bytes));
     let extension = infer_extension(source_url, content_type.as_deref());
     let key_hash = hex::encode(Sha256::digest(source_url.as_bytes()));
@@ -4414,6 +4421,10 @@ fn vehicle_artwork_placeholder_response() -> Response {
 }
 
 fn vehicle_artwork_restoring_response() -> Response {
+    if !crate::services::outbound_policy::optional_traffic_allowed() {
+        // Missing art cannot be repaired here; let the browser use packaged art.
+        return axum::http::StatusCode::NOT_FOUND.into_response();
+    }
     let mut response = vehicle_artwork_placeholder_response();
     *response.status_mut() = axum::http::StatusCode::ACCEPTED;
     response.headers_mut().insert(
@@ -4430,6 +4441,8 @@ async fn admin_remirror_vehicle_images(
 ) -> Result<Json<serde_json::Value>, AppError> {
     require_admin_or_super_user(&state.pool, auth.user_id).await?;
     require_remote_backed_vehicle(&state.pool, vehicle_id).await?;
+    crate::services::outbound_policy::require_optional_traffic()
+        .map_err(|_| AppError::ExternalConnectionDisabled("vehicle artwork".into()))?;
     queue_vehicle_artwork_repair_with_mode(&state, vehicle_id, true).await;
     Ok(Json(
         serde_json::json!({ "ok": true, "queued": true, "vehicle_id": vehicle_id }),
@@ -4504,6 +4517,9 @@ async fn queue_vehicle_artwork_repair_with_mode(
     vehicle_id: Uuid,
     force_manifest_refresh: bool,
 ) {
+    if !crate::services::outbound_policy::optional_traffic_allowed() {
+        return;
+    }
     let is_demo = sqlx::query_scalar::<_, String>(
         "SELECT rivian_vehicle_id FROM riviamigo.vehicles WHERE id=$1",
     )
@@ -4566,6 +4582,9 @@ pub fn start_vehicle_artwork_repair_worker(
     config: crate::config::Config,
     age_key: String,
 ) {
+    if !crate::services::outbound_policy::optional_traffic_allowed() {
+        return;
+    }
     tokio::spawn(async move {
         let vehicle_ids = sqlx::query_scalar::<_, Uuid>(
             "SELECT v.id FROM riviamigo.vehicles v
@@ -5316,6 +5335,34 @@ mod tests {
     }
 
     // Run with: cargo test -- --ignored
+
+    #[tokio::test]
+    async fn outbound_policy_blocks_artwork_downloads_including_saved_private_urls() {
+        assert_eq!(
+            super::vehicle_artwork_restoring_response().status(),
+            StatusCode::NOT_FOUND
+        );
+        let state = make_helper_state("redis://127.0.0.1/".into());
+        for source in [
+            "https://images.example.test/vehicle.webp",
+            "http://127.0.0.1:1/vehicle.webp",
+            "http://169.254.169.254/latest/meta-data",
+            "https://user:password@images.example.test/vehicle.webp",
+        ] {
+            let result = super::download_and_store_asset(
+                &reqwest::Client::new(),
+                &state.config,
+                Uuid::new_v4(),
+                source,
+            )
+            .await;
+            let error = result.err().expect("artwork must be denied");
+            assert!(matches!(
+                error.downcast_ref::<crate::services::outbound_policy::PolicyError>(),
+                Some(crate::services::outbound_policy::PolicyError::OptionalTraffic)
+            ));
+        }
+    }
 
     fn make_helper_state(redis_url: String) -> crate::middleware::auth::AppState {
         use std::sync::Arc;

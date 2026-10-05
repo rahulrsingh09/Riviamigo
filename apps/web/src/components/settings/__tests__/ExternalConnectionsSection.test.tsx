@@ -101,7 +101,7 @@ describe('ExternalConnectionsSection', () => {
     expect((await screen.findAllByText('Open-Meteo weather')).length).toBeGreaterThan(0);
     expect(screen.getByText(/Rounded drive coordinates by default/)).toBeInTheDocument();
     expect(screen.getByText(/No new estimated exterior temperatures/)).toBeInTheDocument();
-    expect(screen.getByText(/administrator controls the installation policy/)).toBeInTheDocument();
+    expect(screen.getByText(/Optional external traffic is disabled by this deployment/)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
   });
 

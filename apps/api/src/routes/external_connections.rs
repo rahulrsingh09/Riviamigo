@@ -138,7 +138,7 @@ struct ConnectionDefinition {
 }
 
 const DEFINITIONS: &[ConnectionDefinition] = &[
-    ConnectionDefinition { id: connections::RIVIAN_ACCOUNT, name: "Rivian account", purpose: "Vehicle telemetry, history, remote operations, and locally mirrored vehicle artwork.", data_shared: &["Rivian account tokens", "Vehicle identifiers", "Telemetry, command, and artwork queries"], disabled_effect: "Disconnecting a vehicle stops telemetry, history import, remote operations, and future artwork retrieval. Existing local artwork remains.", execution: "Server", privacy_url: Some("https://rivian.com/legal/privacy"), terms_url: Some("https://rivian.com/legal/terms"), editable: false },
+    ConnectionDefinition { id: connections::RIVIAN_ACCOUNT, name: "Rivian account", purpose: "Read-only vehicle telemetry and charging history.", data_shared: &["Rivian account tokens", "Vehicle identifiers", "Telemetry and history queries"], disabled_effect: "Disconnecting a vehicle stops telemetry and history import. Existing local data remains.", execution: "Server", privacy_url: Some("https://rivian.com/legal/privacy"), terms_url: Some("https://rivian.com/legal/terms"), editable: false },
     ConnectionDefinition { id: connections::OPEN_METEO, name: "Open-Meteo weather", purpose: "Estimated outside temperature along completed drives.", data_shared: &["Rounded drive coordinates by default", "Drive date", "Temperature variable request"], disabled_effect: "New drives will not receive estimated outside temperatures or temperature-based efficiency data. Existing values remain.", execution: "Server", privacy_url: Some("https://open-meteo.com/en/terms"), terms_url: Some("https://open-meteo.com/en/terms"), editable: true },
     ConnectionDefinition { id: connections::NOMINATIM, name: "OpenStreetMap Nominatim", purpose: "Address search and readable trip endpoint labels.", data_shared: &["Exact coordinate for reverse geocoding", "Search text after explicit submit"], disabled_effect: "Address search and new automatic trip labels stop. Coordinates, saved places, and cached labels remain.", execution: "Server", privacy_url: Some("https://osmfoundation.org/wiki/Privacy_Policy"), terms_url: Some("https://operations.osmfoundation.org/policies/nominatim/"), editable: true },
     ConnectionDefinition { id: connections::BASEMAP, name: "Map basemap", purpose: "Street and geographic context behind exact trip routes.", data_shared: &["Requested map areas and resource paths", "Riviamigo server IP"], disabled_effect: "Routes remain visible on a neutral background, without streets or place context.", execution: "Server proxy", privacy_url: Some("https://carto.com/privacy/"), terms_url: Some("https://carto.com/legal/"), editable: true },
@@ -214,7 +214,9 @@ async fn build_response(
             execution: definition.execution,
             privacy_url,
             terms_url,
-            editable: definition.editable && can_manage,
+            editable: definition.editable
+                && can_manage
+                && connections::connection_allowed(&settings.id),
             enabled,
             mode,
             basemap_provider: (settings.id == connections::BASEMAP)
@@ -457,6 +459,9 @@ async fn update_connection(
         .ok_or(AppError::NotFound)?;
     if !definition.editable {
         return Err(AppError::Forbidden);
+    }
+    if body.enabled {
+        connections::require_connection_allowed(&id)?;
     }
     let private_network_allowlist = validate_update(&id, &body).await?;
     let existing_basemap = if id == connections::BASEMAP {
@@ -794,6 +799,7 @@ async fn test_connection(
     Json(body): Json<UpdateConnectionBody>,
 ) -> Result<Json<TestConnectionResponse>, AppError> {
     require_admin_or_super_user(&state.pool, auth.user_id).await?;
+    connections::require_connection_allowed(&id)?;
     if !body.enabled || body.mode == "disabled" {
         return Err(AppError::ExternalConnectionDisabled(id));
     }
@@ -2041,6 +2047,8 @@ async fn outbound_client_for_url(
     url: &Url,
     allowlist: &[IpNet],
 ) -> Result<reqwest::Client, AppError> {
+    crate::services::outbound_policy::require_optional_traffic()
+        .map_err(|_| AppError::ExternalConnectionDisabled("optional providers".into()))?;
     let host = url
         .host_str()
         .ok_or_else(|| AppError::Validation("connection endpoint host is required".into()))?;
@@ -2135,6 +2143,7 @@ mod tests {
         should_forward_basemap_bearer_token, should_forward_carto_api_key, validate_tile_template,
         UpdateConnectionBody, BASEMAP_RASTER_ROUTE, OPENFREEMAP_PROXY_ROUTE,
     };
+    use super::{connections, outbound_client_for_url, AppError};
     use crate::services::external_connections::ConnectionSettingsRow;
     use axum::{
         body::Body,
@@ -2357,6 +2366,46 @@ mod tests {
             basemap_proxy_url("light", "1724889600123"),
             "/v1/external/basemap/raster/light/{z}/{x}/{y}.png?v=1724889600123"
         );
+    }
+
+    #[tokio::test]
+    async fn outbound_policy_denies_custom_requests_before_dns_even_with_private_allowlists() {
+        let allowlist = ["10.0.0.0/8".parse().unwrap(), "fc00::/7".parse().unwrap()];
+        // A hostname can resolve differently at request time. This profile
+        // denies the entire custom path, including public-looking hostnames.
+        for url in [
+            "https://provider.example.test/lookup",
+            "https://localhost/lookup",
+            "http://10.0.0.1/lookup",
+            "https://[fd00::1]/lookup",
+            "http://169.254.169.254/latest/meta-data",
+            "https://user:password@provider.example.test/lookup",
+        ] {
+            let error = outbound_client_for_url(&Url::parse(url).unwrap(), &allowlist)
+                .await
+                .unwrap_err();
+            assert!(matches!(error, AppError::ExternalConnectionDisabled(_)));
+        }
+    }
+
+    #[tokio::test]
+    async fn outbound_policy_overrides_preexisting_enabled_custom_provider_settings() {
+        let pool = sqlx::postgres::PgPoolOptions::new()
+            .connect_lazy("postgres://unused:unused@127.0.0.1:1/unused")
+            .unwrap();
+        for id in connections::OPTIONAL_CONNECTIONS {
+            let mut saved = basemap_settings("custom", "auto", true, true);
+            saved.id = (*id).into();
+            saved.allow_private_network = true;
+            saved.private_network_allowlist = vec!["10.0.0.0/8".into()];
+            saved.private_network_policy_state = "configured".into();
+            saved.bearer_token_encrypted = Some(vec![1, 2, 3]);
+            assert!(!saved.is_active());
+            assert!(matches!(
+                connections::require_enabled(&pool, id).await,
+                Err(AppError::ExternalConnectionDisabled(_))
+            ));
+        }
     }
 
     fn basemap_settings(

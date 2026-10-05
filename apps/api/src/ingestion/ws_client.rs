@@ -17,7 +17,7 @@ use crate::{
     ingestion::{parser, session_store::RivianTokenBundle},
 };
 
-const WS_URL: &str = "wss://api.rivian.com/gql-consumer-subscriptions/graphql";
+const WS_URL: &str = crate::services::outbound_policy::WEBSOCKET_URL;
 const RIVIAN_CONNECTION_TTL_EXPIRED_CODE: u16 = 4420;
 const RIVIAN_CONNECTION_TTL_EXPIRED_REASON: &str = "Connection TTL expired";
 const RIVIAN_NO_ACTIVE_SUBSCRIPTIONS_CODE: u16 = 4410;
@@ -968,6 +968,7 @@ fn is_rivian_no_active_subscriptions(frame: Option<&CloseFrame>) -> bool {
 fn build_rivian_ws_request(
     tokens: &RivianTokenBundle,
 ) -> anyhow::Result<tokio_tungstenite::tungstenite::handshake::client::Request> {
+    crate::services::outbound_policy::validate_ws_destination(WS_URL)?;
     let mut request = WS_URL.into_client_request()?;
     request
         .headers_mut()

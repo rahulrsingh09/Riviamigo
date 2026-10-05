@@ -23,6 +23,32 @@ saving a vehicle does not require a container restart. Riviamigo uses Rivian's
 unofficial API and WebSocket behavior, so upstream changes can occasionally
 require a project update.
 
+## Telemetry-only vehicle access
+
+This fork denies charging changes and departure/preconditioning schedule changes
+in the backend GraphQL transport, including calls made outside the UI. Schedule
+write routes return HTTP 403. Existing schedules, vehicle state, charging history,
+and local trip data remain readable. Use the Rivian app to change the vehicle.
+Login, OTP verification, vehicle discovery, and CSRF/session renewal remain enabled.
+
+**Rivian tokens are not provider-enforced read-only credentials.** This is an
+application restriction, not a limitation on a stolen token or a compromised
+server. MFA does not revoke an already authenticated session.
+
+Credential-bearing HTTP requests use only
+`https://rivian.com/api/gql/gateway/graphql` and
+`https://rivian.com/api/gql/chrg/user/graphql`. The
+`RIVIAN_GRAPHQL_GATEWAY_URL` environment variable may be unset or exactly the
+first URL; every other value fails closed. WebSocket session headers go only to
+`wss://api.rivian.com/gql-consumer-subscriptions/graphql`. HTTP and WebSocket
+redirects are rejected. HTTP clients cannot inherit a caller's proxy or redirect
+configuration. Rivian HTTP responses have an 8 MiB size limit and 30 second timeout.
+Unit tests can scope a literal-loopback HTTP mock; this capability is absent from
+production binaries and cannot be enabled with an environment setting.
+
+Optional location and media downloads are disabled in this fork, including
+previously saved custom providers. See [external connections](external-connections.md).
+
 ## Estimated connection renewal
 
 Riviamigo records the time of each complete Rivian sign-in and shows an

@@ -6,6 +6,7 @@ import {
   useUpdateDepartureSchedule,
   useDeleteDepartureSchedule,
   useVehicles,
+  VEHICLE_CONTROLS_ENABLED,
 } from '@riviamigo/hooks';
 import type { DepartureSchedule, DepartureScheduleInput, DepartureComfortSettings } from '@riviamigo/hooks';
 import { Button, SelectPicker } from '@riviamigo/ui/primitives';
@@ -118,8 +119,8 @@ function ScheduleCard({
         <button
           type="button"
           onClick={onToggle}
-          disabled={toggling}
-          aria-label={schedule.enabled ? 'Disable schedule' : 'Enable schedule'}
+          disabled={!VEHICLE_CONTROLS_ENABLED || toggling}
+          aria-label={VEHICLE_CONTROLS_ENABLED ? (schedule.enabled ? 'Disable schedule' : 'Enable schedule') : (schedule.enabled ? 'Schedule enabled (read-only)' : 'Schedule disabled (read-only)')}
           className={`relative h-5 w-9 shrink-0 rounded-full transition-colors ${
             schedule.enabled ? 'bg-accent' : 'bg-border'
           } ${toggling ? 'opacity-50' : ''}`}
@@ -151,7 +152,7 @@ function ScheduleCard({
               {expanded ? <ChevronUp className="h-3.5 w-3.5" /> : <ChevronDown className="h-3.5 w-3.5" />}
             </button>
           )}
-          <button
+          {VEHICLE_CONTROLS_ENABLED && <button
             type="button"
             onClick={onDelete}
             disabled={deleting}
@@ -159,7 +160,7 @@ function ScheduleCard({
             aria-label="Delete schedule"
           >
             <Trash2 className="h-3.5 w-3.5" />
-          </button>
+          </button>}
         </div>
       </div>
 
@@ -425,7 +426,7 @@ function DepartureSchedulesWidget({
             </span>
           )}
         </div>
-        {!showCreate && (
+        {VEHICLE_CONTROLS_ENABLED && !showCreate && (
           <Button
             size="sm"
             variant="secondary"
@@ -438,7 +439,7 @@ function DepartureSchedulesWidget({
       </div>
 
       {/* Create form */}
-      {showCreate && (
+      {VEHICLE_CONTROLS_ENABLED && showCreate && (
         <NewScheduleForm
           form={newForm}
           setForm={setNewForm}
@@ -448,6 +449,7 @@ function DepartureSchedulesWidget({
         />
       )}
 
+      <p className="text-xs text-fg-tertiary">Read-only telemetry. Change schedules in the Rivian app.</p>
       {/* List */}
       {isLoading ? (
         <div className="flex flex-1 items-center justify-center">
@@ -457,7 +459,7 @@ function DepartureSchedulesWidget({
         <div className="flex flex-1 flex-col items-center justify-center gap-2 text-center">
           <AlarmClock className="h-8 w-8 text-fg-tertiary" />
           <p className="text-sm text-fg-tertiary">No departure schedules yet.</p>
-          <p className="text-xs text-fg-tertiary">Pre-condition your Rivian before you head out.</p>
+          <p className="text-xs text-fg-tertiary">Schedules from Rivian appear here after telemetry collection.</p>
         </div>
       ) : (
         <div className="flex flex-col gap-2">
