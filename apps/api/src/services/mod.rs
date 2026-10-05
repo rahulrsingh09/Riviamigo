@@ -15,6 +15,7 @@ pub mod geofences;
 pub mod ingestion_capture;
 pub mod nominatim;
 pub mod oidc;
+pub mod outbound_policy;
 pub mod redis_health;
 pub mod restore_compatibility;
 pub mod restore_jobs;

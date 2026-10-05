@@ -14,11 +14,15 @@ Vehicle ingestion diagnostics are off by default and can be enabled by an owner 
 
 Riviamigo still needs to communicate with services that make its features work:
 
-- **Rivian:** account authentication, vehicle telemetry, and vehicle-artwork requests. Artwork is retrieved through the same encrypted account session, mirrored onto persistent local storage, and then served only from Riviamigo cache URLs or a local placeholder. The browser retrieves cache bytes through the existing authenticated Riviamigo API and never contacts Rivian artwork hosts directly.
-- **Open-Meteo:** completed-drive weather enrichment. Riviamigo selects exact local route samples, then rounds provider coordinates to roughly 1 km by default, deduplicates them, randomizes their batch order, and sends the drive's UTC date span. Exact weather coordinates are an administrator option.
-- **OpenStreetMap Nominatim:** explicitly submitted search text or exact reverse-geocoding coordinates. Accuracy requires exact input. Requests are sent by the Riviamigo server, cached, and throttled; public mode does not autocomplete.
-- **OpenFreeMap/CARTO basemap resources:** exact tile coordinates reveal the requested map area. Style JSON, vector tiles, sprites, glyphs, or raster tiles are fetched by an authenticated Riviamigo server proxy, so providers see the server connection rather than each viewer's browser identity.
-- **Iconify:** explicit icon searches and missing icon resources, through the Riviamigo server proxy.
+- **Rivian:** account authentication, read-only vehicle telemetry, and charging history.
+  The fixed HTTP/WSS destinations reject redirects. Charging and departure/preconditioning
+  mutations are denied by the backend. Tokens themselves are **not provider-enforced
+  read-only**; a compromised server or stolen token retains its provider permissions.
+- **Optional location/media providers:** Open-Meteo, Nominatim, basemaps, Iconify,
+  and new vehicle-artwork downloads are disabled in this fork, even if old saved
+  settings enable them. Custom/self-hosted provider paths and synthetic provider
+  tests are disabled too. Existing local data and artwork are retained. Browser
+  artwork sources must be local, and Google Fonts is no longer requested.
 - **Your configured S3-compatible backup service:** backup uploads, only when you enable it.
 - **Your configured OIDC provider:** when SSO is enabled, Riviamigo sends the
   server-side authorization-code exchange and receives the claims required for
@@ -26,9 +30,11 @@ Riviamigo still needs to communicate with services that make its features work:
   claim data are governed by that provider's privacy policy and logs. Riviamigo
   does not send vehicle telemetry or Rivian credentials to the OIDC provider.
 
-These are feature requests, not product analytics. Their operators may have their own privacy policies and server logs. **Settings > External Connections** shows the exact disclosure and feature loss for each service. Administrators can disable optional connections or use self-hosted weather, Nominatim, and XYZ tile endpoints. Disabling a connection preserves data already stored. The connection verifier uses synthetic payloads and stores its outcome separately from normal runtime health; it does not expose secrets or provider query strings.
-
-Riviamigo does not forward browser cookies, authorization headers, referrers, usernames, vehicle names, VINs, or unrelated telemetry to optional providers. Connection-health logs do not store coordinates, addresses, search text, or provider query strings. Persistent address-search cache keys use a digest rather than storing the search text in Redis. Proxying removes unnecessary browser identity, but it cannot hide an exact address query or map area without breaking the requested feature.
+**Settings > External Connections** reports the effective disabled state of
+optional providers. Administrators cannot override this deployment guard with
+saved settings. Maps retain exact trip geometry on a neutral background; missing
+vehicle images use packaged fallbacks. See [external connections](guides/external-connections.md)
+for the disabled custom-provider paths and the requirements for any future opt-in.
 
 OIDC client secrets are write-only in the UI and are excluded from recovery
 packages. Review the provider's claim and retention settings before enabling

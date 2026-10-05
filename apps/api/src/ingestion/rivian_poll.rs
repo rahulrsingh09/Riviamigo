@@ -55,8 +55,8 @@ pub use transport::{gql_request, AuthError};
 
 // ── URL constants ────────────────────────────────────────────────────────────
 
-const GATEWAY_URL: &str = "https://rivian.com/api/gql/gateway/graphql";
-const CHRG_URL: &str = "https://rivian.com/api/gql/chrg/user/graphql";
+const GATEWAY_URL: &str = crate::services::outbound_policy::GATEWAY_URL;
+const CHRG_URL: &str = crate::services::outbound_policy::CHARGING_URL;
 
 fn json_number_as_f64(value: Option<&serde_json::Value>) -> Option<f64> {
     match value {
@@ -2899,34 +2899,33 @@ mod tests {
         let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
         let address = listener.local_addr().unwrap();
         let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
-        std::env::set_var(
-            "RIVIAN_GRAPHQL_GATEWAY_URL",
+        crate::services::outbound_policy::with_mock_gateway(
             format!("http://{address}/graphql"),
-        );
+            async {
+                let client = reqwest::Client::new();
+                let (left, right) = tokio::join!(
+                    super::try_refresh_csrf(vehicle_id, &rejected, &client, &db.pool, &age_key),
+                    super::try_refresh_csrf(vehicle_id, &rejected, &client, &db.pool, &age_key),
+                );
+                let left = left.unwrap();
+                let right = right.unwrap();
+                assert_eq!(refresh_count.load(Ordering::SeqCst), 1);
+                assert_eq!(left.csrf_token, "fresh-csrf");
+                assert_eq!(right.csrf_token, "fresh-csrf");
 
-        let client = reqwest::Client::new();
-        let (left, right) = tokio::join!(
-            super::try_refresh_csrf(vehicle_id, &rejected, &client, &db.pool, &age_key),
-            super::try_refresh_csrf(vehicle_id, &rejected, &client, &db.pool, &age_key),
-        );
-        let left = left.unwrap();
-        let right = right.unwrap();
-        assert_eq!(refresh_count.load(Ordering::SeqCst), 1);
-        assert_eq!(left.csrf_token, "fresh-csrf");
-        assert_eq!(right.csrf_token, "fresh-csrf");
-
-        let persisted = sqlx::query_scalar::<_, Vec<u8>>(
+                let persisted = sqlx::query_scalar::<_, Vec<u8>>(
             "SELECT encrypted_tokens FROM riviamigo.vehicle_credentials WHERE vehicle_id=$1",
         )
         .bind(vehicle_id)
         .fetch_one(&db.pool)
         .await
         .unwrap();
-        let persisted = decrypt_tokens(&persisted, &identity).unwrap();
-        assert_eq!(persisted.csrf_token, "fresh-csrf");
-        assert_eq!(persisted.app_session_token, "fresh-app");
-
-        std::env::remove_var("RIVIAN_GRAPHQL_GATEWAY_URL");
+                let persisted = decrypt_tokens(&persisted, &identity).unwrap();
+                assert_eq!(persisted.csrf_token, "fresh-csrf");
+                assert_eq!(persisted.app_session_token, "fresh-app");
+            },
+        )
+        .await;
         server.abort();
         db.cleanup().await;
     }

@@ -4,6 +4,7 @@ import {
   useChargingSchedule,
   useUpdateChargingSchedule,
   useVehicles,
+  VEHICLE_CONTROLS_ENABLED,
 } from '@riviamigo/hooks';
 import type { ChargingScheduleInput } from '@riviamigo/hooks';
 import { Button } from '@riviamigo/ui/primitives';
@@ -143,13 +144,14 @@ function ChargingScheduleEditorWidget({
       <div className="flex h-full flex-col items-center justify-center gap-3 p-6 text-center">
         <Calendar className="h-8 w-8 text-fg-tertiary" />
         <p className="text-sm text-fg-tertiary">No charging schedule configured.</p>
-        <Button size="sm" variant="secondary" onClick={() => {
+        <p className="text-xs text-fg-tertiary">Read-only telemetry. Change schedules in the Rivian app.</p>
+        {VEHICLE_CONTROLS_ENABLED && <Button size="sm" variant="secondary" onClick={() => {
           setForm({ enabled: false, startTime: '22:00', durationHours: '4', amperage: '32', weekDays: DAYS });
           setEditing(true);
         }}>
           Set Up Schedule
-        </Button>
-        {editing && <ScheduleForm form={form} setForm={setForm} toggleDay={toggleDay} onSave={handleSave} onCancel={handleCancel} saving={update.isPending} />}
+        </Button>}
+        {VEHICLE_CONTROLS_ENABLED && editing && <ScheduleForm form={form} setForm={setForm} toggleDay={toggleDay} onSave={handleSave} onCancel={handleCancel} saving={update.isPending} />}
       </div>
     );
   }
@@ -169,14 +171,15 @@ function ChargingScheduleEditorWidget({
             {schedule.enabled ? 'Enabled' : 'Disabled'}
           </span>
         </div>
-        {!editing && (
+        {VEHICLE_CONTROLS_ENABLED && !editing && (
           <Button size="sm" variant="ghost" iconLeft={<Edit2 className="h-3.5 w-3.5" />} onClick={() => setEditing(true)}>
             Edit
           </Button>
         )}
       </div>
 
-      {editing ? (
+      <p className="text-xs text-fg-tertiary">Read-only telemetry. Change schedules in the Rivian app.</p>
+      {VEHICLE_CONTROLS_ENABLED && editing ? (
         <ScheduleForm
           form={form}
           setForm={setForm}

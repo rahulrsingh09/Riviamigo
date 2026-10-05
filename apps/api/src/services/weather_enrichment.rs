@@ -445,6 +445,7 @@ async fn fetch_weather_chunk(
     ended_at: DateTime<Utc>,
     api_key: Option<&str>,
 ) -> Result<Vec<Value>> {
+    crate::services::outbound_policy::require_optional_traffic()?;
     let endpoint = if (Utc::now() - ended_at).num_days() < 5 {
         settings.forecast_url.as_deref()
     } else {

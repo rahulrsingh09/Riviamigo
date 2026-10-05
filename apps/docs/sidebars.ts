@@ -73,6 +73,8 @@ const sidebars: SidebarsConfig = {
       items: [
         'runbooks/README',
         'runbooks/secure-deployment',
+        'runbooks/key-custody',
+        'runbooks/private-fork-maintenance',
         'runbooks/backup-restore',
         'runbooks/dev-harness',
         'runbooks/dependency-maintenance',
@@ -97,7 +99,15 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Architecture',
       collapsed: false,
-      items: ['architecture/backend-data-flow', 'architecture/unification-baseline', 'architecture/theming', 'architecture/frontend-error-observability', 'frontend/dashboard-architecture', 'frontend/chart-architecture', 'rivian-auth'],
+      items: [
+        'architecture/backend-data-flow',
+        'architecture/unification-baseline',
+        'architecture/theming',
+        'architecture/frontend-error-observability',
+        'frontend/dashboard-architecture',
+        'frontend/chart-architecture',
+        'rivian-auth',
+      ],
     },
     {
       type: 'category',
@@ -117,6 +127,7 @@ const sidebars: SidebarsConfig = {
       items: [
         'runbooks/documentation-maintenance',
         'dependency-modernization-2026-07',
+        'dependency-review-2026-10-05',
         'security-audit',
         'decision-log',
       ],

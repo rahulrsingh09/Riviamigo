@@ -1,10 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
-import { Icon, _api, addAPIProvider } from '@iconify/react';
+import { Icon } from '@iconify/react';
 import { Search, X } from 'lucide-react';
 import { api } from '@riviamigo/hooks';
 import { isAbortError, reportClientError } from '@riviamigo/ui/lib/clientDiagnostics';
 import { resolveIconId } from './iconMigration';
+import '../iconPolicy';
 
 interface IconPickerProps {
   value: string | undefined;
@@ -21,15 +22,6 @@ const COLLECTIONS = [
   { id: 'ph', label: 'Phosphor' },
   { id: 'tabler', label: 'Tabler' },
 ];
-
-// Keep both catalog searches and runtime icon loads on Riviamigo's authenticated
-// same-origin proxy. The API owns the provider policy and strips browser identity.
-addAPIProvider('', { resources: ['/v1/external/iconify'], path: '/' });
-// Iconify's provider configuration cannot attach auth headers. Scope its
-// fetch override to the first-party proxy so tokens can never reach Iconify.
-if (typeof window !== 'undefined') {
-  _api.setFetch((input: RequestInfo | URL, init?: RequestInit) => api.proxyFetch(input, init));
-}
 
 function loadRecent(): string[] {
   if (typeof window === 'undefined') return [];

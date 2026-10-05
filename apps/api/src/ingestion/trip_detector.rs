@@ -4,6 +4,7 @@
 
 use crate::models::telemetry::{PowerState, TelemetryEvent};
 use chrono::{DateTime, Utc};
+use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
 use super::location::valid_location_pair;
@@ -37,7 +38,7 @@ impl TripEvent {
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct CompletedTripData {
     pub trip_id: Uuid,
     pub vehicle_id: Uuid,
@@ -78,7 +79,7 @@ pub struct CompletedTripData {
     pub dominant_drive_mode: Option<String>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TrackPoint {
     pub ts: DateTime<Utc>,
     pub lat: f64,
@@ -87,7 +88,7 @@ pub struct TrackPoint {
     pub altitude_m: Option<f64>,
 }
 
-#[derive(Debug, Default)]
+#[derive(Debug, Default, Clone, Serialize, Deserialize)]
 pub struct TripDetectorState {
     vehicle_id: Uuid,
     active_trip_id: Option<Uuid>,
@@ -150,6 +151,29 @@ impl TripDetectorState {
     /// telemetry row with the in-progress trip while driving.
     pub fn active_trip_id(&self) -> Option<Uuid> {
         self.active_trip_id
+    }
+
+    pub(super) fn vehicle_id(&self) -> Uuid {
+        self.vehicle_id
+    }
+
+    pub(super) fn resume_after_restart(&mut self) {
+        // Never integrate energy, elevation, or a parked anchor across downtime.
+        self.last_regen_ts = None;
+        self.last_altitude = None;
+        self.gear_at = None;
+        self.gear_odometer = None;
+        self.last_parked_fix = None;
+    }
+
+    pub(super) fn close_interrupted_trip(&mut self, at: DateTime<Utc>) -> TripEvent {
+        let event = if self.active_trip_id.is_some() {
+            self.close_trip(at)
+        } else {
+            TripEvent::NoChange
+        };
+        *self = Self::new(self.vehicle_id);
+        event
     }
 
     /// The same start predicate used by process, exposed without trip contents.

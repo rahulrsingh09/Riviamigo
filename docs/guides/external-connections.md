@@ -6,9 +6,29 @@ slug: /using-riviamigo/external-connections/
 
 # External connections
 
-Open **Settings > External Connections** to see every service Riviamigo may contact. All signed-in users can read the inventory and its data disclosures. Administrators and super users control the installation-wide policy.
+Open **Settings > External Connections** to inspect provider status. This fork's
+telemetry-only policy disables Open-Meteo, Nominatim, basemaps, Iconify, and new
+vehicle-artwork downloads. The application also uses local/system font fallbacks
+instead of contacting Google Fonts. Existing trip data, cached labels, weather
+history, and local artwork are retained. Maps show routes on a neutral background.
 
-Riviamigo does not send product analytics. These connections exist only to provide a feature you request. Each card shows the destination, data sent, last sanitized result, daily request count, and what stops if the connection is disabled. **Disable optional** stops weather, geocoding, basemaps, and remote icon catalog access without deleting stored results.
+The guard applies at request time and cannot be relaxed in Settings or by old
+saved `enabled`, `custom`, API-key, bearer-token, or private-network allowlist
+values. Provider tests and attempts to enable these connections also fail closed.
+There is no environment opt-out. OIDC and explicitly configured S3 backups have
+separate controls and are not governed by this optional-provider guard.
+
+Custom location/media endpoints are **unavailable**, including self-hosted ones.
+This closes the request-time DNS/private-address and unbounded-download exposure
+by preventing those requests, rather than claiming all inherited custom-provider
+implementations are safe. Re-enabling them requires a code review and request-time
+DNS pinning, private-address rejection, redirect denial, and streamed size limits
+for every download path. The artwork downloader additionally has a 5 MiB response
+limit. The browser rejects external artwork sources and uses packaged fallbacks.
+
+The following sections describe inherited upstream provider contracts for
+maintainers; these provider modes and their enable/test controls are unavailable
+in this build.
 
 ## Weather and outside temperature
 
@@ -21,9 +41,9 @@ Rivian's usable vehicle-state subscription currently provides cabin and driver-s
 - The trip summary is a time-weighted average. The same value powers the trip timeline, average-outside-temperature card, and efficiency temperature buckets.
 - Stored samples say whether values came from `vehicle`, `open_meteo`, or both. If Rivian supplies a raw exterior value in the future, it wins at covered times.
 
-Remote Open-Meteo is enabled on upgrade to preserve existing behavior. Administrators can choose a custom forecast and archive URL, add a write-only encrypted API key, select exact weather coordinates, or disable weather. Disabling weather pauses queued jobs and preserves history. An Open-Meteo-compatible endpoint is the supported self-hosted contract.
+Upstream supports remote Open-Meteo; this fork keeps it disabled on install and upgrade. Upstream administrators can choose a custom forecast and archive URL, add a write-only encrypted API key, select exact weather coordinates, or disable weather. Disabling weather pauses queued jobs and preserves history. An Open-Meteo-compatible endpoint is the supported self-hosted contract.
 
-After a fresh install or a sanitized restore, Riviamigo restores the built-in remote connection records automatically. Custom endpoints and encrypted secrets are never recreated. Completed trips with usable coordinates are reconciled in bounded background batches for missing weather and reverse-geocoded locations; trips without usable coordinates are reported as unavailable rather than retried indefinitely.
+After a fresh install or sanitized restore, this fork creates disabled optional-provider records. Existing records remain stored but cannot bypass the runtime guard. Custom endpoints and encrypted secrets are never recreated. Completed trips with usable coordinates are reconciled in bounded background batches for missing weather and reverse-geocoded locations; trips without usable coordinates are reported as unavailable rather than retried indefinitely.
 
 ## Geocoding
 
@@ -53,7 +73,7 @@ The selected connection shows its entry count and storage use. Administrators ca
 - **S3-compatible backups:** status is shown here, while endpoint and credential controls remain in **Settings > Backups**.
 - **Rivian account:** vehicle connectivity and artwork remain managed from **Settings > Vehicles**. Rivian-provided artwork is fetched with the same encrypted account session used for telemetry, stored under the persistent application cache directory, and served only from first-party cache URLs. While an image is missing, loading, or being repaired, Riviamigo immediately shows the packaged fallback for that vehicle model; the browser never requests a Rivian image URL. Administrators can use **Refresh vehicle artwork** from the vehicle card to fetch a new manifest and invalidate immutable image URLs.
 
-## Custom endpoint safety
+## Upstream custom endpoint policy (disabled here)
 
 Custom endpoints accept HTTPS. HTTP is restricted to confirmed private
 destinations. Private service access requires a non-empty CIDR allowlist made
@@ -63,8 +83,9 @@ inside that list. A legacy private-network opt-in is deliberately represented as
 allowlists. The connection inventory exposes the policy state and canonical
 allowlist but never a stored secret.
 
-Riviamigo resolves the hostname both while validating a change and immediately
-before each outbound request. It rejects mixed public/private results and pins
+The inherited basemap proxy resolves the hostname both while validating a change
+and immediately before each outbound request. This does not establish safety for
+all inherited weather/geocoding/image paths, which remain disabled here. The proxy rejects mixed public/private results and pins
 the request to the approved resolved addresses while retaining the hostname for
 HTTP Host and TLS SNI. It does not follow redirects, so a provider cannot turn
 an approved URL into a second destination. The service also rejects executable
@@ -73,7 +94,7 @@ link-local and cloud-metadata addresses, bounds proxy responses, and never
 returns stored secrets to the browser. Connection logs omit coordinates,
 addresses, search text, query strings, credentials, VINs, and vehicle names.
 
-## Verify a connection
+## Upstream connection verification (disabled here)
 
 Use **Test with synthetic data** before relying on a provider. The result is separate from runtime health, so testing an unsaved endpoint never overwrites the installed provider's last-success record. Each result shows named checks and safe messages; it uses a generic location, map tile, or icon name rather than a real drive.
 

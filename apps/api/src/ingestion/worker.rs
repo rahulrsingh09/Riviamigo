@@ -2,7 +2,7 @@
 
 use chrono::{DateTime, Duration, Utc};
 use redis::AsyncCommands;
-use sqlx::{pool::PoolConnection, PgPool, Postgres};
+use sqlx::{Connection, PgConnection, PgPool};
 use tokio::sync::{broadcast, mpsc, watch};
 use uuid::Uuid;
 
@@ -14,9 +14,7 @@ use crate::{
         closure_motion::{ClosureMotionMap, ClosureMotionTracker},
         parser, rivian_poll,
         session_store::{decrypt_tokens, RivianTokenBundle},
-        trip_detector::{
-            compute_distance_odometer_or_gps, compute_trip_energy, TripDetectorState, TripEvent,
-        },
+        trip_detector::{compute_trip_energy, TripEvent},
         trip_signals::{FusionDiagnostics, TripSignalFusion},
         ws_client::{self, WsInboundEvent, WsInboundKind},
     },
@@ -30,11 +28,14 @@ use crate::{
         ingestion_capture::{self, Kind as CaptureKind},
         trip_enrichment::{resolve_trip_location, MatchedLocation},
         trip_routes::build_route_preview,
-        weather_enrichment,
     },
 };
 
+#[cfg(test)]
+use crate::ingestion::trip_detector::TripDetectorState;
+
 mod state_decisions;
+mod trip_capture;
 
 use state_decisions::{is_synthetic_control, runtime_health_update_for_ws_control};
 
@@ -46,6 +47,79 @@ const CHARGE_DETECTOR_REHYDRATE_STALENESS_MINUTES: i32 = 120;
 const STATE_PERIOD_RECONCILE_LOOKBACK_HOURS: i64 = 24;
 const STATE_PERIOD_RECONCILE_INTERVAL: std::time::Duration =
     std::time::Duration::from_secs(15 * 60);
+
+/// Dropping a worker must also stop its acquisition tasks.
+struct WorkerTask<T>(tokio::task::JoinHandle<T>);
+
+impl<T> WorkerTask<T> {
+    fn abort(&self) {
+        self.0.abort();
+    }
+}
+
+impl<T> std::future::Future for WorkerTask<T> {
+    type Output = Result<T, tokio::task::JoinError>;
+
+    fn poll(
+        mut self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<Self::Output> {
+        std::pin::Pin::new(&mut self.0).poll(cx)
+    }
+}
+
+impl<T> Drop for WorkerTask<T> {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
+async fn save_trip_checkpoint(
+    pool: &PgPool,
+    vehicle_id: Uuid,
+    conn: &mut PgConnection,
+    capture: &mut trip_capture::TripCapture,
+    shutdown: &mut broadcast::Receiver<()>,
+) -> bool {
+    let mut delay = 1;
+    loop {
+        // Attempt the observed sample even if stop is pending; the supervisor
+        // bounds a stuck write with its five-second shutdown deadline.
+        let result = capture.save(conn).await;
+        match result {
+            Ok(()) => return true,
+            Err(error) => {
+                tracing::error!(%vehicle_id, %error, "trip checkpoint failed; retaining state and retrying");
+                trip_capture::record_health(pool, vehicle_id, Some("checkpoint_retry_pending"))
+                    .await;
+            }
+        }
+        tokio::select! {
+            biased;
+            _ = shutdown.recv() => return false,
+            _ = tokio::time::sleep(std::time::Duration::from_secs(delay)) => {}
+        }
+        delay = (delay * 2).min(30);
+        if conn.ping().await.is_err() {
+            let replacement = tokio::select! {
+                biased;
+                _ = shutdown.recv() => return false,
+                result = acquire_collector_lock(pool, vehicle_id) => result,
+            };
+            match replacement {
+                Ok(Some(mut replacement)) => {
+                    if let Err(error) = capture.verify_reacquired_lock(&mut replacement).await {
+                        tracing::error!(%vehicle_id, %error, "trip recovery ownership changed");
+                        return false;
+                    }
+                    *conn = replacement;
+                }
+                Ok(None) => return false,
+                Err(_) => continue,
+            }
+        }
+    }
+}
 
 /// Lifecycle context shared with isolated enrichment consumers.  Canonical
 /// telemetry is the only producer; consumers may associate samples but never
@@ -150,6 +224,55 @@ pub async fn run_vehicle_worker(
     shutdown: broadcast::Receiver<()>,
 ) {
     tracing::info!(vehicle_id = %vehicle_id, "worker starting");
+    let mut worker_shutdown = shutdown.resubscribe();
+
+    let mut lock_conn = match acquire_collector_lock(&pool, vehicle_id).await {
+        Ok(Some(conn)) => conn,
+        Ok(None) => {
+            increment_counter(&pool, vehicle_id, "collector_lock_skips").await;
+            tracing::info!(vehicle_id = %vehicle_id, "collector lock held; worker staying passive");
+            return;
+        }
+        Err(e) => {
+            tracing::error!(vehicle_id=%vehicle_id, err=%e, "collector lock failed");
+            return;
+        }
+    };
+
+    let mut trip_capture = match trip_capture::TripCapture::load(&pool, vehicle_id).await {
+        Ok(capture) => capture,
+        Err(error) => {
+            tracing::error!(%vehicle_id, %error, "trip checkpoint recovery failed; collector not started");
+            trip_capture::record_health(&pool, vehicle_id, Some("checkpoint_recovery_failed"))
+                .await;
+            return;
+        }
+    };
+    trip_capture.recover_stale(Utc::now());
+    if !save_trip_checkpoint(
+        &pool,
+        vehicle_id,
+        &mut lock_conn,
+        &mut trip_capture,
+        &mut worker_shutdown,
+    )
+    .await
+    {
+        return;
+    }
+    // Persist already captured trips even when credentials or Redis are unavailable.
+    for _ in 0..16 {
+        match trip_capture::drain_one(&pool, vehicle_id).await {
+            Ok(true) => continue,
+            Ok(false) => break,
+            Err(error) => {
+                tracing::error!(%vehicle_id, %error, "startup trip completion failed; durable retry retained");
+                trip_capture::record_health(&pool, vehicle_id, Some("completion_retry_pending"))
+                    .await;
+                break;
+            }
+        }
+    }
 
     let identity = match age_key.parse::<age::x25519::Identity>() {
         Ok(k) => k,
@@ -208,29 +331,6 @@ pub async fn run_vehicle_worker(
         }
         Err(e) => {
             tracing::error!(vehicle_id=%vehicle_id, err=%e, "db error");
-            return;
-        }
-    };
-
-    let mut lock_conn = match acquire_collector_lock(&pool, vehicle_id).await {
-        Ok(Some(conn)) => conn,
-        Ok(None) => {
-            increment_counter(&pool, vehicle_id, "collector_lock_skips").await;
-            upsert_health(
-                &pool,
-                vehicle_id,
-                false,
-                "passive",
-                "collector lock held",
-                Some("authorized"),
-                None,
-            )
-            .await;
-            tracing::info!(vehicle_id = %vehicle_id, "collector lock held; worker staying passive");
-            return;
-        }
-        Err(e) => {
-            tracing::error!(vehicle_id=%vehicle_id, err=%e, "collector lock failed");
             return;
         }
     };
@@ -295,7 +395,7 @@ pub async fn run_vehicle_worker(
         }
     };
 
-    let mut worker_shutdown = shutdown.resubscribe();
+    let mut companions = tokio::task::JoinSet::new();
     let spawn_ws_loop = || {
         let ws_shutdown = shutdown.resubscribe();
         let ev_tx_ws = ev_tx.clone();
@@ -303,7 +403,7 @@ pub async fn run_vehicle_worker(
         let ws_config = config.clone();
         let ws_pool = pool.clone();
         let ws_age_key = age_key.clone();
-        tokio::spawn(async move {
+        WorkerTask(tokio::spawn(async move {
             ws_client::run_ws_loop(
                 vehicle_id,
                 riv_id_clone,
@@ -314,7 +414,7 @@ pub async fn run_vehicle_worker(
                 ws_config,
             )
             .await;
-        })
+        }))
     };
     let http_client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
@@ -337,7 +437,6 @@ pub async fn run_vehicle_worker(
         tracing::warn!(vehicle_id=%vehicle_id, err=%error, "active charge-session startup healing failed");
     }
 
-    let mut trip_det = TripDetectorState::new(vehicle_id);
     let mut trip_signals = TripSignalFusion::default();
     let mut active_session_started_at = None;
     let mut charge_det =
@@ -363,7 +462,7 @@ pub async fn run_vehicle_worker(
     // enrich old graph samples, but cannot delay or drive canonical ingestion.
     {
         let pool2 = pool.clone();
-        tokio::spawn(async move {
+        companions.spawn(async move {
             for _ in 0..10 {
                 match crate::services::charge_session_repair::reconcile_unassociated_parallax_samples(
                     &pool2, vehicle_id, 250,
@@ -389,7 +488,7 @@ pub async fn run_vehicle_worker(
         let client2 = http_client.clone();
         let age_key2 = age_key.clone();
         let baseline_tx = ev_tx.clone();
-        tokio::spawn(async move {
+        companions.spawn(async move {
             rivian_poll::run_startup_polls(vehicle_id, uid, pool2, client2, age_key2, baseline_tx)
                 .await;
         });
@@ -400,7 +499,7 @@ pub async fn run_vehicle_worker(
         let redis2 = redis.clone();
         let age_key2 = age_key.clone();
         let poll_shutdown = shutdown.resubscribe();
-        tokio::spawn(async move {
+        companions.spawn(async move {
             rivian_poll::run_poll_loop(
                 vehicle_id,
                 pool2,
@@ -417,7 +516,7 @@ pub async fn run_vehicle_worker(
         });
     }
     let mut parallax_handle = if parallax_enabled() {
-        Some(crate::parallax::spawn_in_process(
+        Some(WorkerTask(crate::parallax::spawn_in_process(
             pool.clone(),
             vehicle_id,
             rivian_vehicle_id.clone(),
@@ -425,7 +524,7 @@ pub async fn run_vehicle_worker(
             parallax_tx,
             active_session_rx,
             shutdown.resubscribe(),
-        ))
+        )))
     } else {
         let _ = sqlx::query(
             "INSERT INTO riviamigo.parallax_collector_state(vehicle_id,status,last_error,schema_version) VALUES($1,'disabled','PARALLAX_ENABLED=false',1) ON CONFLICT(vehicle_id) DO UPDATE SET status='disabled',last_error='PARALLAX_ENABLED=false',updated_at=now()",
@@ -441,6 +540,8 @@ pub async fn run_vehicle_worker(
     // important on restart: the first frame must be evaluated against the
     // existing session UUID instead of racing startup with a fresh detector.
     let mut ws_handle = spawn_ws_loop();
+    let mut ws_started_at = tokio::time::Instant::now();
+    let mut ws_exit_backoff = 1;
     // State periods are durable state, not a best-effort in-memory overlay.
     // Rehydrate before processing any new payload so a worker restart can close
     // the existing period instead of colliding with the partial unique index.
@@ -481,10 +582,24 @@ pub async fn run_vehicle_worker(
     state_reconcile_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     // Startup reconciliation above already covered the current tail.
     state_reconcile_interval.tick().await;
+    let mut trip_retry_interval = tokio::time::interval(std::time::Duration::from_secs(15));
+    trip_retry_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     loop {
+        while companions.try_join_next().is_some() {}
         let inbound = tokio::select! {
             _ = worker_shutdown.recv() => {
                 break;
+            }
+            _ = trip_retry_interval.tick() => {
+                let error = match trip_capture::drain_one(&pool, vehicle_id).await {
+                    Ok(_) => None,
+                    Err(error) => {
+                        tracing::error!(%vehicle_id, %error, "completed trip persistence failed; durable retry retained");
+                        Some("completion_retry_pending")
+                    }
+                };
+                trip_capture::record_health(&pool, vehicle_id, error).await;
+                continue;
             }
             _ = state_reconcile_interval.tick() => {
                 match reconcile_state_period_tail(&pool, vehicle_id, active_state_period.clone()).await {
@@ -512,6 +627,7 @@ pub async fn run_vehicle_worker(
                 ws_handle.abort();
                 let _ = (&mut ws_handle).await;
                 ws_handle = spawn_ws_loop();
+                ws_started_at = tokio::time::Instant::now();
                 last_ws_inbound_at = tokio::time::Instant::now();
                 continue;
             }
@@ -549,7 +665,17 @@ pub async fn run_vehicle_worker(
                     Some("rivian_ws_restarting"),
                 )
                 .await;
+                if ws_started_at.elapsed() >= std::time::Duration::from_secs(300) {
+                    ws_exit_backoff = 1;
+                }
+                tokio::select! {
+                    biased;
+                    _ = worker_shutdown.recv() => return,
+                    _ = tokio::time::sleep(std::time::Duration::from_secs(ws_exit_backoff)) => {}
+                }
+                ws_exit_backoff = (ws_exit_backoff * 2).min(60);
                 ws_handle = spawn_ws_loop();
+                ws_started_at = tokio::time::Instant::now();
                 last_ws_inbound_at = tokio::time::Instant::now();
                 continue;
             }
@@ -650,7 +776,43 @@ pub async fn run_vehicle_worker(
             continue;
         }
 
-        let trip_id = trip_det.active_trip_id();
+        // ── Trip detection ───────────────────────────────────────────────────
+        let replay = trip_capture.is_replay(event.ts);
+        let (trip_sample, fusion) = if replay {
+            (event.clone(), FusionDiagnostics::default())
+        } else {
+            trip_signals.fuse_from(&event, is_parallax)
+        };
+        let start_decision = trip_capture.detector().start_decision(&trip_sample);
+        let trip_event = trip_capture.process(&trip_sample);
+        if capturing {
+            record_trip_diagnostics(
+                vehicle_id,
+                &event,
+                &trip_sample,
+                &fusion,
+                trip_capture.detector().active_trip_id().is_some(),
+                start_decision,
+                &trip_event,
+            );
+        }
+        if !save_trip_checkpoint(
+            &pool,
+            vehicle_id,
+            &mut lock_conn,
+            &mut trip_capture,
+            &mut worker_shutdown,
+        )
+        .await
+        {
+            break;
+        }
+
+        let trip_id = match (&trip_event, replay) {
+            (_, true) => None,
+            (TripEvent::TripEnded { trip }, false) => Some(trip.trip_id),
+            _ => trip_capture.detector().active_trip_id(),
+        };
         let charge_event = if is_parallax {
             // Parallax frames are partial vehicle state, not charge lifecycle
             // frames. A stream of GNSS updates must not time out a legacy
@@ -822,32 +984,6 @@ pub async fn run_vehicle_worker(
             }
         }
 
-        // ── Trip detection ───────────────────────────────────────────────────
-        let (trip_sample, fusion) = trip_signals.fuse_from(&event, is_parallax);
-        let start_decision = trip_det.start_decision(&trip_sample);
-        let trip_event = trip_det.process(&trip_sample);
-        if capturing {
-            record_trip_diagnostics(
-                vehicle_id,
-                &event,
-                &trip_sample,
-                &fusion,
-                trip_det.active_trip_id().is_some(),
-                start_decision,
-                &trip_event,
-            );
-        }
-        if let TripEvent::TripEnded { trip } = trip_event {
-            let distance = compute_distance_odometer_or_gps(
-                trip.start_odometer_mi,
-                trip.end_odometer_mi,
-                &trip.points,
-            );
-            if distance >= MIN_TRIP_DISTANCE_MILES {
-                let _ = persist_trip(&pool, &http_client, &trip, distance).await;
-            }
-        }
-
         // ── Charge detection ─────────────────────────────────────────────────
         if let ChargeEvent::SessionEnded(session) = charge_event {
             // Canonical vehicle-state telemetry owns lifecycle.  Remove the
@@ -865,7 +1001,7 @@ pub async fn run_vehicle_worker(
             let pool2 = pool.clone();
             let client2 = http_client.clone();
             let age_key2 = age_key.clone();
-            tokio::spawn(async move {
+            companions.spawn(async move {
                 if let Err(e) = rivian_poll::fetch_live_session_history_for_vehicle(
                     vehicle_id,
                     Some(session.session_id),
@@ -910,6 +1046,8 @@ pub async fn run_vehicle_worker(
             }
         }
     }
+    companions.abort_all();
+    while companions.join_next().await.is_some() {}
     let _ = release_collector_lock(&mut lock_conn, vehicle_id).await;
 }
 
@@ -2015,22 +2153,20 @@ async fn load_active_charge_snapshot(
 async fn acquire_collector_lock(
     pool: &PgPool,
     vehicle_id: Uuid,
-) -> anyhow::Result<Option<PoolConnection<Postgres>>> {
+) -> anyhow::Result<Option<PgConnection>> {
     let mut conn = pool.acquire().await?;
     let acquired: bool = sqlx::query_scalar("SELECT pg_try_advisory_lock($1)")
         .bind(collector_lock_key(vehicle_id))
         .fetch_one(&mut *conn)
         .await?;
-    Ok(acquired.then_some(conn))
+    // Session locks must not return to the pool after a panic or task abort.
+    Ok(acquired.then(|| conn.detach()))
 }
 
-async fn release_collector_lock(
-    conn: &mut PoolConnection<Postgres>,
-    vehicle_id: Uuid,
-) -> anyhow::Result<()> {
+async fn release_collector_lock(conn: &mut PgConnection, vehicle_id: Uuid) -> anyhow::Result<()> {
     let _: bool = sqlx::query_scalar("SELECT pg_advisory_unlock($1)")
         .bind(collector_lock_key(vehicle_id))
-        .fetch_one(&mut **conn)
+        .fetch_one(&mut *conn)
         .await?;
     Ok(())
 }
@@ -2131,7 +2267,7 @@ async fn write_telemetry(
               ota_current_status          = COALESCE(EXCLUDED.ota_current_status, timeseries.telemetry.ota_current_status),
               hv_thermal_event            = COALESCE(EXCLUDED.hv_thermal_event, timeseries.telemetry.hv_thermal_event),
               twelve_volt_health          = COALESCE(EXCLUDED.twelve_volt_health, timeseries.telemetry.twelve_volt_health),
-              trip_id                     = COALESCE(EXCLUDED.trip_id, timeseries.telemetry.trip_id),
+              trip_id                     = COALESCE(timeseries.telemetry.trip_id, EXCLUDED.trip_id),
               charge_session_id           = COALESCE(EXCLUDED.charge_session_id, timeseries.telemetry.charge_session_id),
               charge_port_open            = COALESCE(EXCLUDED.charge_port_open, timeseries.telemetry.charge_port_open),
               charger_derate_active       = COALESCE(EXCLUDED.charger_derate_active, timeseries.telemetry.charger_derate_active),
@@ -2871,7 +3007,6 @@ async fn last_battery_level_at(pool: &PgPool, vehicle_id: Uuid, at: DateTime<Utc
 
 async fn persist_trip(
     pool: &PgPool,
-    http_client: &reqwest::Client,
     trip: &crate::ingestion::trip_detector::CompletedTripData,
     distance: f64,
 ) -> anyhow::Result<()> {
@@ -2932,19 +3067,9 @@ async fn persist_trip(
     let start = trip.points.first();
     let end = trip.points.last();
 
-    let owner_id = get_vehicle_owner_id(pool, trip.vehicle_id).await?;
-    let start_match = match (owner_id, start) {
-        (Some(user_id), Some(point)) => {
-            resolve_trip_location(pool, http_client, user_id, point.lat, point.lng).await?
-        }
-        _ => MatchedLocation::none(),
-    };
-    let end_match = match (owner_id, end) {
-        (Some(user_id), Some(point)) => {
-            resolve_trip_location(pool, http_client, user_id, point.lat, point.lng).await?
-        }
-        _ => MatchedLocation::none(),
-    };
+    // The periodic location reconciler enriches trips after durable capture.
+    let start_match = MatchedLocation::none();
+    let end_match = MatchedLocation::none();
 
     let route_points = trip
         .points
@@ -2953,7 +3078,9 @@ async fn persist_trip(
         .collect::<Vec<_>>();
     let route_preview = serde_json::to_value(build_route_preview(&route_points))?;
 
-    sqlx::query(
+    let mut tx = pool.begin().await?;
+    if distance >= MIN_TRIP_DISTANCE_MILES {
+        sqlx::query(
         r#"INSERT INTO riviamigo.trips
            (id, vehicle_id, started_at, ended_at,
             start_lat, start_lng, end_lat, end_lng,
@@ -2969,7 +3096,7 @@ async fn persist_trip(
             elevation_gain_m, elevation_loss_m,
             inside_temp_avg_c, outside_temp_c, regen_wh, energy_wh, energy_strategy,
             route_preview, route_preview_version)
-            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,1)"#,
+            VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17,$18,$19,$20,$21,$22,$23,$24,$25,$26,$27,$28,$29,$30,$31,$32,$33,$34,$35,$36,1) ON CONFLICT(id) DO NOTHING"#,
     )
         .bind(trip.trip_id)
         .bind(trip.vehicle_id)
@@ -3007,33 +3134,34 @@ async fn persist_trip(
         .bind(energy_wh)
         .bind(energy_strategy.as_deref())
         .bind(route_preview)
-        .execute(pool)
+        .execute(&mut *tx)
         .await?;
 
-    weather_enrichment::enqueue(pool, trip.trip_id).await?;
-
-    if let Some(user_id) = owner_id {
-        sqlx::query(
-            r#"INSERT INTO riviamigo.trip_user_annotations
-               (trip_id, user_id, start_geofence_id, end_geofence_id, start_address_id, end_address_id, matched_at)
-               VALUES ($1, $2, $3, $4, $5, $6, now())
-               ON CONFLICT (trip_id, user_id) DO UPDATE
-               SET start_geofence_id = EXCLUDED.start_geofence_id,
-                   end_geofence_id = EXCLUDED.end_geofence_id,
-                   start_address_id = EXCLUDED.start_address_id,
-                   end_address_id = EXCLUDED.end_address_id,
-                   matched_at = now(),
-                   updated_at = now()"#,
+        let identity: (Uuid, DateTime<Utc>, Option<DateTime<Utc>>) = sqlx::query_as(
+            "SELECT vehicle_id,started_at,ended_at FROM riviamigo.trips WHERE id=$1",
         )
         .bind(trip.trip_id)
-        .bind(user_id)
-        .bind(start_match.geofence_id)
-        .bind(end_match.geofence_id)
-        .bind(start_match.address_id)
-        .bind(end_match.address_id)
-        .execute(pool)
+        .fetch_one(&mut *tx)
         .await?;
+        anyhow::ensure!(
+            identity.0 == trip.vehicle_id
+                && identity.1.timestamp_micros() == trip.started_at.timestamp_micros()
+                && identity.2.map(|at| at.timestamp_micros())
+                    == Some(trip.ended_at.timestamp_micros()),
+            "trip identity collision; retaining completion for investigation"
+        );
+        sqlx::query(
+            "INSERT INTO riviamigo.weather_enrichment_jobs(trip_id) VALUES($1) ON CONFLICT(trip_id) DO NOTHING",
+        ).bind(trip.trip_id).execute(&mut *tx).await?;
     }
+    sqlx::query(
+        "DELETE FROM riviamigo.pending_trip_completions WHERE trip_id=$1 AND vehicle_id=$2",
+    )
+    .bind(trip.trip_id)
+    .bind(trip.vehicle_id)
+    .execute(&mut *tx)
+    .await?;
+    tx.commit().await?;
 
     Ok(())
 }
@@ -3218,6 +3346,7 @@ async fn match_point(
 /// callers can degrade gracefully.
 #[allow(dead_code)]
 async fn reverse_geocode_and_store(pool: &PgPool, lat: f64, lon: f64) -> Option<Uuid> {
+    crate::services::outbound_policy::require_optional_traffic().ok()?;
     let slot = crate::services::nominatim::acquire_slot(
         crate::services::nominatim::NominatimLane::BackgroundReverseGeocode,
     )

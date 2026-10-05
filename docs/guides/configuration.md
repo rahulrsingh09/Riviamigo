@@ -8,7 +8,7 @@ slug: /getting-started/configuration/
 
 The standard Compose file reads the repository-root `.env` inside the unified app container. Keep real values out of Git and use a secret manager where your host supports one.
 
-Start with [`compose/.env.example`](../../compose/.env.example). It contains only the three values a normal installation needs. [`compose/.env.full.example`](../../compose/.env.full.example) is the complete override template, while the [environment-variable reference](../environment-variables.md) documents every supported value, default, and scope.
+Start with [`compose/.env.example`](../../compose/.env.example). It lists the required deployment settings and external-key provisioning route. [`compose/.env.full.example`](../../compose/.env.full.example) is the complete override template, while the [environment-variable reference](../environment-variables.md) documents every supported value, default, and scope.
 
 ## Required for production
 
@@ -20,16 +20,18 @@ Set these before starting `compose/docker-compose.yml`:
 
 Riviamigo defaults to production mode; no production flag is required in `.env`.
 
-On first startup, Riviamigo generates its JWT signing pair and age encryption
-identity and stores them in PostgreSQL. They therefore survive normal restarts
-and recovery-package restores. This database-key arrangement is an explicitly
-accepted **P2 shared-fate risk**: database loss or compromise can also affect
-locally generated application keys. Advanced deployments that require separate
-key custody may supply `JWT_SECRET`, `JWT_PUBLIC_KEY`, and
-`AGE_ENCRYPTION_KEY` together from a secret manager; partial overrides are
-rejected. Maintain and test recovery of that external secret source. Rotating
-the age key without migrating encrypted values can make stored credentials
-unreadable.
+Production requires an externally managed RSA signing pair and AGE identity:
+`JWT_SECRET`, `JWT_PUBLIC_KEY`, and `AGE_ENCRYPTION_KEY`, each supplied as a
+securely injected value or its mutually exclusive `_FILE` alternative. No paid
+secret manager is required; separately stored, owner-readable mounted files work.
+See the [key-custody runbook](../runbooks/key-custody.md) to generate keys for a new
+database or export and migrate existing DB-backed keys without replacing them.
+Missing/invalid bundles, mismatched RSA pairs, and unmigrated database keys fail
+startup. The public AGE binding prevents accidental key replacement on restart.
+Back up the bundle separately; losing the AGE key loses access to encrypted data.
+
+Set `RIVIAMIGO_IMAGE` to a reviewed digest reference built from the tested source.
+Compose no longer defaults to a mutable `latest` image.
 
 ### Production first owner
 
@@ -56,16 +58,14 @@ Weather, geocoding, basemap, and Iconify policies are configured in **Settings >
 
 - `RIVIAMIGO_ORIGIN_PORT` changes the published app port from `8080`.
 - `RIVIAMIGO_HOST_BIND_ADDRESS` controls Docker's host-side published address;
-  it defaults to `0.0.0.0` for normal host publication. Set it to a specific
-  interface when required and protect the port with a firewall.
+  it defaults to `127.0.0.1` for a gateway on the same host. Explicit private
+  interface publication still requires an authenticated gateway and firewall.
 - `RIVIAMIGO_BIND_ADDRESS` controls the application's internal listener and
   defaults to `127.0.0.1`; it is not the Docker host publication address. A
   non-loopback internal listener requires `ALLOW_PUBLIC_ORIGIN_BIND=true`.
-- `IMAGE_TAG` selects a published release and defaults to `latest`.
-- `RIVIAMIGO_IMAGE_REGISTRY` defaults to `ghcr.io/bballdavis`.
-- `RIVIAMIGO_IMAGE` overrides both values with one complete reference. Use the
-  `ghcr.io/bballdavis/riviamigo@sha256:...` value from `images.lock` when an
-  installation must pull the exact verified release manifest.
+- `RIVIAMIGO_IMAGE` is required. Use the reviewed digest of the tested image;
+  use `riviamigo:local` only with the source-build overlay. IMAGE_TAG and
+  RIVIAMIGO_IMAGE_REGISTRY no longer select the production image.
 - `BACKUP_DRIVER`, `BACKUP_ARTIFACT_DIR`, and `BACKUP_POLL_INTERVAL_SECONDS` tune recovery packages; normal Compose already uses `/backups`.
 - `TZ` sets the Docker/container timezone for nginx and other runtime processes. It is separate from the shared user-facing application timezone configured under **Settings > Units**.
 - Reconnect, telemetry-retention, logging, and rate-limit settings are available in the [complete reference](../environment-variables.md).

@@ -2,7 +2,7 @@ use axum::{
     body::Body,
     extract::{Path, Query, State},
     http::{header, HeaderName, HeaderValue},
-    response::Response,
+    response::{IntoResponse, Response},
     routing::{delete, get, post, put},
     Json, Router,
 };
@@ -40,6 +40,10 @@ use crate::{
         ingestion_capture,
     },
 };
+
+#[cfg(test)]
+#[path = "vehicles_authorization_tests.rs"]
+mod authorization_tests;
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -1372,6 +1376,46 @@ async fn add_vehicle(
     auth: AuthUser,
     Json(body): Json<AddVehicleBody>,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    add_vehicle_with_lookup(state, auth, body, lookup_rivian_vehicles).await
+}
+
+async fn lookup_rivian_vehicles(
+    tokens: &crate::ingestion::session_store::RivianTokenBundle,
+) -> Result<Vec<RivianVehicleSummary>, AppError> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .map_err(|error| AppError::Internal(error.into()))?;
+    crate::ingestion::rivian_auth::rivian_user_vehicles(&client, tokens)
+        .await
+        .map_err(|_| AppError::RivianApi("Unable to verify Rivian vehicle access".into()))
+}
+
+fn require_account_vehicle(
+    account_vehicles: &[RivianVehicleSummary],
+    rivian_vehicle_id: &str,
+) -> Result<(), AppError> {
+    if account_vehicles
+        .iter()
+        .any(|vehicle| vehicle.id == rivian_vehicle_id)
+    {
+        Ok(())
+    } else {
+        Err(AppError::Validation(
+            "Rivian account does not include this vehicle".into(),
+        ))
+    }
+}
+
+async fn add_vehicle_with_lookup(
+    state: AppState,
+    auth: AuthUser,
+    body: AddVehicleBody,
+    lookup: impl AsyncFnOnce(
+        &crate::ingestion::session_store::RivianTokenBundle,
+    ) -> Result<Vec<RivianVehicleSummary>, AppError>,
+) -> Result<Json<serde_json::Value>, AppError> {
     let rivian_vehicle_id = body.rivian_vehicle_id.clone();
 
     info!(
@@ -1396,41 +1440,29 @@ async fn add_vehicle(
         AppError::RivianConnectSessionExpired
     })?;
 
+    let account_vehicles = lookup(&tokens).await?;
+    require_account_vehicle(&account_vehicles, &rivian_vehicle_id)?;
+
     let identity = age_identity(&state)?;
     let encrypted = crate::ingestion::session_store::encrypt_tokens(&tokens, &identity)
         .map_err(AppError::Internal)?;
 
-    let existing_vehicle_id: Option<Uuid> =
-        sqlx::query_scalar("SELECT id FROM riviamigo.vehicles WHERE rivian_vehicle_id = $1")
-            .bind(&rivian_vehicle_id)
-            .fetch_optional(&state.pool)
-            .await?;
-
     let mut tx = state.pool.begin().await?;
+    lock_active_enrollment_user(&mut tx, auth.user_id).await?;
+    // The schema only makes Rivian IDs unique per user, so serialize enrollment globally.
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 1))")
+        .bind(&rivian_vehicle_id)
+        .execute(&mut *tx)
+        .await?;
+    let existing_vehicle_id: Option<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM riviamigo.vehicles WHERE rivian_vehicle_id = $1 FOR UPDATE",
+    )
+    .bind(&rivian_vehicle_id)
+    .fetch_optional(&mut *tx)
+    .await?;
 
     let vehicle_id = if let Some(existing_vehicle_id) = existing_vehicle_id {
-        let already_member = sqlx::query_scalar::<_, bool>(
-            "SELECT EXISTS(
-                SELECT 1
-                FROM riviamigo.vehicle_memberships
-                WHERE vehicle_id = $1 AND user_id = $2
-            )",
-        )
-        .bind(existing_vehicle_id)
-        .bind(auth.user_id)
-        .fetch_one(&mut *tx)
-        .await?;
-
-        if !already_member {
-            sqlx::query(
-                "INSERT INTO riviamigo.vehicle_memberships (vehicle_id, user_id, role, is_default)
-                 VALUES ($1, $2, 'owner', FALSE)",
-            )
-            .bind(existing_vehicle_id)
-            .bind(auth.user_id)
-            .execute(&mut *tx)
-            .await?;
-        }
+        lock_credential_membership(&mut tx, auth.user_id, existing_vehicle_id).await?;
 
         sqlx::query(
             "INSERT INTO riviamigo.vehicle_user_settings
@@ -1584,6 +1616,42 @@ async fn add_vehicle(
     })))
 }
 
+async fn lock_active_enrollment_user(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    user_id: Uuid,
+) -> Result<(), AppError> {
+    match sqlx::query_scalar::<_, bool>(
+        "SELECT is_disabled FROM riviamigo.users WHERE id = $1 FOR UPDATE",
+    )
+    .bind(user_id)
+    .fetch_optional(&mut **tx)
+    .await?
+    {
+        Some(false) => Ok(()),
+        Some(true) => Err(AppError::Forbidden),
+        None => Err(AppError::Unauthorized),
+    }
+}
+
+async fn lock_credential_membership(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    user_id: Uuid,
+    vehicle_id: Uuid,
+) -> Result<(), AppError> {
+    let role = sqlx::query_scalar::<_, String>(
+        "SELECT role FROM riviamigo.vehicle_memberships
+         WHERE vehicle_id = $1 AND user_id = $2 FOR SHARE",
+    )
+    .bind(vehicle_id)
+    .bind(user_id)
+    .fetch_optional(&mut **tx)
+    .await?;
+    match role.as_deref() {
+        Some("owner" | "manager") => Ok(()),
+        _ => Err(AppError::Forbidden),
+    }
+}
+
 async fn refresh_vehicle_credentials(
     State(state): State<AppState>,
     auth: AuthUser,
@@ -1610,30 +1678,16 @@ async fn refresh_vehicle_credentials(
     .await?
     .ok_or(AppError::RivianConnectSessionExpired)?;
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(30))
-        .build()
-        .unwrap_or_default();
-    let account_vehicles = crate::ingestion::rivian_auth::rivian_user_vehicles(&client, &tokens)
-        .await
-        .map_err(|e| {
-            warn!(vehicle_id = %vid, user_id = %auth.user_id, error = %e, "vehicle.refresh_credentials.fetch_user_vehicles_failed");
-            AppError::RivianApi("Unable to verify Rivian vehicle access".into())
-        })?;
-    if !account_vehicles
-        .iter()
-        .any(|vehicle| vehicle.id == rivian_vehicle_id)
-    {
-        return Err(AppError::Validation(
-            "Rivian account does not include this vehicle".into(),
-        ));
-    }
+    let account_vehicles = lookup_rivian_vehicles(&tokens).await?;
+    require_account_vehicle(&account_vehicles, &rivian_vehicle_id)?;
 
     let identity = age_identity(&state)?;
     let encrypted = crate::ingestion::session_store::encrypt_tokens(&tokens, &identity)
         .map_err(AppError::Internal)?;
 
     let mut tx = state.pool.begin().await?;
+    lock_active_enrollment_user(&mut tx, auth.user_id).await?;
+    lock_credential_membership(&mut tx, auth.user_id, vid).await?;
 
     sqlx::query(
         "INSERT INTO riviamigo.vehicle_credentials (vehicle_id, encrypted_tokens, token_created_at, last_refreshed_at)
@@ -3674,6 +3728,9 @@ async fn cache_vehicle_images(
     vehicle_id: Uuid,
     tokens: &crate::ingestion::session_store::RivianTokenBundle,
 ) {
+    if !crate::services::outbound_policy::optional_traffic_allowed() {
+        return;
+    }
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
         .build()
@@ -3753,6 +3810,9 @@ async fn ensure_vehicle_images_cached(
     age_key: &str,
     force_manifest_refresh: bool,
 ) {
+    if !crate::services::outbound_policy::optional_traffic_allowed() {
+        return;
+    }
     let rows = sqlx::query_as::<_, VehicleImageRow>(
         "SELECT placement, design, size, resolution, url, overlays, metadata
          FROM riviamigo.vehicle_images
@@ -3898,13 +3958,14 @@ async fn download_and_store_asset(
     vehicle_id: Uuid,
     source_url: &str,
 ) -> Result<MirroredFileAsset, anyhow::Error> {
+    crate::services::outbound_policy::require_optional_traffic()?;
     let response = client.get(source_url).send().await?.error_for_status()?;
     let content_type = response
         .headers()
         .get(reqwest::header::CONTENT_TYPE)
         .and_then(|value| value.to_str().ok())
         .map(str::to_owned);
-    let bytes = response.bytes().await?;
+    let bytes = crate::services::outbound_policy::read_limited(response, 5 * 1024 * 1024).await?;
     let sha256 = hex::encode(Sha256::digest(&bytes));
     let extension = infer_extension(source_url, content_type.as_deref());
     let key_hash = hex::encode(Sha256::digest(source_url.as_bytes()));
@@ -4414,6 +4475,10 @@ fn vehicle_artwork_placeholder_response() -> Response {
 }
 
 fn vehicle_artwork_restoring_response() -> Response {
+    if !crate::services::outbound_policy::optional_traffic_allowed() {
+        // Missing art cannot be repaired here; let the browser use packaged art.
+        return axum::http::StatusCode::NOT_FOUND.into_response();
+    }
     let mut response = vehicle_artwork_placeholder_response();
     *response.status_mut() = axum::http::StatusCode::ACCEPTED;
     response.headers_mut().insert(
@@ -4430,6 +4495,8 @@ async fn admin_remirror_vehicle_images(
 ) -> Result<Json<serde_json::Value>, AppError> {
     require_admin_or_super_user(&state.pool, auth.user_id).await?;
     require_remote_backed_vehicle(&state.pool, vehicle_id).await?;
+    crate::services::outbound_policy::require_optional_traffic()
+        .map_err(|_| AppError::ExternalConnectionDisabled("vehicle artwork".into()))?;
     queue_vehicle_artwork_repair_with_mode(&state, vehicle_id, true).await;
     Ok(Json(
         serde_json::json!({ "ok": true, "queued": true, "vehicle_id": vehicle_id }),
@@ -4504,6 +4571,9 @@ async fn queue_vehicle_artwork_repair_with_mode(
     vehicle_id: Uuid,
     force_manifest_refresh: bool,
 ) {
+    if !crate::services::outbound_policy::optional_traffic_allowed() {
+        return;
+    }
     let is_demo = sqlx::query_scalar::<_, String>(
         "SELECT rivian_vehicle_id FROM riviamigo.vehicles WHERE id=$1",
     )
@@ -4566,6 +4636,9 @@ pub fn start_vehicle_artwork_repair_worker(
     config: crate::config::Config,
     age_key: String,
 ) {
+    if !crate::services::outbound_policy::optional_traffic_allowed() {
+        return;
+    }
     tokio::spawn(async move {
         let vehicle_ids = sqlx::query_scalar::<_, Uuid>(
             "SELECT v.id FROM riviamigo.vehicles v
@@ -5316,6 +5389,34 @@ mod tests {
     }
 
     // Run with: cargo test -- --ignored
+
+    #[tokio::test]
+    async fn outbound_policy_blocks_artwork_downloads_including_saved_private_urls() {
+        assert_eq!(
+            super::vehicle_artwork_restoring_response().status(),
+            StatusCode::NOT_FOUND
+        );
+        let state = make_helper_state("redis://127.0.0.1/".into());
+        for source in [
+            "https://images.example.test/vehicle.webp",
+            "http://127.0.0.1:1/vehicle.webp",
+            "http://169.254.169.254/latest/meta-data",
+            "https://user:password@images.example.test/vehicle.webp",
+        ] {
+            let result = super::download_and_store_asset(
+                &reqwest::Client::new(),
+                &state.config,
+                Uuid::new_v4(),
+                source,
+            )
+            .await;
+            let error = result.err().expect("artwork must be denied");
+            assert!(matches!(
+                error.downcast_ref::<crate::services::outbound_policy::PolicyError>(),
+                Some(crate::services::outbound_policy::PolicyError::OptionalTraffic)
+            ));
+        }
+    }
 
     fn make_helper_state(redis_url: String) -> crate::middleware::auth::AppState {
         use std::sync::Arc;

@@ -277,3 +277,11 @@ in the expanded, collapsed, and mobile sidebar while preserving a healthy green
 the estimated date and recommendation beside the existing login-repair action.
 Copy must say **estimated**, **renewal**, or **recommended** rather than claiming
 that Rivian guarantees an expiration date.
+
+### Telemetry-only fork typography and controls
+
+The fork does not load Google Fonts. Existing font stacks fall back to locally
+available/system fonts, keeping the same type scale and design tokens. Schedule
+widgets retain their read views and a read-only notice; vehicle-write controls
+are unavailable at every viewport width. Artwork uses local cached or packaged
+images only.

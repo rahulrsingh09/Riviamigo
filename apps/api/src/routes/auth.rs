@@ -2062,20 +2062,69 @@ where
         .collect();
     let hash = sha2_hash(&raw);
     let expires_at = chrono::Utc::now() + chrono::Duration::days(30);
-    sqlx::query(
-        "INSERT INTO riviamigo.refresh_tokens (token_hash, user_id, expires_at) VALUES ($1,$2,$3)",
+    let inserted = sqlx::query(
+        "INSERT INTO riviamigo.refresh_tokens (token_hash, user_id, expires_at)
+         SELECT $1, id, $3 FROM riviamigo.users
+         WHERE id = $2 AND is_disabled = FALSE FOR SHARE",
     )
     .bind(hash.as_slice())
     .bind(user_id)
     .bind(expires_at)
     .execute(executor)
     .await?;
+    if inserted.rows_affected() != 1 {
+        return Err(AppError::Unauthorized);
+    }
     Ok(raw)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[tokio::test]
+    #[ignore = "requires disposable TimescaleDB DATABASE_URL and REDIS_URL"]
+    async fn authorization_refresh_issuance_cannot_race_user_deletion_or_disabling() {
+        let f = crate::authorization_test_support::Fixture::new().await;
+        let user = f.user("user").await;
+        let token = issue_refresh_token(&f.state.pool, user).await.unwrap();
+        assert_eq!(f.refresh(&token).await.status(), http::StatusCode::OK);
+        for delete in [false, true] {
+            let user = f.user("user").await;
+            let mut tx = f.state.pool.begin().await.unwrap();
+            let query = if delete {
+                "DELETE FROM riviamigo.users WHERE id = $1"
+            } else {
+                "UPDATE riviamigo.users SET is_disabled = TRUE WHERE id = $1"
+            };
+            sqlx::query(query)
+                .bind(user)
+                .execute(&mut *tx)
+                .await
+                .unwrap();
+            let pool = f.state.pool.clone();
+            let pending = tokio::spawn(async move { issue_refresh_token(&pool, user).await });
+            tokio::time::sleep(std::time::Duration::from_millis(25)).await;
+            assert!(
+                !pending.is_finished(),
+                "refresh must wait for the user row lock"
+            );
+            tx.commit().await.unwrap();
+            assert!(matches!(
+                pending.await.unwrap(),
+                Err(AppError::Unauthorized)
+            ));
+            let count: i64 = sqlx::query_scalar(
+                "SELECT count(*) FROM riviamigo.refresh_tokens WHERE user_id = $1",
+            )
+            .bind(user)
+            .fetch_one(&f.state.pool)
+            .await
+            .unwrap();
+            assert_eq!(count, 0);
+        }
+        f.cleanup().await;
+    }
 
     #[test]
     fn public_oidc_requires_a_first_owner() {

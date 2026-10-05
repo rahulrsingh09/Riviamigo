@@ -16,7 +16,7 @@ use tower_http::{
     limit::RequestBodyLimitLayer,
     request_id::{MakeRequestUuid, PropagateRequestIdLayer, SetRequestIdLayer},
     set_header::SetResponseHeaderLayer,
-    trace::{DefaultMakeSpan, DefaultOnFailure, TraceLayer},
+    trace::{DefaultOnFailure, TraceLayer},
 };
 
 use crate::middleware::{
@@ -59,19 +59,35 @@ pub mod users;
 pub mod users_support;
 pub mod vehicles;
 
+#[cfg(test)]
+mod request_log_tests;
+
+fn log_route(req: &axum::extract::Request) -> String {
+    req.extensions()
+        .get::<axum::extract::MatchedPath>()
+        .map(|path| path.as_str())
+        .unwrap_or("<unmatched>")
+        .to_owned()
+}
+
+fn request_span(req: &axum::extract::Request) -> tracing::Span {
+    tracing::debug_span!("http_request", method = %req.method(), route = %log_route(req))
+}
+
 async fn log_server_errors(
     axum::extract::State(decoding_key): axum::extract::State<jsonwebtoken::DecodingKey>,
     req: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> axum::response::Response {
     let method = req.method().clone();
-    let path = req.uri().path().to_owned();
+    let path = log_route(&req);
+    let is_api = req.uri().path().starts_with("/v1/") || req.uri().path().starts_with("/v2/");
     let limiter_class = classify_rate_limit_class(req.method(), req.uri().path()).as_header_value();
     let key_type = rate_limit::infer_key_type(req.headers(), &decoding_key);
     let authenticated = key_type != "ip_fallback";
     let mut response = next.run(req).await;
 
-    if path.starts_with("/v1/") || path.starts_with("/v2/") {
+    if is_api {
         response.headers_mut().insert(
             "x-riviamigo-ratelimit-class",
             HeaderValue::from_static(limiter_class),
@@ -356,7 +372,7 @@ pub fn build_router(state: AppState) -> Router {
         .layer(PropagateRequestIdLayer::x_request_id())
         .layer(
             TraceLayer::new_for_http()
-                .make_span_with(DefaultMakeSpan::new().include_headers(false))
+                .make_span_with(request_span)
                 .on_failure(DefaultOnFailure::new()),
         )
         .layer(SetResponseHeaderLayer::overriding(
@@ -378,9 +394,10 @@ pub fn build_router(state: AppState) -> Router {
         .layer(SetResponseHeaderLayer::overriding(
             CONTENT_SECURITY_POLICY,
             HeaderValue::from_static(
-                "default-src 'self'; img-src 'self' data:; \
+                "default-src 'self'; img-src 'self' data: blob:; \
                  style-src 'self' 'unsafe-inline'; script-src 'self'; \
-                 connect-src 'self' wss:; font-src 'self' data:; frame-ancestors 'none'",
+                 connect-src 'self'; font-src 'self' data:; worker-src 'self' blob:; \
+                 object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'",
             ),
         ))
         .with_state(state)

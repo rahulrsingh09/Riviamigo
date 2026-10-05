@@ -1,10 +1,10 @@
 //! Rivian authentication flow.
 
 use crate::ingestion::session_store::RivianTokenBundle;
+use crate::services::outbound_policy::{self, gateway_url};
 use serde::{Deserialize, Serialize};
 use uuid::Uuid;
 
-const DEFAULT_GATEWAY_URL: &str = "https://rivian.com/api/gql/gateway/graphql";
 const APOLLO_CLIENT_NAME: &str = "com.rivian.ios.consumer-apollo-ios";
 const USER_AGENT: &str = "RivianApp/707 CFNetwork/1237 Darwin/20.4.0";
 
@@ -18,6 +18,12 @@ pub enum RivianAuthError {
     Network(#[from] reqwest::Error),
     #[error("Unexpected response: {0}")]
     UnexpectedResponse(String),
+}
+
+impl From<outbound_policy::PolicyError> for RivianAuthError {
+    fn from(error: outbound_policy::PolicyError) -> Self {
+        Self::UnexpectedResponse(error.to_string())
+    }
 }
 
 #[derive(Debug, Clone)]
@@ -356,7 +362,7 @@ pub async fn rivian_login_otp(
 }
 
 pub async fn rivian_user_vehicles(
-    client: &reqwest::Client,
+    _client: &reqwest::Client,
     tokens: &RivianTokenBundle,
 ) -> Result<Vec<RivianVehicleSummary>, RivianAuthError> {
     let query = r#"
@@ -381,8 +387,7 @@ pub async fn rivian_user_vehicles(
         "variables": serde_json::Value::Null
     });
 
-    let mut req = client
-        .post(gateway_url())
+    let mut req = outbound_policy::rivian_post(&gateway_url()?)?
         .header("User-Agent", USER_AGENT)
         .header("Accept", "application/json")
         .header("Content-Type", "application/json")
@@ -405,7 +410,7 @@ pub async fn rivian_user_vehicles(
         return Err(RivianAuthError::InvalidCredentials);
     }
 
-    let parsed = response.json::<UserInfoResponse>().await?;
+    let parsed = outbound_policy::read_json::<UserInfoResponse>(response).await?;
     if let Some(errors) = parsed.errors {
         if !errors.is_empty() {
             return Err(RivianAuthError::UnexpectedResponse(format_gql_error(
@@ -436,6 +441,7 @@ pub async fn rivian_vehicle_images(
     client: &reqwest::Client,
     tokens: &RivianTokenBundle,
 ) -> Result<Vec<RivianVehicleImage>, RivianAuthError> {
+    outbound_policy::require_optional_traffic()?;
     let query = r#"
       query getVehicleImages($extension: String, $resolution: String, $versionForVehicle: String, $versionForPreOrder: String) {
         getVehicleOrderMobileImages(resolution: $resolution, extension: $extension, version: $versionForPreOrder) {
@@ -482,8 +488,7 @@ pub async fn rivian_vehicle_images(
                 }
             });
 
-            let req = client
-                .post(gateway_url())
+            let req = outbound_policy::rivian_post(&gateway_url()?)?
                 .header("User-Agent", USER_AGENT)
                 .header("Accept", "application/json")
                 .header("Content-Type", "application/json")
@@ -493,19 +498,11 @@ pub async fn rivian_vehicle_images(
                 .header("U-Sess", &tokens.user_session_token)
                 .json(&body);
 
-            let status = req
-                .send()
-                .await?
-                .error_for_status()
-                .map_err(|e| {
-                    if e.status() == Some(reqwest::StatusCode::UNAUTHORIZED) {
-                        RivianAuthError::InvalidCredentials
-                    } else {
-                        RivianAuthError::Network(e)
-                    }
-                })?
-                .json::<VehicleImagesResponse>()
-                .await?;
+            let response = req.send().await?;
+            if response.status() == reqwest::StatusCode::UNAUTHORIZED {
+                return Err(RivianAuthError::InvalidCredentials);
+            }
+            let status = outbound_policy::read_json::<VehicleImagesResponse>(response).await?;
 
             if status
                 .errors
@@ -606,12 +603,11 @@ async fn create_csrf_session(client: &reqwest::Client) -> Result<CsrfSession, Ri
 }
 
 async fn post_graphql(
-    client: &reqwest::Client,
+    _client: &reqwest::Client,
     body: serde_json::Value,
     session: Option<&CsrfSession>,
 ) -> Result<LoginResponse, RivianAuthError> {
-    let mut req = client
-        .post(gateway_url())
+    let mut req = outbound_policy::rivian_post(&gateway_url()?)?
         .header("User-Agent", USER_AGENT)
         .header("Accept", "application/json")
         .header("Content-Type", "application/json")
@@ -627,13 +623,11 @@ async fn post_graphql(
 
     let response = req.send().await?;
     let status = response.status();
-    let parsed = response.json::<LoginResponse>().await?;
-
     if status == reqwest::StatusCode::UNAUTHORIZED {
         return Err(RivianAuthError::InvalidCredentials);
     }
 
-    Ok(parsed)
+    Ok(outbound_policy::read_json::<LoginResponse>(response).await?)
 }
 
 fn map_login_errors(errors: Vec<GqlError>) -> RivianAuthError {
@@ -683,31 +677,32 @@ fn has_unauthenticated_error(errors: &[GqlError]) -> bool {
 }
 
 fn format_gql_error(errors: &[GqlError]) -> String {
-    errors
-        .first()
-        .map(|e| {
-            let mut msg = e.message.clone();
-            if let Some(ext) = &e.extensions {
-                if let Some(code) = &ext.code {
-                    msg.push_str(&format!(" ({code}"));
-                    if let Some(reason) = &ext.reason {
-                        msg.push_str(&format!(": {reason}"));
-                    }
-                    msg.push(')');
-                }
-            }
-            msg
-        })
-        .unwrap_or_else(|| "unknown Rivian GraphQL error".into())
-}
-
-fn gateway_url() -> String {
-    std::env::var("RIVIAN_GRAPHQL_GATEWAY_URL").unwrap_or_else(|_| DEFAULT_GATEWAY_URL.into())
+    // Upstream error fields may echo credentials or other request inputs.
+    format!("Rivian GraphQL request failed ({} errors)", errors.len())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn upstream_errors_do_not_echo_request_secrets() {
+        let errors: Vec<GqlError> = serde_json::from_value(serde_json::json!([{
+            "message": "synthetic-secret-password",
+            "extensions": {
+                "code": "synthetic-secret-token",
+                "reason": "synthetic-secret-email"
+            }
+        }]))
+        .unwrap();
+        assert_eq!(
+            format_gql_error(&errors),
+            "Rivian GraphQL request failed (1 errors)"
+        );
+        assert!(!map_login_errors(errors)
+            .to_string()
+            .contains("synthetic-secret"));
+    }
     use axum::{
         extract::State,
         http::{HeaderMap, StatusCode},
@@ -748,6 +743,44 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn auth_transport_ignores_caller_redirect_policy() {
+        let sink = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let destination = format!("http://{}/stolen", sink.local_addr().unwrap());
+        let app =
+            Router::new().route(
+                "/graphql",
+                post(move || async move {
+                    (StatusCode::TEMPORARY_REDIRECT, [("location", destination)])
+                }),
+            );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/graphql", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+        outbound_policy::with_mock_gateway(url, async {
+            let client = reqwest::Client::new();
+            let session = CsrfSession {
+                csrf_token: "synthetic-csrf".into(),
+                app_session_token: "synthetic-app".into(),
+            };
+            let result = post_graphql(&client, json!({
+                "operationName": "Login",
+                "variables": {"email": "synthetic@example.test", "password": "synthetic-password"},
+            }), Some(&session)).await;
+            assert!(matches!(
+                result,
+                Err(RivianAuthError::UnexpectedResponse(_))
+            ));
+        })
+        .await;
+        assert!(
+            tokio::time::timeout(std::time::Duration::from_millis(100), sink.accept())
+                .await
+                .is_err()
+        );
+        server.abort();
+    }
+
+    #[tokio::test]
     async fn login_and_otp_follow_current_rivian_graphql_shape() {
         let recorded = Arc::new(Mutex::new(Vec::<RecordedRequest>::new()));
         let app = Router::new()
@@ -760,11 +793,14 @@ mod tests {
             axum::serve(listener, app).await.unwrap();
         });
 
-        std::env::set_var(
-            "RIVIAN_GRAPHQL_GATEWAY_URL",
+        outbound_policy::with_mock_gateway(
             format!("http://{addr}/api/gql/gateway/graphql"),
-        );
+            assert_login_and_otp_requests(recorded),
+        )
+        .await;
+    }
 
+    async fn assert_login_and_otp_requests(recorded: Arc<Mutex<Vec<RecordedRequest>>>) {
         let client = reqwest::Client::new();
         let challenge = match rivian_login(&client, "driver@example.com", "secret")
             .await
@@ -834,8 +870,6 @@ mod tests {
         assert_eq!(requests[3].headers["u-sess"], "user-session-token");
         assert_eq!(requests[3].headers["authorization"], "Bearer access-token");
         assert_eq!(requests[4].operation_name, "CreateCSRFToken");
-
-        std::env::remove_var("RIVIAN_GRAPHQL_GATEWAY_URL");
     }
 
     async fn mock_rivian_gateway(

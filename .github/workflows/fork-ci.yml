@@ -1,0 +1,103 @@
+name: Fork validation
+
+on:
+  pull_request:
+    branches: [hardening/private-telemetry]
+  push:
+    branches: [hardening/private-telemetry]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fork-validation-${{ github.event.pull_request.number || github.ref }}
+  cancel-in-progress: true
+
+env:
+  TURBO_TELEMETRY_DISABLED: '1'
+  DO_NOT_TRACK: '1'
+  SQLX_OFFLINE: 'true'
+
+jobs:
+  frontend:
+    if: github.repository == 'rahulrsingh09/Riviamigo' && github.event.repository.private == false
+    name: Fork frontend and policy
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+      - uses: pnpm/action-setup@0977fd99725f1db4007ccb2928dbb4e90d06cc86
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '24.18.0'
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm deps:check
+      - run: pnpm security:routes
+      - run: pnpm test:scripts
+      - run: pnpm test:packages
+      - run: pnpm docs:check
+      - run: pnpm build
+      - name: Evaluate every npm advisory
+        shell: bash
+        run: |
+          status=0
+          pnpm audit --json > "$RUNNER_TEMP/npm-audit.json" || status=$?
+          node scripts/check-dependency-audits.mjs pnpm "$RUNNER_TEMP/npm-audit.json" "$status"
+
+  backend:
+    if: github.repository == 'rahulrsingh09/Riviamigo' && github.event.repository.private == false
+    name: Fork backend and security regressions
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    services:
+      postgres:
+        image: timescale/timescaledb:2.28.3-pg18@sha256:2c718e700b1c75b93488085596f2254c991c3aa29584fc282ebbe62fd8335791
+        env:
+          POSTGRES_PASSWORD: synthetic-ci-password
+          POSTGRES_DB: postgres
+        ports: [5432:5432]
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+      redis:
+        image: redis:8.8.0-alpine@sha256:9d317178eceac8454a2284a9e6df2466b93c745529947f0cd42a0fa9609d7005
+        ports: [6379:6379]
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s --health-timeout 5s --health-retries 20
+    env:
+      DATABASE_URL: postgresql://postgres:synthetic-ci-password@localhost:5432/postgres
+      REDIS_URL: redis://localhost:6379/
+      KEY_CUSTODY_TEST_DATABASE_URL: postgresql://postgres:synthetic-ci-password@localhost:5432/postgres
+      TRIP_DURABILITY_TEST_DATABASE_URL: postgresql://postgres:synthetic-ci-password@localhost:5432/postgres
+    defaults:
+      run:
+        working-directory: apps/api
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020
+        with:
+          node-version: '24.18.0'
+      - uses: dtolnay/rust-toolchain@4cda84d5c5c54efe2404f9d843567869ab1699d4
+        with:
+          toolchain: '1.97.1'
+          components: rustfmt
+      - run: cargo fmt --all --check
+      - run: cargo build --locked --bins
+      - run: cargo test --locked --lib
+      - run: cargo test --locked --test dependency_crypto
+      - run: cargo test --locked --lib authorization_ -- --ignored --test-threads=1
+      - run: cargo test --locked --lib keys::tests::database_custody -- --ignored
+      - run: cargo test --locked --lib ingestion::worker::trip_capture::tests -- --ignored --test-threads=1
+      - name: Evaluate every Cargo advisory
+        shell: bash
+        run: |
+          cargo install cargo-audit --version 0.22.2 --locked
+          status=0
+          cargo audit --deny warnings --json > "$RUNNER_TEMP/cargo-audit.json" || status=$?
+          node ../../scripts/check-dependency-audits.mjs cargo "$RUNNER_TEMP/cargo-audit.json" "$status"

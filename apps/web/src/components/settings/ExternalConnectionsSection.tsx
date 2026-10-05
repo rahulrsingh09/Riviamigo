@@ -45,7 +45,7 @@ export function ExternalConnectionsSection() {
             <div>
               <CardTitle>External Connections</CardTitle>
               <p className="mt-1 max-w-3xl text-sm text-fg-tertiary">
-                See exactly what leaves this Riviamigo installation, choose remote or self-hosted providers, and understand what stops when a connection is disabled.
+                Optional location and media providers are disabled in this telemetry-only build, including saved custom providers. Existing local data is retained.
               </p>
             </div>
             {canManage ? (
@@ -68,13 +68,13 @@ export function ExternalConnectionsSection() {
         </CardHeader>
         <CardContent>
           <div className="grid gap-3 md:grid-cols-3">
-            <SummaryItem label="Policy" value="Installation-wide" />
-            <SummaryItem label="Browser egress" value="Proxied through Riviamigo" />
-            <SummaryItem label="Weather precision" value="Approx. 1 km by default" />
+            <SummaryItem label="Policy" value="Telemetry-only" />
+            <SummaryItem label="Optional providers" value="Disabled by deployment" />
+            <SummaryItem label="Artwork" value="Local or packaged" />
           </div>
           {!canManage && !connections.isLoading ? (
             <p className="mt-4 rounded-lg border border-border bg-bg-elevated/40 p-3 text-sm text-fg-tertiary">
-              These settings are visible to everyone. An administrator controls the installation policy.
+              These settings are visible to everyone. Optional external traffic is disabled by this deployment.
             </p>
           ) : null}
         </CardContent>

@@ -13,9 +13,9 @@ operator route into that runbook.
 
 ## Required boundary
 
-Riviamigo is not approved for direct Internet exposure. Standard Compose uses
-normal host publication for port `8080`; set `RIVIAMIGO_HOST_BIND_ADDRESS` to
-the required host interface and use a host firewall. Put an authenticated
+Riviamigo is not approved for direct Internet exposure. Standard Compose publishes
+port `8080` on `127.0.0.1`; keep that loopback default for a host gateway.
+Explicit private-interface publication requires a host firewall. Put an authenticated
 tunnel or identity-aware reverse proxy in front of it; a tunnel without an
 access policy is not enough.
 
@@ -31,10 +31,12 @@ applies after the gateway.
 - Before the first production registration, configure one 32-byte-or-longer
   setup proof with `RIVIAMIGO_SETUP_TOKEN` or `RIVIAMIGO_SETUP_TOKEN_FILE`,
   then remove or rotate it after the owner is created.
-- Let Riviamigo generate and persist its application keys in PostgreSQL, or
-  supply `JWT_SECRET`, `JWT_PUBLIC_KEY`, and `AGE_ENCRYPTION_KEY` together
-  through a secret manager. Partial overrides are rejected; preserve database
-  backups or test the external secret-manager recovery path.
+- Supply a complete valid external `JWT_SECRET`, `JWT_PUBLIC_KEY`, and
+  `AGE_ENCRYPTION_KEY` bundle, using injected values or their `_FILE` alternatives.
+  Production refuses DB-backed keys. Follow the [key-custody runbook](../runbooks/key-custody.md)
+  before upgrading an existing database; preserve the original keys and ciphertexts.
+  Keep an independently protected key backup; a paid secret manager is not required.
+- Set `RIVIAMIGO_IMAGE` to the reviewed digest of the image built from the tested source.
 - Use strong `POSTGRES_PASSWORD` and `REDIS_PASSWORD` values.
 - Leave `COOKIE_INSECURE` unset.
 
@@ -56,9 +58,10 @@ HTTPS when possible.
 ## Network rules
 
 - Do not publish API port 3001, PostgreSQL port 5432, Redis port 6379, or the
-  origin port 8080 to the Internet. A non-loopback origin bind needs the
-  explicit `ALLOW_PUBLIC_ORIGIN_BIND=true` opt-in and does not remove the
-  gateway/firewall requirement.
+  origin port 8080 to the Internet. Docker publication defaults to loopback;
+  a private-interface override still needs the gateway/firewall boundary. The
+  separate internal API listener needs `ALLOW_PUBLIC_ORIGIN_BIND=true` for a
+  non-loopback bind.
 - The gateway must support WebSocket upgrades and forward to
   `http://localhost:8080`. Riviamigo's live-status socket sends a lightweight
   application keepalive every 30 seconds; the gateway must pass those control

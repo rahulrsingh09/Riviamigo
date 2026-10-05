@@ -15,6 +15,7 @@ storybook-static
 jwt_private.pem
 jwt_public.pem
 age_key.txt
+secrets/
 target/
 apps/api/target-ci-local/
 **/target-tests/

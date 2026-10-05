@@ -2,7 +2,7 @@
 
 use axum::{
     extract::{
-        ws::{Message, WebSocket},
+        ws::{CloseFrame, Message, WebSocket},
         Path, Query, State, WebSocketUpgrade,
     },
     response::IntoResponse,
@@ -16,10 +16,14 @@ use serde::Deserialize;
 use uuid::Uuid;
 
 use crate::{
-    db::vehicles::{require_vehicle_membership, require_vehicle_read_access},
+    db::vehicles::require_vehicle_read_access,
     errors::AppError,
     middleware::auth::{require_vehicle_access, AppState, AuthUser, Claims},
 };
+
+#[cfg(test)]
+#[path = "live_authorization_tests.rs"]
+mod authorization_tests;
 
 pub fn router() -> Router<AppState> {
     Router::new()
@@ -33,6 +37,8 @@ struct LiveParams {
 }
 
 const LIVE_KEEPALIVE_MESSAGE: &str = r#"{"type":"keepalive"}"#;
+const LIVE_AUTH_INTERVAL: std::time::Duration = std::time::Duration::from_secs(5);
+const LIVE_AUTH_TIMEOUT: std::time::Duration = std::time::Duration::from_secs(2);
 
 #[derive(Deserialize)]
 struct LiveClientControlMessage {
@@ -86,12 +92,41 @@ async fn live_handler(
 
     let claims = extract_jwt_from_headers(&headers, &state.jwt_keys)?;
 
-    require_vehicle_membership(&state.pool, claims.sub, vid).await?;
+    require_live_access(&state.pool, &claims, vid).await?;
 
-    let redis = state.redis.clone();
     Ok(ws
         .protocols(["bearer"])
-        .on_upgrade(move |socket| handle_socket(socket, vid, redis)))
+        .on_upgrade(move |socket| handle_socket(socket, vid, state, claims)))
+}
+
+async fn require_live_access(
+    pool: &sqlx::PgPool,
+    claims: &Claims,
+    vehicle_id: Uuid,
+) -> Result<(), AppError> {
+    if claims.exp <= Utc::now().timestamp() {
+        return Err(AppError::Unauthorized);
+    }
+    let allowed: bool = tokio::time::timeout(
+        LIVE_AUTH_TIMEOUT,
+        sqlx::query_scalar(
+            "SELECT EXISTS(
+                SELECT 1 FROM riviamigo.vehicle_memberships m
+                JOIN riviamigo.users u ON u.id = m.user_id
+                JOIN riviamigo.vehicles v ON v.id = m.vehicle_id
+                WHERE m.vehicle_id = $1 AND m.user_id = $2 AND u.is_disabled = FALSE
+            )",
+        )
+        .bind(vehicle_id)
+        .bind(claims.sub)
+        .fetch_one(pool),
+    )
+    .await
+    .map_err(|_| AppError::Unauthorized)??;
+    if !allowed || claims.exp <= Utc::now().timestamp() {
+        return Err(AppError::Unauthorized);
+    }
+    Ok(())
 }
 
 /// GET /v1/vehicles/{id}/live-session
@@ -243,11 +278,11 @@ fn live_session_response(raw: Option<String>) -> axum::response::Response {
     }
 }
 
-async fn handle_socket(socket: WebSocket, vehicle_id: Uuid, redis: redis::Client) {
+async fn handle_socket(socket: WebSocket, vehicle_id: Uuid, state: AppState, claims: Claims) {
     let (mut sink, mut stream) = socket.split();
     let topic = format!("vehicle:{vehicle_id}:status");
 
-    let mut pubsub = match redis.get_async_pubsub().await {
+    let mut pubsub = match state.redis.get_async_pubsub().await {
         Ok(c) => c,
         Err(e) => {
             tracing::error!(err=%e, "redis pubsub connect failed");
@@ -260,10 +295,23 @@ async fn handle_socket(socket: WebSocket, vehicle_id: Uuid, redis: redis::Client
     }
 
     let mut keepalive_interval = tokio::time::interval(tokio::time::Duration::from_secs(30));
+    let mut auth_interval = tokio::time::interval(LIVE_AUTH_INTERVAL);
+    auth_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
+    let expires = tokio::time::sleep(std::time::Duration::from_secs(
+        (claims.exp - Utc::now().timestamp()).max(0) as u64,
+    ));
+    tokio::pin!(expires);
     let mut msg_stream = pubsub.into_on_message();
 
     loop {
         tokio::select! {
+            biased;
+            _ = &mut expires => break,
+            _ = auth_interval.tick() => {
+                if require_live_access(&state.pool, &claims, vehicle_id).await.is_err() {
+                    break;
+                }
+            }
             msg = msg_stream.next() => {
                 match msg {
                     Some(m) => {
@@ -271,19 +319,23 @@ async fn handle_socket(socket: WebSocket, vehicle_id: Uuid, redis: redis::Client
                             Ok(p) => p,
                             Err(_) => continue,
                         };
-                        if sink.send(Message::Text(payload.into())).await.is_err() { break; }
+                        // Check again at delivery so queued telemetry cannot bypass revocation.
+                        if require_live_access(&state.pool, &claims, vehicle_id).await.is_err() {
+                            break;
+                        }
+                        if !send_live_message(&mut sink, Message::Text(payload.into())).await { break; }
                     }
                     None => break,
                 }
             }
             _ = keepalive_interval.tick() => {
-                if sink.send(Message::Text(LIVE_KEEPALIVE_MESSAGE.into())).await.is_err() { break; }
-                if sink.send(Message::Ping(Vec::new().into())).await.is_err() { break; }
+                if !send_live_message(&mut sink, Message::Text(LIVE_KEEPALIVE_MESSAGE.into())).await { break; }
+                if !send_live_message(&mut sink, Message::Ping(Vec::new().into())).await { break; }
             }
             msg = stream.next() => {
                 match msg {
                     Some(Ok(Message::Text(text))) if is_live_probe(text.as_str()) => {
-                        if sink.send(Message::Text(LIVE_KEEPALIVE_MESSAGE.into())).await.is_err() { break; }
+                        if !send_live_message(&mut sink, Message::Text(LIVE_KEEPALIVE_MESSAGE.into())).await { break; }
                     }
                     Some(Ok(Message::Pong(_))) => {}
                     Some(Ok(Message::Close(_))) | None => break,
@@ -292,6 +344,24 @@ async fn handle_socket(socket: WebSocket, vehicle_id: Uuid, redis: redis::Client
             }
         }
     }
+    send_live_message(
+        &mut sink,
+        Message::Close(Some(CloseFrame {
+            code: 1008,
+            reason: "Live authorization ended".into(),
+        })),
+    )
+    .await;
+}
+
+async fn send_live_message(
+    sink: &mut futures::stream::SplitSink<WebSocket, Message>,
+    message: Message,
+) -> bool {
+    matches!(
+        tokio::time::timeout(LIVE_AUTH_TIMEOUT, sink.send(message)).await,
+        Ok(Ok(()))
+    )
 }
 
 #[cfg(test)]

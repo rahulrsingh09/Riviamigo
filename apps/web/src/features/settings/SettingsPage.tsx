@@ -1,7 +1,7 @@
 import React from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, AuthenticatedVehicleArtwork, queryKeys, resolveVehicleArtwork, useAuth, useAuthReady, useMe, useVehicles } from '@riviamigo/hooks';
+import { api, OPTIONAL_EXTERNAL_TRAFFIC_ENABLED, AuthenticatedVehicleArtwork, queryKeys, resolveVehicleArtwork, useAuth, useAuthReady, useMe, useVehicles } from '@riviamigo/hooks';
 import { type UnitPreferences, type Vehicle, type VehicleImages, type VehicleMember } from '@riviamigo/types';
 import {
   downloadDashboardYaml,
@@ -1374,7 +1374,7 @@ export function SettingsContent({ initialSection, oidcFeedback, oidcFeedbackKind
                                   </Button>
                                 </Tooltip>
                               )}
-                              {isAdmin && !isDemo && (
+                              {OPTIONAL_EXTERNAL_TRAFFIC_ENABLED && isAdmin && !isDemo && (
                                 <Tooltip content="Clear local artwork cache; the next artwork view restores it">
                                   <Button
                                     aria-label={`Clear local artwork cache for ${v.display_name}`}
@@ -1388,7 +1388,7 @@ export function SettingsContent({ initialSection, oidcFeedback, oidcFeedbackKind
                                   </Button>
                                 </Tooltip>
                               )}
-                              {isAdmin && !isDemo && (
+                              {OPTIONAL_EXTERNAL_TRAFFIC_ENABLED && isAdmin && !isDemo && (
                                 <Tooltip content="Refresh vehicle artwork from Rivian">
                                   <Button
                                     aria-label={`Refresh vehicle artwork for ${v.display_name}`}

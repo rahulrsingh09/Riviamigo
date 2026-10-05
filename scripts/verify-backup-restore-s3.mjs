@@ -99,7 +99,7 @@ function backupSettings(endpoint) {
 }
 
 function startStack(project, dataDir, envFile, port) {
-  const env = { ...process.env, RIVIAMIGO_DATA_DIR: dataDir.replaceAll('\\', '/'), RIVIAMIGO_ENV_FILE: envFile, RIVIAMIGO_ORIGIN_PORT: String(port) };
+  const env = { ...process.env, ...(sourceBuild ? { RIVIAMIGO_IMAGE: 'riviamigo:local' } : {}), RIVIAMIGO_DATA_DIR: dataDir.replaceAll('\\', '/'), RIVIAMIGO_ENV_FILE: envFile, RIVIAMIGO_ORIGIN_PORT: String(port) };
   run('docker', [...composeArgs(project, envFile), 'up', ...(sourceBuild ? ['--build'] : []), '-d'], { env });
   projects.push({ project, envFile, env });
 }
