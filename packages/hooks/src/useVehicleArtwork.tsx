@@ -2,6 +2,7 @@ import React from 'react';
 import { useQuery } from '@tanstack/react-query';
 
 import { api } from './api';
+import { isLocalArtworkSource } from './outboundPolicy';
 
 type ArtworkAsset = {
   blob: Blob;
@@ -28,6 +29,7 @@ function isProtectedArtwork(source: string | null | undefined): source is string
 }
 
 export function useVehicleArtwork(source: string | null | undefined) {
+  source = isLocalArtworkSource(source) ? source : null;
   const protectedArtwork = isProtectedArtwork(source);
   const query = useQuery({
     queryKey: ['vehicle-artwork-asset', source],

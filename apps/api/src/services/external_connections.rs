@@ -111,10 +111,10 @@ pub async fn ensure_defaults(pool: &PgPool) -> Result<(), AppError> {
               custom_autocomplete, allow_private_network, basemap_provider)
            VALUES
              ('rivian_account', TRUE, 'remote', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE, FALSE, 'auto'),
-             ('open_meteo', TRUE, 'remote', 'approximate', 'https://api.open-meteo.com/v1/forecast', 'https://archive-api.open-meteo.com/v1/archive', NULL, NULL, NULL, 'Weather data by Open-Meteo', 'https://open-meteo.com/', FALSE, FALSE, 'auto'),
-             ('nominatim', TRUE, 'remote', NULL, NULL, NULL, 'https://nominatim.openstreetmap.org', NULL, NULL, 'OpenStreetMap contributors', 'https://www.openstreetmap.org/copyright', FALSE, FALSE, 'auto'),
-             ('basemap', TRUE, 'remote', NULL, NULL, NULL, NULL, 'https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png', 'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png', 'OpenStreetMap contributors and CARTO', 'https://carto.com/attributions', FALSE, FALSE, 'auto'),
-             ('iconify', TRUE, 'remote', NULL, NULL, NULL, 'https://api.iconify.design', NULL, NULL, 'Iconify', 'https://iconify.design/', FALSE, FALSE, 'auto'),
+             ('open_meteo', FALSE, 'disabled', 'approximate', 'https://api.open-meteo.com/v1/forecast', 'https://archive-api.open-meteo.com/v1/archive', NULL, NULL, NULL, 'Weather data by Open-Meteo', 'https://open-meteo.com/', FALSE, FALSE, 'auto'),
+             ('nominatim', FALSE, 'disabled', NULL, NULL, NULL, 'https://nominatim.openstreetmap.org', NULL, NULL, 'OpenStreetMap contributors', 'https://www.openstreetmap.org/copyright', FALSE, FALSE, 'auto'),
+             ('basemap', FALSE, 'disabled', NULL, NULL, NULL, NULL, 'https://basemaps.cartocdn.com/light_all/{z}/{x}/{y}.png', 'https://basemaps.cartocdn.com/dark_all/{z}/{x}/{y}.png', 'OpenStreetMap contributors and CARTO', 'https://carto.com/attributions', FALSE, FALSE, 'auto'),
+             ('iconify', FALSE, 'disabled', NULL, NULL, NULL, 'https://api.iconify.design', NULL, NULL, 'Iconify', 'https://iconify.design/', FALSE, FALSE, 'auto'),
              ('s3_backup', FALSE, 'disabled', NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, FALSE, FALSE, 'auto')
            ON CONFLICT (id) DO NOTHING"#,
     )
@@ -149,9 +149,29 @@ pub struct ConnectionSettingsRow {
     pub updated_at: DateTime<Utc>,
 }
 
+pub fn connection_allowed(id: &str) -> bool {
+    matches!(id, RIVIAN_ACCOUNT | S3_BACKUP) || super::outbound_policy::optional_traffic_allowed()
+}
+
+pub fn require_connection_allowed(id: &str) -> Result<(), AppError> {
+    if connection_allowed(id) {
+        Ok(())
+    } else {
+        Err(AppError::ExternalConnectionDisabled(id.to_string()))
+    }
+}
+
 impl ConnectionSettingsRow {
+    fn apply_outbound_policy(mut self) -> Self {
+        if !connection_allowed(&self.id) {
+            self.enabled = false;
+            self.mode = "disabled".into();
+        }
+        self
+    }
+
     pub fn is_active(&self) -> bool {
-        self.enabled && self.mode != "disabled"
+        self.enabled && self.mode != "disabled" && connection_allowed(&self.id)
     }
 }
 
@@ -182,6 +202,7 @@ pub async fn load(pool: &PgPool, id: &str) -> Result<ConnectionSettingsRow, AppE
     .fetch_optional(pool)
     .await?
     .ok_or(AppError::NotFound)
+    .map(ConnectionSettingsRow::apply_outbound_policy)
 }
 
 pub async fn list(
@@ -266,7 +287,8 @@ pub async fn list(
                     api_key_encrypted: row.api_key_encrypted,
                     bearer_token_encrypted: row.bearer_token_encrypted,
                     updated_at: row.updated_at,
-                },
+                }
+                .apply_outbound_policy(),
                 ConnectionActivityRow {
                     last_attempt_at: row.last_attempt_at,
                     last_success_at: row.last_success_at,
@@ -283,6 +305,7 @@ pub async fn list(
 }
 
 pub async fn require_enabled(pool: &PgPool, id: &str) -> Result<ConnectionSettingsRow, AppError> {
+    require_connection_allowed(id)?;
     let settings = load(pool, id).await?;
     if settings.is_active() {
         Ok(settings)

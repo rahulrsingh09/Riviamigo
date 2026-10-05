@@ -1,6 +1,7 @@
 export { api, themeClient, setApiBaseUrl, resolveApiBaseUrl } from './api';
 export { authClient, vehicleClient, tripClient, chargingClient, telemetryClient, analyticsClient, systemClient } from './api';
 export { queryKeys } from './queryKeys';
+export { VEHICLE_CONTROLS_ENABLED, OPTIONAL_EXTERNAL_TRAFFIC_ENABLED } from './outboundPolicy';
 export type { ChargingSchedule, ChargingScheduleInput, DepartureSchedule, DepartureScheduleInput, DepartureOccurrence, DepartureComfortSettings, LiveSession, BackfillStatus } from './api';
 export { consumeExplicitLogoutIntent, recordExplicitLogoutIntent, useAuth } from './useAuth';
 export { useAuthReady, useResolvedVehicleSelection } from './useAuthState';

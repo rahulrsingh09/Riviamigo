@@ -1,4 +1,4 @@
-//! Schedule and enrichment routes.
+//! Read-only schedule and enrichment routes. Vehicle writes return 403.
 //!
 //! Routes:
 //!   GET  /v1/vehicles/{id}/charging-schedule
@@ -16,13 +16,12 @@ use axum::{
     Json, Router,
 };
 use chrono::{DateTime, Utc};
-use serde::{Deserialize, Serialize};
+use serde::Serialize;
 use uuid::Uuid;
 
 use crate::{
-    db::vehicles::{require_vehicle_manager_access, require_vehicle_read_access},
+    db::vehicles::require_vehicle_read_access,
     errors::AppError,
-    ingestion::rivian_poll::{self, ChargingScheduleInput, DepartureScheduleInput},
     middleware::auth::{AppState, AuthUser},
 };
 
@@ -30,44 +29,43 @@ pub fn router() -> Router<AppState> {
     Router::new()
         .route(
             "/vehicles/{id}/charging-schedule",
-            get(get_charging_schedule).put(put_charging_schedule),
+            get(get_charging_schedule).put(reject_vehicle_write),
         )
         .route(
             "/vehicles/{id}/departure-schedules",
-            get(list_departure_schedules).post(create_departure_schedule),
+            get(list_departure_schedules).post(reject_vehicle_write),
         )
         .route(
             "/vehicles/{id}/departure-schedules/{schedule_id}",
-            patch(update_departure_schedule).delete(delete_departure_schedule),
+            patch(reject_vehicle_write).delete(reject_vehicle_write),
         )
         .route("/vehicles/{id}/wallboxes", get(list_wallboxes))
         .route("/vehicles/{id}/ota-details", get(get_ota_details))
 }
 
-fn http_client() -> Result<reqwest::Client, AppError> {
-    reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(15))
-        .build()
-        .map_err(|error| AppError::Internal(error.into()))
+async fn reject_vehicle_write(_auth: AuthUser) -> Result<(), AppError> {
+    Err(AppError::Forbidden)
 }
 
-async fn reject_demo_schedule_mutation(
-    pool: &sqlx::PgPool,
-    vehicle_id: Uuid,
-) -> Result<(), AppError> {
-    let key = sqlx::query_scalar::<_, String>(
-        "SELECT rivian_vehicle_id FROM riviamigo.vehicles WHERE id=$1",
-    )
-    .bind(vehicle_id)
-    .fetch_optional(pool)
-    .await?
-    .ok_or(AppError::NotFound)?;
-    if key.starts_with("demo-") {
-        return Err(AppError::Validation(
-            "demo vehicles are historical examples and cannot change Rivian schedules".into(),
-        ));
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use axum::response::IntoResponse;
+
+    #[tokio::test]
+    async fn outbound_policy_returns_forbidden_for_authenticated_vehicle_writes() {
+        let auth = AuthUser {
+            user_id: Uuid::new_v4(),
+            default_vehicle_id: Some(Uuid::new_v4()),
+            api_access_level: None,
+            api_vehicle_id: None,
+        };
+        let response = reject_vehicle_write(auth)
+            .await
+            .unwrap_err()
+            .into_response();
+        assert_eq!(response.status(), axum::http::StatusCode::FORBIDDEN);
     }
-    Ok(())
 }
 
 // ── GET /v1/vehicles/{id}/charging-schedule ───────────────────────────────────
@@ -106,32 +104,6 @@ async fn get_charging_schedule(
     Ok(Json(row))
 }
 
-// ── PUT /v1/vehicles/{id}/charging-schedule ───────────────────────────────────
-
-async fn put_charging_schedule(
-    auth: AuthUser,
-    State(state): State<AppState>,
-    Path(vehicle_id): Path<Uuid>,
-    Json(body): Json<ChargingScheduleInput>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    require_vehicle_manager_access(&state.pool, &auth, vehicle_id).await?;
-    reject_demo_schedule_mutation(&state.pool, vehicle_id).await?;
-
-    let client = http_client()?;
-
-    rivian_poll::mutate_charging_schedule_for_vehicle(
-        vehicle_id,
-        &body,
-        &state.pool,
-        &client,
-        &state.age_key,
-    )
-    .await
-    .map_err(|e| AppError::RivianApi(e.to_string()))?;
-
-    Ok(Json(serde_json::json!({ "ok": true })))
-}
-
 // ── GET /v1/vehicles/{id}/departure-schedules ─────────────────────────────────
 
 #[derive(Debug, Serialize, sqlx::FromRow)]
@@ -163,129 +135,6 @@ async fn list_departure_schedules(
     .await?;
 
     Ok(Json(rows))
-}
-
-// ── POST /v1/vehicles/{id}/departure-schedules ────────────────────────────────
-
-#[derive(Debug, Deserialize)]
-struct CreateDepartureBody {
-    name: Option<String>,
-    enabled: bool,
-    occurrence: Option<serde_json::Value>,
-    comfort_settings: Option<serde_json::Value>,
-}
-
-async fn create_departure_schedule(
-    auth: AuthUser,
-    State(state): State<AppState>,
-    Path(vehicle_id): Path<Uuid>,
-    Json(body): Json<CreateDepartureBody>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    require_vehicle_manager_access(&state.pool, &auth, vehicle_id).await?;
-    reject_demo_schedule_mutation(&state.pool, vehicle_id).await?;
-
-    let client = http_client()?;
-
-    let input = DepartureScheduleInput {
-        name: body.name,
-        enabled: body.enabled,
-        occurrence: body.occurrence,
-        comfort_settings: body.comfort_settings,
-    };
-
-    let rivian_id = rivian_poll::create_departure_schedule_for_vehicle(
-        vehicle_id,
-        &input,
-        &state.pool,
-        &client,
-        &state.age_key,
-    )
-    .await
-    .map_err(|e| AppError::RivianApi(e.to_string()))?;
-
-    Ok(Json(serde_json::json!({ "rivian_schedule_id": rivian_id })))
-}
-
-// ── PATCH /v1/vehicles/{id}/departure-schedules/{schedule_id} ─────────────────
-
-async fn update_departure_schedule(
-    auth: AuthUser,
-    State(state): State<AppState>,
-    Path((vehicle_id, schedule_id)): Path<(Uuid, String)>,
-    Json(body): Json<CreateDepartureBody>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    require_vehicle_manager_access(&state.pool, &auth, vehicle_id).await?;
-    reject_demo_schedule_mutation(&state.pool, vehicle_id).await?;
-
-    // Resolve rivian_schedule_id from local id (schedule_id may be either).
-    let rivian_sched_id: Option<String> = sqlx::query_scalar(
-        "SELECT rivian_schedule_id FROM riviamigo.departure_schedules
-         WHERE vehicle_id = $1 AND (rivian_schedule_id = $2 OR id::text = $2)",
-    )
-    .bind(vehicle_id)
-    .bind(&schedule_id)
-    .fetch_optional(&state.pool)
-    .await?;
-
-    let rivian_sched_id = rivian_sched_id.ok_or(AppError::NotFound)?;
-
-    let client = http_client()?;
-
-    let input = DepartureScheduleInput {
-        name: body.name,
-        enabled: body.enabled,
-        occurrence: body.occurrence,
-        comfort_settings: body.comfort_settings,
-    };
-
-    rivian_poll::update_departure_schedule_for_vehicle(
-        vehicle_id,
-        &rivian_sched_id,
-        &input,
-        &state.pool,
-        &client,
-        &state.age_key,
-    )
-    .await
-    .map_err(|e| AppError::RivianApi(e.to_string()))?;
-
-    Ok(Json(serde_json::json!({ "ok": true })))
-}
-
-// ── DELETE /v1/vehicles/{id}/departure-schedules/{schedule_id} ────────────────
-
-async fn delete_departure_schedule(
-    auth: AuthUser,
-    State(state): State<AppState>,
-    Path((vehicle_id, schedule_id)): Path<(Uuid, String)>,
-) -> Result<Json<serde_json::Value>, AppError> {
-    require_vehicle_manager_access(&state.pool, &auth, vehicle_id).await?;
-    reject_demo_schedule_mutation(&state.pool, vehicle_id).await?;
-
-    let rivian_sched_id: Option<String> = sqlx::query_scalar(
-        "SELECT rivian_schedule_id FROM riviamigo.departure_schedules
-         WHERE vehicle_id = $1 AND (rivian_schedule_id = $2 OR id::text = $2)",
-    )
-    .bind(vehicle_id)
-    .bind(&schedule_id)
-    .fetch_optional(&state.pool)
-    .await?;
-
-    let rivian_sched_id = rivian_sched_id.ok_or(AppError::NotFound)?;
-
-    let client = http_client()?;
-
-    rivian_poll::delete_departure_schedule_for_vehicle(
-        vehicle_id,
-        &rivian_sched_id,
-        &state.pool,
-        &client,
-        &state.age_key,
-    )
-    .await
-    .map_err(|e| AppError::RivianApi(e.to_string()))?;
-
-    Ok(Json(serde_json::json!({ "ok": true })))
 }
 
 // ── GET /v1/vehicles/{id}/wallboxes ───────────────────────────────────────────

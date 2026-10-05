@@ -85,7 +85,8 @@ vi.mock('@tanstack/react-router', async (importOriginal) => {
   return { ...actual, useNavigate: () => mockNavigate };
 });
 
-vi.mock('@riviamigo/hooks', () => ({
+vi.mock('@riviamigo/hooks', async (importOriginal) => ({
+  OPTIONAL_EXTERNAL_TRAFFIC_ENABLED: (await importOriginal<typeof import('@riviamigo/hooks')>()).OPTIONAL_EXTERNAL_TRAFFIC_ENABLED,
   queryKeys: {
     auth: {
       identities: ['auth-identities'],

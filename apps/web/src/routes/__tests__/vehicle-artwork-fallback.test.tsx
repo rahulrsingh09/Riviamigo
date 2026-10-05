@@ -39,6 +39,18 @@ function renderArtwork(node: React.ReactNode) {
 }
 
 describe('vehicle artwork fallback contract', () => {
+  it.each([
+    'https://images.example.test/car.webp',
+    'https://user:password@images.example.test/car.webp',
+    '//images.example.test/car.webp',
+    '/\\images.example.test/car.webp',
+    'http://127.0.0.1/car.webp',
+    'data:image/svg+xml,<svg/>',
+  ])('rejects external or ambiguous artwork source %s', (source) => {
+    renderArtwork(<AuthenticatedVehicleArtwork source={source} fallbackSource="/vehicle-images/fallbacks/r1t/side.webp" alt="Vehicle" />);
+    expect(screen.getByRole('img', { name: 'Vehicle' })).toHaveAttribute('src', '/vehicle-images/fallbacks/r1t/side.webp');
+  });
+
   it('resolves supported model variants to semantic fallback canvases', () => {
     expect(normalizeVehicleArtworkModel('Gen 2 R1T Adventure')).toBe('r1t');
     expect(normalizeVehicleArtworkModel('R2S Launch Edition')).toBe('r2');

@@ -3218,6 +3218,7 @@ async fn match_point(
 /// callers can degrade gracefully.
 #[allow(dead_code)]
 async fn reverse_geocode_and_store(pool: &PgPool, lat: f64, lon: f64) -> Option<Uuid> {
+    crate::services::outbound_policy::require_optional_traffic().ok()?;
     let slot = crate::services::nominatim::acquire_slot(
         crate::services::nominatim::NominatimLane::BackgroundReverseGeocode,
     )
