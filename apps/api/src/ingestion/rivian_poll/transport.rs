@@ -21,6 +21,7 @@ struct GqlEnvelope<T> {
 
 #[derive(Debug, Deserialize)]
 struct GqlError {
+    #[allow(dead_code)]
     message: String,
     #[serde(default)]
     extensions: Option<GqlErrorExtensions>,
@@ -32,11 +33,8 @@ struct GqlErrorExtensions {
 }
 
 fn fmt_errors(errors: &[GqlError]) -> String {
-    errors
-        .iter()
-        .map(|error| error.message.as_str())
-        .collect::<Vec<_>>()
-        .join("; ")
+    // Upstream error fields may echo credentials or other request inputs.
+    format!("{} upstream errors (details withheld)", errors.len())
 }
 
 /// Typed marker error for an explicit authentication failure from Rivian.
@@ -277,6 +275,6 @@ mod tests {
             },
         ];
 
-        assert_eq!(fmt_errors(&errors), "first; second");
+        assert_eq!(fmt_errors(&errors), "2 upstream errors (details withheld)");
     }
 }

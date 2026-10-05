@@ -38,7 +38,7 @@ RUN mkdir -p src/bin && printf 'fn main() {}\n' > src/main.rs \
         target_flag='--target aarch64-unknown-linux-gnu'; \
     fi \
     && build_jobs="${CARGO_BUILD_JOBS:-$(nproc)}" \
-    && cargo build --profile container --jobs "$build_jobs" $target_flag \
+    && cargo build --locked --profile container --jobs "$build_jobs" $target_flag \
         --bin riviamigo-api \
         --bin riviamigo-restore-agent \
         --bin rebaseline_db \
@@ -61,7 +61,7 @@ RUN touch src/lib.rs src/main.rs src/bin/riviamigo-restore-agent.rs src/bin/reba
         binary_path=target/aarch64-unknown-linux-gnu/container/riviamigo-api; \
     fi \
     && build_jobs="${CARGO_BUILD_JOBS:-$(nproc)}" \
-    && cargo build --profile container --jobs "$build_jobs" $target_flag \
+    && cargo build --locked --profile container --jobs "$build_jobs" $target_flag \
         --bin riviamigo-api \
         --bin riviamigo-restore-agent \
         --bin rebaseline_db \
@@ -104,8 +104,13 @@ FROM postgres:18.4-bookworm@sha256:1961f96e6029a02c3812d7cb329a3b03a3ac2bb067058
 LABEL org.opencontainers.image.source="https://github.com/bballdavis/Riviamigo"
 ENV TZ=UTC XDG_CACHE_HOME=/data/cache
 
-RUN apt-get update && apt-get install -y --no-install-recommends \
+RUN apt-get update && apt-get upgrade -y --no-install-recommends \
+    && apt-get install -y --no-install-recommends \
     ca-certificates curl libpcre2-8-0 libssl3 nginx tini util-linux \
+    && apt-mark manual postgresql-client-18 \
+    && apt-get purge -y postgresql-18 postgresql-18-jit libllvm19 libxml2 libxslt1.1 gpg libsqlite3-0 \
+    && apt-get autoremove -y --purge \
+    && find / -xdev -type f -perm /6000 -exec chmod a-s '{}' + \
     && rm -rf /var/lib/apt/lists/* /etc/nginx/sites-enabled /usr/share/nginx/html \
         /usr/local/bin/gosu \
     && groupadd -r -g 1001 riviamigo \
@@ -121,6 +126,7 @@ COPY --chown=1001:1001 --from=api-builder /build/apps/api/riviamigo-keys ./rivia
 COPY --chown=1001:1001 --from=api-builder /build/apps/api/migrations ./migrations
 COPY --chown=1001:1001 --from=web-builder /build/apps/web/dist ./dist
 COPY compose/nginx/nginx.conf /etc/nginx/nginx.conf
+COPY compose/nginx/security-headers.conf /etc/nginx/security-headers.conf
 COPY --chown=1001:1001 compose/production-services.sh compose/production-healthcheck.sh ./
 RUN sed -i 's/\r$//' /app/production-services.sh /app/production-healthcheck.sh \
     && chmod 0755 /app/production-services.sh /app/production-healthcheck.sh

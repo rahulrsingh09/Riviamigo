@@ -677,27 +677,32 @@ fn has_unauthenticated_error(errors: &[GqlError]) -> bool {
 }
 
 fn format_gql_error(errors: &[GqlError]) -> String {
-    errors
-        .first()
-        .map(|e| {
-            let mut msg = e.message.clone();
-            if let Some(ext) = &e.extensions {
-                if let Some(code) = &ext.code {
-                    msg.push_str(&format!(" ({code}"));
-                    if let Some(reason) = &ext.reason {
-                        msg.push_str(&format!(": {reason}"));
-                    }
-                    msg.push(')');
-                }
-            }
-            msg
-        })
-        .unwrap_or_else(|| "unknown Rivian GraphQL error".into())
+    // Upstream error fields may echo credentials or other request inputs.
+    format!("Rivian GraphQL request failed ({} errors)", errors.len())
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn upstream_errors_do_not_echo_request_secrets() {
+        let errors: Vec<GqlError> = serde_json::from_value(serde_json::json!([{
+            "message": "synthetic-secret-password",
+            "extensions": {
+                "code": "synthetic-secret-token",
+                "reason": "synthetic-secret-email"
+            }
+        }]))
+        .unwrap();
+        assert_eq!(
+            format_gql_error(&errors),
+            "Rivian GraphQL request failed (1 errors)"
+        );
+        assert!(!map_login_errors(errors)
+            .to_string()
+            .contains("synthetic-secret"));
+    }
     use axum::{
         extract::State,
         http::{HeaderMap, StatusCode},
