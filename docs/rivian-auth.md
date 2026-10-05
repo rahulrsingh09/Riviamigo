@@ -65,10 +65,16 @@ query after a session, not a replacement for the live stream.
    `currentUser.vehicles[].id`, `vin`, `name`, `vehicle.modelYear`, and
    `vehicle.model`.
 8. `/v1/vehicles/connect` returns those vehicle summaries. The browser must
-   follow a successful connect by calling `POST /v1/vehicles`, which encrypts
-   and persists the temporary token bundle from Redis into
-   `riviamigo.vehicle_credentials` and sets `users.default_vehicle_id` if it is
-   currently empty.
+   follow a successful connect by calling `POST /v1/vehicles`. The API reads the
+   caller's encrypted temporary token bundle from Redis and calls `getUserInfo`
+   again to verify the selected vehicle belongs to that account before changing
+   local data. A failed lookup or a vehicle absent from the response leaves local
+   membership and credentials unchanged. A new vehicle gets owner membership;
+   an existing vehicle requires an existing owner or manager membership and never
+   acquires a new member through enrollment. Use invitations to share local access.
+   The API then persists the encrypted token bundle in
+   `riviamigo.vehicle_credentials` and sets `users.default_vehicle_id` if empty.
+   Concurrent enrollment of the same Rivian ID is serialized.
 
 Refreshing credentials for an existing vehicle uses the same encrypted storage
 path and immediately sends a worker-start command. This matters after a restore:
@@ -95,7 +101,8 @@ represent a new long-lived Rivian authorization. Do not move the advisory date
 from routine WebSocket reconnects or short-lived session refreshes.
 
 The credential-refresh route verifies the selected Rivian vehicle before
-storage, starts the worker, and waits for runtime health plus vehicle discovery
+storage and rechecks the caller's enabled account and owner/manager membership
+inside the write transaction. It starts the worker and waits for runtime health plus vehicle discovery
 for a bounded interval. It returns `telemetry_status: connected` only after that
 proof. A bounded timeout returns `waiting_for_vehicle_data` with a recoverable message while
 retaining the valid encrypted credentials. The browser invalidates the vehicle,

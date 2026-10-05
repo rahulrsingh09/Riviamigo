@@ -41,6 +41,10 @@ use crate::{
     },
 };
 
+#[cfg(test)]
+#[path = "vehicles_authorization_tests.rs"]
+mod authorization_tests;
+
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/vehicles/connect", post(connect))
@@ -1372,6 +1376,46 @@ async fn add_vehicle(
     auth: AuthUser,
     Json(body): Json<AddVehicleBody>,
 ) -> Result<Json<serde_json::Value>, AppError> {
+    add_vehicle_with_lookup(state, auth, body, lookup_rivian_vehicles).await
+}
+
+async fn lookup_rivian_vehicles(
+    tokens: &crate::ingestion::session_store::RivianTokenBundle,
+) -> Result<Vec<RivianVehicleSummary>, AppError> {
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(30))
+        .redirect(reqwest::redirect::Policy::none())
+        .build()
+        .map_err(|error| AppError::Internal(error.into()))?;
+    crate::ingestion::rivian_auth::rivian_user_vehicles(&client, tokens)
+        .await
+        .map_err(|_| AppError::RivianApi("Unable to verify Rivian vehicle access".into()))
+}
+
+fn require_account_vehicle(
+    account_vehicles: &[RivianVehicleSummary],
+    rivian_vehicle_id: &str,
+) -> Result<(), AppError> {
+    if account_vehicles
+        .iter()
+        .any(|vehicle| vehicle.id == rivian_vehicle_id)
+    {
+        Ok(())
+    } else {
+        Err(AppError::Validation(
+            "Rivian account does not include this vehicle".into(),
+        ))
+    }
+}
+
+async fn add_vehicle_with_lookup(
+    state: AppState,
+    auth: AuthUser,
+    body: AddVehicleBody,
+    lookup: impl AsyncFnOnce(
+        &crate::ingestion::session_store::RivianTokenBundle,
+    ) -> Result<Vec<RivianVehicleSummary>, AppError>,
+) -> Result<Json<serde_json::Value>, AppError> {
     let rivian_vehicle_id = body.rivian_vehicle_id.clone();
 
     info!(
@@ -1396,41 +1440,29 @@ async fn add_vehicle(
         AppError::RivianConnectSessionExpired
     })?;
 
+    let account_vehicles = lookup(&tokens).await?;
+    require_account_vehicle(&account_vehicles, &rivian_vehicle_id)?;
+
     let identity = age_identity(&state)?;
     let encrypted = crate::ingestion::session_store::encrypt_tokens(&tokens, &identity)
         .map_err(AppError::Internal)?;
 
-    let existing_vehicle_id: Option<Uuid> =
-        sqlx::query_scalar("SELECT id FROM riviamigo.vehicles WHERE rivian_vehicle_id = $1")
-            .bind(&rivian_vehicle_id)
-            .fetch_optional(&state.pool)
-            .await?;
-
     let mut tx = state.pool.begin().await?;
+    lock_active_enrollment_user(&mut tx, auth.user_id).await?;
+    // The schema only makes Rivian IDs unique per user, so serialize enrollment globally.
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 1))")
+        .bind(&rivian_vehicle_id)
+        .execute(&mut *tx)
+        .await?;
+    let existing_vehicle_id: Option<Uuid> = sqlx::query_scalar(
+        "SELECT id FROM riviamigo.vehicles WHERE rivian_vehicle_id = $1 FOR UPDATE",
+    )
+    .bind(&rivian_vehicle_id)
+    .fetch_optional(&mut *tx)
+    .await?;
 
     let vehicle_id = if let Some(existing_vehicle_id) = existing_vehicle_id {
-        let already_member = sqlx::query_scalar::<_, bool>(
-            "SELECT EXISTS(
-                SELECT 1
-                FROM riviamigo.vehicle_memberships
-                WHERE vehicle_id = $1 AND user_id = $2
-            )",
-        )
-        .bind(existing_vehicle_id)
-        .bind(auth.user_id)
-        .fetch_one(&mut *tx)
-        .await?;
-
-        if !already_member {
-            sqlx::query(
-                "INSERT INTO riviamigo.vehicle_memberships (vehicle_id, user_id, role, is_default)
-                 VALUES ($1, $2, 'owner', FALSE)",
-            )
-            .bind(existing_vehicle_id)
-            .bind(auth.user_id)
-            .execute(&mut *tx)
-            .await?;
-        }
+        lock_credential_membership(&mut tx, auth.user_id, existing_vehicle_id).await?;
 
         sqlx::query(
             "INSERT INTO riviamigo.vehicle_user_settings
@@ -1584,6 +1616,42 @@ async fn add_vehicle(
     })))
 }
 
+async fn lock_active_enrollment_user(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    user_id: Uuid,
+) -> Result<(), AppError> {
+    match sqlx::query_scalar::<_, bool>(
+        "SELECT is_disabled FROM riviamigo.users WHERE id = $1 FOR UPDATE",
+    )
+    .bind(user_id)
+    .fetch_optional(&mut **tx)
+    .await?
+    {
+        Some(false) => Ok(()),
+        Some(true) => Err(AppError::Forbidden),
+        None => Err(AppError::Unauthorized),
+    }
+}
+
+async fn lock_credential_membership(
+    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
+    user_id: Uuid,
+    vehicle_id: Uuid,
+) -> Result<(), AppError> {
+    let role = sqlx::query_scalar::<_, String>(
+        "SELECT role FROM riviamigo.vehicle_memberships
+         WHERE vehicle_id = $1 AND user_id = $2 FOR SHARE",
+    )
+    .bind(vehicle_id)
+    .bind(user_id)
+    .fetch_optional(&mut **tx)
+    .await?;
+    match role.as_deref() {
+        Some("owner" | "manager") => Ok(()),
+        _ => Err(AppError::Forbidden),
+    }
+}
+
 async fn refresh_vehicle_credentials(
     State(state): State<AppState>,
     auth: AuthUser,
@@ -1610,30 +1678,16 @@ async fn refresh_vehicle_credentials(
     .await?
     .ok_or(AppError::RivianConnectSessionExpired)?;
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(30))
-        .build()
-        .unwrap_or_default();
-    let account_vehicles = crate::ingestion::rivian_auth::rivian_user_vehicles(&client, &tokens)
-        .await
-        .map_err(|e| {
-            warn!(vehicle_id = %vid, user_id = %auth.user_id, error = %e, "vehicle.refresh_credentials.fetch_user_vehicles_failed");
-            AppError::RivianApi("Unable to verify Rivian vehicle access".into())
-        })?;
-    if !account_vehicles
-        .iter()
-        .any(|vehicle| vehicle.id == rivian_vehicle_id)
-    {
-        return Err(AppError::Validation(
-            "Rivian account does not include this vehicle".into(),
-        ));
-    }
+    let account_vehicles = lookup_rivian_vehicles(&tokens).await?;
+    require_account_vehicle(&account_vehicles, &rivian_vehicle_id)?;
 
     let identity = age_identity(&state)?;
     let encrypted = crate::ingestion::session_store::encrypt_tokens(&tokens, &identity)
         .map_err(AppError::Internal)?;
 
     let mut tx = state.pool.begin().await?;
+    lock_active_enrollment_user(&mut tx, auth.user_id).await?;
+    lock_credential_membership(&mut tx, auth.user_id, vid).await?;
 
     sqlx::query(
         "INSERT INTO riviamigo.vehicle_credentials (vehicle_id, encrypted_tokens, token_created_at, last_refreshed_at)

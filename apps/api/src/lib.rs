@@ -11,3 +11,6 @@ pub mod models;
 pub mod parallax;
 pub mod routes;
 pub mod services;
+
+#[cfg(test)]
+mod authorization_test_support;

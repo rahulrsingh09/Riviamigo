@@ -105,17 +105,7 @@ impl FromRequestParts<AppState> for AuthUser {
             .map_err(|_| AppError::Unauthorized)?
             .claims;
 
-        let is_disabled = sqlx::query_scalar::<_, Option<bool>>(
-            "SELECT is_disabled FROM riviamigo.users WHERE id = $1",
-        )
-        .bind(claims.sub)
-        .fetch_optional(&state.pool)
-        .await?
-        .flatten()
-        .unwrap_or(false);
-        if is_disabled {
-            return Err(AppError::Forbidden);
-        }
+        require_active_user(&state.pool, claims.sub).await?;
 
         Ok(AuthUser {
             user_id: claims.sub,
@@ -123,6 +113,18 @@ impl FromRequestParts<AppState> for AuthUser {
             api_access_level: None,
             api_vehicle_id: None,
         })
+    }
+}
+
+pub async fn require_active_user(pool: &sqlx::PgPool, user_id: Uuid) -> Result<(), AppError> {
+    match sqlx::query_scalar::<_, bool>("SELECT is_disabled FROM riviamigo.users WHERE id = $1")
+        .bind(user_id)
+        .fetch_optional(pool)
+        .await?
+    {
+        Some(false) => Ok(()),
+        Some(true) => Err(AppError::Forbidden),
+        None => Err(AppError::Unauthorized),
     }
 }
 

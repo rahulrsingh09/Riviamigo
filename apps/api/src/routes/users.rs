@@ -19,6 +19,10 @@ use crate::{
     services::{authentication_settings, oidc},
 };
 
+#[cfg(test)]
+#[path = "users_authorization_tests.rs"]
+mod authorization_tests;
+
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/admin/users", get(list_users))
@@ -388,6 +392,7 @@ async fn update_user(
         .transpose()?
         .map(|role| role.as_str().to_string());
 
+    let mut tx = state.pool.begin().await?;
     sqlx::query(
         "UPDATE riviamigo.users
          SET email = COALESCE($2, email),
@@ -400,8 +405,25 @@ async fn update_user(
     .bind(email)
     .bind(role_str)
     .bind(body.is_disabled)
-    .execute(&state.pool)
+    .execute(&mut *tx)
     .await?;
+    if body.is_disabled == Some(true) {
+        sqlx::query(
+            "UPDATE riviamigo.refresh_tokens SET revoked_at = now()
+             WHERE user_id = $1 AND revoked_at IS NULL",
+        )
+        .bind(target_user_id)
+        .execute(&mut *tx)
+        .await?;
+        sqlx::query(
+            "UPDATE riviamigo.api_keys SET revoked_at = now(), updated_at = now()
+             WHERE user_id = $1 AND revoked_at IS NULL",
+        )
+        .bind(target_user_id)
+        .execute(&mut *tx)
+        .await?;
+    }
+    tx.commit().await?;
     support_audit(
         state.pool.clone(),
         "admin_user_update",
@@ -421,12 +443,20 @@ async fn delete_user(
         return Err(AppError::Validation("cannot delete yourself".into()));
     }
     require_super_user(&state.pool, auth.user_id).await?;
-    let target_role = get_user_role(&state.pool, target_user_id).await?;
-    if target_role == UserRole::SuperUser {
+    let mut tx = state.pool.begin().await?;
+    // Lock before session cleanup so enrollment and refresh issuance cannot outlive deletion.
+    let target = sqlx::query_as::<_, (String, String)>(
+        "SELECT role, email FROM riviamigo.users WHERE id = $1 FOR UPDATE",
+    )
+    .bind(target_user_id)
+    .fetch_optional(&mut *tx)
+    .await?
+    .ok_or(AppError::NotFound)?;
+    if target.0 == "super_user" {
         let super_user_count: i64 = sqlx::query_scalar::<_, i64>(
             "SELECT COUNT(*) FROM riviamigo.users WHERE role = 'super_user'",
         )
-        .fetch_one(&state.pool)
+        .fetch_one(&mut *tx)
         .await?;
         if super_user_count <= 1 {
             return Err(AppError::Validation(
@@ -435,7 +465,45 @@ async fn delete_user(
         }
     }
 
-    let mut tx = state.pool.begin().await?;
+    sqlx::query("DELETE FROM riviamigo.vehicle_memberships WHERE user_id = $1")
+        .bind(target_user_id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("DELETE FROM riviamigo.vehicle_user_settings WHERE user_id = $1")
+        .bind(target_user_id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("DELETE FROM riviamigo.refresh_tokens WHERE user_id = $1")
+        .bind(target_user_id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("DELETE FROM riviamigo.api_keys WHERE user_id = $1")
+        .bind(target_user_id)
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query(
+        "UPDATE riviamigo.vehicle_invites SET revoked_at = now(), updated_at = now()
+         WHERE (invited_by = $1 OR lower(invitee_email) = lower($2))
+           AND accepted_at IS NULL AND revoked_at IS NULL",
+    )
+    .bind(target_user_id)
+    .bind(&target.1)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        "UPDATE riviamigo.account_invitations SET revoked_at = now(), updated_at = now()
+         WHERE lower(invitee_email) = lower($1)
+           AND accepted_at IS NULL AND revoked_at IS NULL",
+    )
+    .bind(&target.1)
+    .execute(&mut *tx)
+    .await?;
+    sqlx::query(
+        "UPDATE riviamigo.authentication_settings SET updated_by = NULL WHERE updated_by = $1",
+    )
+    .bind(target_user_id)
+    .execute(&mut *tx)
+    .await?;
     // user_preferences has historically not had an account FK. Clear it
     // before the custom-theme revisions so its deferred revision reference
     // cannot prevent the owner cleanup.
@@ -473,6 +541,11 @@ async fn delete_user(
         .execute(&mut *tx)
         .await?;
     tx.commit().await?;
+    // Redis staging is short-lived; database authorization remains authoritative if cleanup fails.
+    if let Ok(mut conn) = state.redis.get_multiplexed_async_connection().await {
+        let _: Result<(), _> =
+            redis::AsyncCommands::del(&mut conn, format!("rivian:connect:{target_user_id}")).await;
+    }
     support_audit(
         state.pool.clone(),
         "admin_user_delete",
