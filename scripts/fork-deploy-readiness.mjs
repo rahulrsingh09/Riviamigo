@@ -1,4 +1,4 @@
-import { readFileSync } from 'node:fs';
+import { readFileSync, realpathSync } from 'node:fs';
 import { pathToFileURL } from 'node:url';
 
 export const POLICY = Object.freeze({
@@ -146,7 +146,7 @@ export async function checkDeploymentReadiness(state, { fetchImpl = fetch } = {}
   );
 }
 
-if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
+if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
   try {
     if (process.argv.length !== 4 || process.argv[2] !== '--state') {
       throw new Error('Usage: node scripts/fork-deploy-readiness.mjs --state /trusted/deployed.json');

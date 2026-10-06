@@ -75,6 +75,8 @@ const sidebars: SidebarsConfig = {
         'runbooks/secure-deployment',
         'runbooks/key-custody',
         'runbooks/private-fork-maintenance',
+        'runbooks/local-northflank-controller',
+        'runbooks/kiroom-upstream-review',
         'runbooks/backup-restore',
         'runbooks/dev-harness',
         'runbooks/dependency-maintenance',

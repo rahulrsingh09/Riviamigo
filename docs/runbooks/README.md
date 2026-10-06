@@ -50,3 +50,6 @@ Add a runbook when:
 - a maintainer task is repeated often enough to justify stable steps
 - an operational workflow is easy to forget or easy to do inconsistently
 - a change introduces new recovery, publishing, or verification steps
+
+- [Local Northflank deployment controller](local-northflank-controller.md)
+- [KiRoom upstream review procedure](kiroom-upstream-review.md)

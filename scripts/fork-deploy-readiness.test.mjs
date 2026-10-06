@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
@@ -246,4 +246,16 @@ test('CLI errors emit no items, exit nonzero and leave state unchanged', (t) => 
     assert.deepEqual(JSON.parse(result.stdout).items, []);
   }
   assert.equal(readFileSync(state, 'utf8'), '{"deployedShas":["bad"]}');
+});
+
+test('CLI also executes through an installed path alias', (t) => {
+  const directory = mkdtempSync(join(tmpdir(), 'fork-readiness-alias-'));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const alias = join(directory, 'installed.mjs');
+  const state = join(directory, 'state.json');
+  symlinkSync(new URL('./fork-deploy-readiness.mjs', import.meta.url), alias);
+  writeFileSync(state, '{"deployedShas":["bad"]}');
+  const result = spawnSync(process.execPath, [alias, '--state', state], { encoding: 'utf8' });
+  assert.equal(result.status, 1);
+  assert.equal(JSON.parse(result.stdout).reason, 'invalid-state');
 });

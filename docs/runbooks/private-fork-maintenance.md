@@ -277,6 +277,12 @@ retry/recovery; do not assume another poll retries it or reset dedup globally.
 The parent/operator creates and enables this trigger separately after installing
 and validating the deterministic local deploy command.
 
+The implementation and installation contract are in the
+[local Northflank controller runbook](./local-northflank-controller.md).
+`scripts/northflank_deploy.py` uses a fixed local control root, exact-SHA review
+receipts, the pinned readiness checker, a deployment lock and an atomic success
+ledger. Adding this source does not install or activate the consumer.
+
 The local background action must:
 
 1. Accept only the fixed repository/branch and full SHA; invoke a fixed local
