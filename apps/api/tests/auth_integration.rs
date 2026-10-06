@@ -1268,6 +1268,59 @@ async fn full_metric_stream_preserves_points_across_cursor_chunks_and_compact_sa
 }
 
 #[tokio::test]
+async fn compressed_metric_batches_finish_as_complete_json_over_http() {
+    use std::io::Read;
+    let app = TestApp::new().await;
+    let token = register_and_login(&app, "metric-http@example.com").await;
+    let user: Uuid =
+        sqlx::query_scalar("SELECT id FROM riviamigo.users WHERE email='metric-http@example.com'")
+            .fetch_one(&app.pool)
+            .await
+            .unwrap();
+    let vehicle = insert_vehicle(&app.pool, user, "metric-http", "HTTP metrics").await;
+    sqlx::query("INSERT INTO timeseries.telemetry (vehicle_id, ts, battery_level) VALUES ($1, '2026-01-01T00:00:00Z', 68)")
+        .bind(vehicle).execute(&app.pool).await.unwrap();
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let router = app.router.clone();
+    let server = tokio::spawn(async move { axum::serve(listener, router).await.unwrap() });
+    let client = reqwest::Client::builder()
+        .no_proxy()
+        .timeout(std::time::Duration::from_secs(5))
+        .build()
+        .unwrap();
+    for encoding in ["identity", "gzip", "gzip"] {
+        let response = client.post(format!("http://{address}/v1/metrics/batch"))
+            .bearer_auth(&token).header("accept-encoding", encoding)
+            .json(&json!({"vehicle_id":vehicle,"metrics":[{"metric":"battery_level","include_latest":true,"include_series":true}],"density":"compact","from":"2026-01-01T00:00:00Z","to":"2026-01-02T00:00:00Z"}))
+            .send().await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        let compressed = response
+            .headers()
+            .get("content-encoding")
+            .is_some_and(|value| value == "gzip");
+        assert_eq!(compressed, encoding == "gzip");
+        let bytes = response
+            .bytes()
+            .await
+            .expect("HTTP stream terminates without a panic or truncated body");
+        let bytes = if compressed {
+            let mut decoded = Vec::new();
+            flate2::read::GzDecoder::new(bytes.as_ref())
+                .read_to_end(&mut decoded)
+                .unwrap();
+            decoded
+        } else {
+            bytes.to_vec()
+        };
+        let body: serde_json::Value = serde_json::from_slice(&bytes).expect("complete metric JSON");
+        assert_eq!(body["values"][0]["value"], 68.0);
+        assert_eq!(body["series"][0]["points"].as_array().unwrap().len(), 1);
+    }
+    server.abort();
+}
+
+#[tokio::test]
 async fn cancelled_metric_and_grafana_reads_cancel_active_database_work_before_releasing_quota() {
     let app = TestApp::new_with_security(
         RateLimitConfig::default(),

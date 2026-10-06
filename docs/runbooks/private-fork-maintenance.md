@@ -131,6 +131,9 @@ are synthetic and services die with the runner. This includes incoming upstream
 tests once their code is integrated; it does not claim those cases exist on the
 `df97d50` baseline (which has 36 cases in this target).
 
+The integration also tests real HTTP metric responses with and without gzip to
+prevent truncated dashboard batches after stream completion.
+
 The incoming cases cover refresh replay and descendant revocation, disabled or
 deleted accounts, administrative re-enablement, enrollment authority, live socket
 expiry/quota/revocation, and bounded resource/history operations. Running the

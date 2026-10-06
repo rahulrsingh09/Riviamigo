@@ -144,6 +144,7 @@ jobs:
       - run: cargo fmt --all --check
       - run: cargo build --locked --bins
       - run: cargo test --locked --lib
+      - run: cargo test --locked --lib db::migrations::tests -- --ignored --test-threads=1
       - run: cargo test --locked --test dependency_crypto
       - name: Authentication integration regressions (including incoming upstream cases)
         run: |

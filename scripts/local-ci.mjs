@@ -124,10 +124,10 @@ function ciChecks() {
     Object.assign(process.env, ciEnv);
     ensureSqlxCli();
     compose(['up', '-d', '--wait', 'timescaledb', 'redis']);
-    runWithRetries('cargo', ['sqlx', 'migrate', 'run'], {
+    runWithRetries('cargo', ['run', '--locked', '--bin', 'riviamigo-migrate'], {
       cwd: join(root, 'apps/api'),
       env: ciEnv,
-      label: 'SQLx migrations',
+      label: 'Canonical fork migrations',
       attempts: 5,
       retryDelayMs: 2_000,
     });

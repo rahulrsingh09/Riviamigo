@@ -671,9 +671,11 @@ fn stream_metrics(
                 .await;
         }
     });
+    use futures::StreamExt;
     let stream = futures::stream::unfold(receiver, |mut receiver| async move {
         receiver.recv().await.map(|chunk| (chunk, receiver))
-    });
+    })
+    .fuse();
     (
         [
             ("content-type", "application/json"),
