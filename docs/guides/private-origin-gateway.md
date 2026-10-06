@@ -62,7 +62,8 @@ requests without a valid allowed identity must fail. Recheck browser login,
 cookie renewal, trip details, and live WebSocket updates through the public
 Worker address before connecting a real Rivian account.
 
-Access credentials are stripped before proxying. App authorization, refresh
+Access credentials, including the CLI `Cf-Access-Token` header, are stripped
+before proxying. App authorization, refresh
 cookies, request bodies, and WebSocket protocols are preserved. The proxy uses
 a fixed origin, never follows origin redirects, rejects alternate hostnames,
 and disables response caching. Worker request logging is disabled in the

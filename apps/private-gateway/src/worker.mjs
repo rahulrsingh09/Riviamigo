@@ -109,6 +109,7 @@ export function createGateway({ upstreamFetch = fetch, keySetFor = accessKeys } 
       const headers = new Headers(request.headers);
       for (const name of [
         'Cf-Access-Jwt-Assertion',
+        'Cf-Access-Token',
         'Cf-Access-Client-Id',
         'Cf-Access-Client-Secret',
         'Cf-Access-Authenticated-User-Email',

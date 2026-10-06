@@ -133,6 +133,7 @@ test('authenticated requests target only the configured origin and replace clien
       Forwarded: 'host=evil.test',
       Authorization: 'Bearer synthetic-app-token',
       'Cf-Access-Client-Secret': 'synthetic-client-secret',
+      'Cf-Access-Token': 'synthetic-cli-token',
       Cookie: 'CF_Authorization=synthetic; refresh_token=synthetic-refresh; theme=dark',
     },
   });
@@ -148,6 +149,7 @@ test('authenticated requests target only the configured origin and replace clien
   assert.equal(forwarded.headers.get('Forwarded'), null);
   assert.equal(forwarded.headers.get('Cf-Access-Jwt-Assertion'), null);
   assert.equal(forwarded.headers.get('Cf-Access-Client-Secret'), null);
+  assert.equal(forwarded.headers.get('Cf-Access-Token'), null);
   assert.equal(forwarded.headers.get('Cookie'), 'refresh_token=synthetic-refresh; theme=dark');
   assert.equal(forwarded.redirect, 'manual');
   assert.equal(result.headers.get('Cache-Control'), 'private, no-store');
