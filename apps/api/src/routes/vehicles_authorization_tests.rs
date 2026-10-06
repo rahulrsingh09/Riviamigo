@@ -121,76 +121,110 @@ async fn authorization_enrollment_cannot_hijack_existing_vehicle_or_escalate_vie
 #[tokio::test]
 #[ignore = "requires disposable TimescaleDB DATABASE_URL and REDIS_URL"]
 async fn authorization_verified_enrollment_and_existing_manager_reconnect_remain_usable() {
+    use crate::private_deployment::outbound::with_mock_gateway;
+    use axum::{http::StatusCode, routing::post};
+    use serde_json::{json, Value};
+
     let f = Fixture::new().await;
     let owner = f.user("user").await;
+    let joiner = f.user("user").await;
+    let owner_token = f.token(owner);
+    let joiner_token = f.token(joiner);
     let tokens = stage(&f, owner).await;
-    let response = add_vehicle_with_lookup(
-        f.state.clone(),
-        f.auth(owner),
-        body("demo-verified"),
-        async |_| Ok(upstream("demo-verified")),
-    )
-    .await
-    .unwrap()
-    .0;
-    assert_eq!(response["vehicle_saved"], true);
-    let vehicle_id: Uuid = serde_json::from_value(response["vehicle_id"].clone()).unwrap();
-    let membership: (String, bool) = sqlx::query_as(
-        "SELECT role, is_default FROM riviamigo.vehicle_memberships
-         WHERE user_id = $1 AND vehicle_id = $2",
-    )
-    .bind(owner)
-    .bind(vehicle_id)
-    .fetch_one(&f.state.pool)
-    .await
-    .unwrap();
-    assert_eq!(membership, ("owner".into(), true));
-    let encrypted: Vec<u8> = sqlx::query_scalar(
-        "SELECT encrypted_tokens FROM riviamigo.vehicle_credentials WHERE vehicle_id = $1",
-    )
-    .bind(vehicle_id)
-    .fetch_one(&f.state.pool)
-    .await
-    .unwrap();
-    assert_eq!(
-        decrypt_tokens(&encrypted, &age_identity(&f.state).unwrap())
-            .unwrap()
-            .access_token,
-        tokens.access_token
+    stage(&f, joiner).await;
+    let gateway = Router::new().route(
+        "/graphql",
+        post(
+            |headers: axum::http::HeaderMap, Json(body): Json<Value>| async move {
+                assert_eq!(headers["A-Sess"], "synthetic-app");
+                assert_eq!(headers["U-Sess"], "synthetic-user");
+                assert_eq!(body["operationName"], "getUserInfo");
+                Json(json!({"data":{"currentUser":{"vehicles":[
+                    {"id":"demo-verified", "vin":"provider-vin", "vehicle":{"model":"R1S"}},
+                    {"id":"demo-verified-race", "vin":"race-vin", "vehicle":{"model":"R1S"}}
+                ]}}}))
+            },
+        ),
     );
-    let manager = f.user("user").await;
-    f.member(manager, vehicle_id, "manager").await;
-    stage(&f, manager).await;
-    let reconnected = add_vehicle_with_lookup(
-        f.state.clone(),
-        f.auth(manager),
-        body("demo-verified"),
-        async |_| Ok(upstream("demo-verified")),
-    )
-    .await
-    .unwrap()
-    .0;
-    assert_eq!(reconnected["vehicle_id"], response["vehicle_id"]);
-    let role: String = sqlx::query_scalar(
-        "SELECT role FROM riviamigo.vehicle_memberships WHERE user_id = $1 AND vehicle_id = $2",
-    )
-    .bind(manager)
-    .bind(vehicle_id)
-    .fetch_one(&f.state.pool)
-    .await
-    .unwrap();
-    assert_eq!(role, "manager");
-    assert_eq!(
-        f.request(
-            "GET",
-            "/v1/vehicles",
-            &f.token(manager),
-            serde_json::Value::Null
-        )
-        .await
-        .status(),
-        axum::http::StatusCode::OK
-    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let url = format!("http://{}/graphql", listener.local_addr().unwrap());
+    let server = tokio::spawn(async move { axum::serve(listener, gateway).await.unwrap() });
+    with_mock_gateway(url, async {
+        let before = f.snapshot().await;
+        assert_eq!(f.request("POST", "/v1/vehicles", &owner_token,
+            json!({"rivian_vehicle_id":"unlisted-id", "vin":"forged"})).await.status(),
+            StatusCode::UNPROCESSABLE_ENTITY);
+        assert_eq!(f.snapshot().await, before);
+
+        let response = f.request("POST", "/v1/vehicles", &owner_token,
+            json!({"rivian_vehicle_id":" demo-verified ", "model":"R1T", "vin":"forged-vin"})).await;
+        assert_eq!(response.status(), StatusCode::OK);
+        let response: Value = serde_json::from_slice(&axum::body::to_bytes(response.into_body(), 4096).await.unwrap()).unwrap();
+        let vehicle_id: Uuid = serde_json::from_value(response["vehicle_id"].clone()).unwrap();
+        let metadata: (String, String) = sqlx::query_as(
+            "SELECT model, vin FROM riviamigo.vehicles WHERE id=$1")
+            .bind(vehicle_id).fetch_one(&f.state.pool).await.unwrap();
+        assert_eq!(metadata, ("R1S".into(), "provider-vin".into()));
+        let membership: (String, bool) = sqlx::query_as(
+            "SELECT role,is_default FROM riviamigo.vehicle_memberships WHERE vehicle_id=$1 AND user_id=$2")
+            .bind(vehicle_id).bind(owner).fetch_one(&f.state.pool).await.unwrap();
+        assert_eq!(membership, ("owner".into(), true));
+        let encrypted: Vec<u8> = sqlx::query_scalar(
+            "SELECT encrypted_tokens FROM riviamigo.vehicle_credentials WHERE vehicle_id=$1")
+            .bind(vehicle_id).fetch_one(&f.state.pool).await.unwrap();
+        assert_eq!(decrypt_tokens(&encrypted, &age_identity(&f.state).unwrap()).unwrap().access_token,
+            tokens.access_token);
+
+        let before = f.snapshot().await;
+        let (first, second) = tokio::join!(
+            f.request("POST", "/v1/vehicles", &joiner_token, json!({"rivian_vehicle_id":"demo-verified"})),
+            f.request("POST", "/v1/vehicles", &joiner_token, json!({"rivian_vehicle_id":"demo-verified"})));
+        assert_eq!(first.status(), StatusCode::FORBIDDEN);
+        assert_eq!(second.status(), StatusCode::FORBIDDEN);
+        assert_eq!(f.snapshot().await, before);
+
+        f.member(joiner, vehicle_id, "manager").await;
+        let credentials_before: Value = sqlx::query_scalar(
+            "SELECT jsonb_build_object('credentials',to_jsonb(c),'runtime',to_jsonb(r))
+             FROM riviamigo.vehicle_credentials c JOIN riviamigo.vehicle_runtime_state r USING(vehicle_id)
+             WHERE vehicle_id=$1")
+            .bind(vehicle_id).fetch_one(&f.state.pool).await.unwrap();
+        let reconnected = f.request("POST", "/v1/vehicles", &joiner_token,
+            json!({"rivian_vehicle_id":"demo-verified"})).await;
+        assert_eq!(reconnected.status(), StatusCode::OK);
+        let reconnected: Value = serde_json::from_slice(&axum::body::to_bytes(reconnected.into_body(), 4096).await.unwrap()).unwrap();
+        assert_eq!(reconnected["vehicle_id"], response["vehicle_id"]);
+        assert_eq!(reconnected["telemetry_status"], "unchanged");
+        let credentials_after: Value = sqlx::query_scalar(
+            "SELECT jsonb_build_object('credentials',to_jsonb(c),'runtime',to_jsonb(r))
+             FROM riviamigo.vehicle_credentials c JOIN riviamigo.vehicle_runtime_state r USING(vehicle_id)
+             WHERE vehicle_id=$1")
+            .bind(vehicle_id).fetch_one(&f.state.pool).await.unwrap();
+        assert_eq!(credentials_after, credentials_before);
+        let roles: Vec<String> = sqlx::query_scalar(
+            "SELECT role FROM riviamigo.vehicle_memberships WHERE vehicle_id=$1 ORDER BY role")
+            .bind(vehicle_id).fetch_all(&f.state.pool).await.unwrap();
+        assert_eq!(roles, vec!["manager", "owner"]);
+
+        for user in [owner, joiner] { stage(&f, user).await; }
+        let (first, second) = tokio::join!(
+            f.request("POST", "/v1/vehicles", &owner_token,
+                json!({"rivian_vehicle_id":"demo-verified-race", "vin":"forged-vin", "model":"R1T"})),
+            f.request("POST", "/v1/vehicles", &joiner_token,
+                json!({"rivian_vehicle_id":"demo-verified-race"})));
+        assert!(matches!((first.status(), second.status()),
+            (StatusCode::OK, StatusCode::FORBIDDEN) | (StatusCode::FORBIDDEN, StatusCode::OK)));
+        let created: (Uuid, String, String) = sqlx::query_as(
+            "SELECT id,model,vin FROM riviamigo.vehicles WHERE rivian_vehicle_id='demo-verified-race'")
+            .fetch_one(&f.state.pool).await.unwrap();
+        assert_eq!((created.1, created.2), ("R1S".into(), "race-vin".into()));
+        let roles: Vec<String> = sqlx::query_scalar(
+            "SELECT role FROM riviamigo.vehicle_memberships WHERE vehicle_id=$1 ORDER BY role")
+            .bind(created.0).fetch_all(&f.state.pool).await.unwrap();
+        assert_eq!(roles, vec!["owner"]);
+        assert_eq!(f.request("GET", "/v1/vehicles", &owner_token, Value::Null).await.status(), StatusCode::OK);
+    }).await;
+    server.abort();
     f.cleanup().await;
 }
 

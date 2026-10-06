@@ -65,9 +65,14 @@ services:
         '${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}',
         '--appendonly',
         'yes',
+        '--maxmemory',
+        '${REDIS_MAXMEMORY:-192mb}',
+        '--maxmemory-policy',
+        'noeviction',
       ]
     environment:
       REDIS_PASSWORD: ${REDIS_PASSWORD:?Set REDIS_PASSWORD in .env}
+    mem_limit: 256M
     volumes:
       - ${RIVIAMIGO_REDIS_SOURCE:-${RIVIAMIGO_DATA_DIR:-../data}/redis}:/data
     networks:

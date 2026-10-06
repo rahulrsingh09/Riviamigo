@@ -88,6 +88,26 @@ users, and restore HTTPS as soon as possible.
   not trust arbitrary forwarded client IP headers.
 - Restrict direct host access to port 8080 with host firewall rules.
 
+## Trusted gateway client addresses
+
+By default nginx replaces forwarded-IP headers with the socket peer address.
+If the gateway supplies sanitized client addresses, mount an operator-owned
+configuration under `/etc/nginx/trusted-proxy/`. Trust only the gateway's exact
+CIDRs, never every network:
+
+```nginx
+set_real_ip_from 192.168.1.10/32;
+real_ip_header X-Forwarded-For;
+real_ip_recursive on;
+```
+
+Mount that file read-only into the unified app container, for example at
+`/etc/nginx/trusted-proxy/gateway.conf`. Verify spoofed forwarded chains cannot
+change the address nginx passes to the loopback API. The API accepts one IP
+from this trusted local nginx, never an arbitrary comma-separated chain.
+Gateway-on-Docker-network deployments should remove the app host `ports`
+publication and retain Traefik's service port 8080 on its private network.
+
 ## Verification
 
 1. Run `docker compose --env-file .env -f compose/docker-compose.yml config`

@@ -28,7 +28,7 @@ async fn telemetry_minute_refresh_policy_is_hourly_and_real_time() {
 
     let db_url = replace_database_name(&base_db_url, &db_name);
     let pool = PgPool::connect(&db_url).await.expect("test db connect");
-    sqlx::migrate!("./migrations")
+    riviamigo_api::db::migrations::MIGRATOR
         .run(&pool)
         .await
         .expect("apply migrations");

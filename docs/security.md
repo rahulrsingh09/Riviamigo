@@ -75,6 +75,82 @@ precise vehicle locations in public issues.
   The narrow `ALLOW_INSECURE_LAN_HTTP_AUTH=true` production exception accepts
   only documented private literal-IP HTTP origins and emits a startup warning.
 
+## Session and enrollment boundaries
+
+New JWTs identify a refresh-token family. Rotation is serialized on that family;
+replay of a consumed token revokes its descendants and immediately invalidates
+the family's access tokens. Existing pre-upgrade JWTs without a family retain
+their original short lifetime. Missing or disabled users fail authorization.
+Administrative disablement also revokes all existing session families, so
+reenabling the account requires a fresh login. New session issuance locks the
+enabled account while creating the family to serialize it with disablement.
+Browser renewals share a cross-tab lock without storing access or refresh tokens.
+
+Enrollment rechecks the selected vehicle against the signed-in Rivian account
+before writing local data. First enrollment creates the owner; a verified user
+joining an existing vehicle receives Viewer access. Existing roles, telemetry
+credentials and collectors remain in place. Owners explicitly promote members.
+
+Live sockets are admitted under per-account, vehicle and process quotas. They
+close at JWT expiration and recheck user, family and membership authorization
+every 30 seconds. Revoked membership closes with 4403; session expiration or
+revocation uses 4401. Messages are limited to 4 KiB and outbound sends to five
+seconds. The browser clears removed-vehicle state and renews expired sessions.
+
+## Resource bounds
+
+Full-density metrics stream every retained source point through 10,000-row
+database cursor chunks within a repeatable-read snapshot. The JSON contract
+and compact-mode sample selection remain unchanged. Admission, deadlines,
+bounded output buffers and disconnect cancellation constrain resource use.
+Metric and Grafana reads have database statement deadlines. Disconnects and
+request timeouts cancel the owned backend query; admission remains held until
+its transaction has drained and rolled back, including cancellation cleanup.
+Interrupted JSON bodies are failures and cannot become successful query data.
+Grafana retains its existing point limit and accepts at most 32 targets.
+
+Basemap data has a shared 128 MiB cache budget and seven-day TTL. A bounded
+maintenance scan invalidates legacy permanent entries. Redis uses 192 MiB
+`noeviction` beneath its 256 MiB container limit; only basemap entries enter the
+application eviction index. An unavailable/full cache produces a cache miss.
+
+## Outbound destinations
+
+Weather, geocoder, OIDC and S3 connections validate current resolved addresses,
+pin approved sockets, preserve TLS hostnames, and disable environment proxies
+and redirect following. Mixed public/private DNS results and forbidden ranges
+fail closed. OIDC and S3 private exceptions are operator-owned environment
+CIDRs; custom S3 HTTP additionally requires the explicit trusted-LAN exception.
+Actual response bytes are capped for weather, geocoder, Rivian and OIDC HTTP
+responses, including chunked bodies.
+
+## Trusted recovery packages
+
+Recovery packages are trusted operator input. PostgreSQL archives execute SQL;
+a candidate on the same server is not an SQL sandbox. The restore engine uses
+a temporary non-superuser login with no database/role creation, replication,
+bypass-RLS, server-file or program privileges. Bootstrap credentials perform
+only candidate creation, known extension setup, Timescale pre/post hooks,
+baseline comparison, swap and cleanup. Restored objects stay owned by the
+unprivileged role, which becomes NOLOGIN with no password after preparation.
+An expired restore deadline explicitly terminates the job role's sessions,
+disables its login/password, and removes its candidate and orphaned role.
+Archive functions and background-job definitions still require trust in the
+backup producer; arbitrary SQL risk is mitigated, not eliminated.
+
+One compiled policy controls dump redaction, restore TOC filtering and candidate
+sanitation. Provider credentials, cryptographic keys, sessions, API keys,
+invitation proofs and operational target rows cannot be imported as active data.
+Authentication resets to OIDC off/password login on. Validated non-secret backup
+settings and inert history are restored separately; target history wins.
+Catalog paths never grant filesystem authority: only ordinary package files
+under the configured root are opened/deleted through directory handles. Remote
+materialization counts bytes, checks reserved free space, enforces a deadline
+and removes partial files. Metadata limits are independent of dump size.
+Once admitted, bounded upload/preflight/start work owns its lifetime through
+cleanup even if the HTTP client disconnects. Published preflight staging is
+removed automatically; only a durable restore handoff retains its package.
+
 ## Rate Limiting
 
 - Riviamigo applies class-specific auth, read, write, and heavy-read limits
@@ -86,7 +162,9 @@ precise vehicle locations in public issues.
 - `X-Content-Type-Options: nosniff`
 - `X-Frame-Options: DENY`
 - `Referrer-Policy: no-referrer`
-- `Content-Security-Policy: default-src 'self'; ...`
+- The app shell uses a restrictive `Content-Security-Policy`; its `connect-src`
+  permits same-origin services, WebSockets, and `https://api.github.com` for the
+  optional browser-initiated stable release check.
 
 ## Database
 
@@ -121,9 +199,9 @@ precise vehicle locations in public issues.
   UUID request correlation when supplied, success/failure outcome, and
   redacted enum-like metadata. The service must not store credentials, tokens,
   email addresses, locations, or raw telemetry in this audit metadata.
-- There is currently **no automatic retention/deletion job** for security
-  events. Retention is therefore bounded by the operator's database retention
-  and backup policy, not by an application purge interval.
+- The application retention worker purges live security events older than
+  365 days. Recovery packages may retain older events under the operator's
+  separate backup-retention policy.
 - Owner-started ingestion captures are stored in
   `riviamigo.vehicle_ingestion_capture_events`. They hold sanitized ingestion
   facts, decoded values, and raw Parallax payload bytes for topics that cannot

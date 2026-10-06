@@ -1,5 +1,5 @@
 import React from 'react';
-import { render, screen, fireEvent, waitFor } from '@testing-library/react';
+import { act, render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
@@ -77,6 +77,8 @@ const dashboardMocks = vi.hoisted(() => ({
 const hooksMocks = vi.hoisted(() => ({
   changePassword: vi.fn().mockResolvedValue(undefined),
   updateMapStylePreference: vi.fn().mockResolvedValue({ map_style: 'follow-theme' }),
+  getAppVersion: vi.fn(),
+  getUpdateCheckSettings: vi.fn(),
 }));
 
 const mockNavigate = vi.fn();
@@ -95,6 +97,8 @@ vi.mock('@riviamigo/hooks', async (importOriginal) => ({
     apiKeys: { all: ['api-keys'] },
     apiCatalog: { all: ['api-catalog'] },
     appTimezone: { current: ['app-timezone'] },
+    appVersion: { current: ['app-version'] },
+    updateCheck: { current: ['update-check'] },
     backups: {
       all: ['backup-overview'],
       overview: (page: number, perPage: number) => ['backup-overview', page, perPage],
@@ -136,8 +140,10 @@ vi.mock('@riviamigo/hooks', async (importOriginal) => ({
     }),
     create: vi.fn(),
   },
-    api: {
+  api: {
     me: vi.fn().mockResolvedValue({ role: 'user' }),
+    getAppVersion: hooksMocks.getAppVersion,
+    getUpdateCheckSettings: hooksMocks.getUpdateCheckSettings,
     getUnitPreferences: vi.fn().mockImplementation(() => Promise.resolve(settingsMocks.preferences)),
     updateThemePreferences: vi.fn().mockImplementation(async (theme) => {
       settingsMocks.preferences.theme = theme;
@@ -566,6 +572,7 @@ vi.mock('lucide-react', () => ({
 }));
 
 import { SettingsContent } from '../settings';
+import { writeReleaseCheckSnapshot } from '../../lib/releaseCheck';
 
 function renderSettings() {
   const queryClient = new QueryClient({
@@ -574,11 +581,12 @@ function renderSettings() {
       mutations: { retry: false },
     },
   });
-  return render(
+  const view = render(
     <QueryClientProvider client={queryClient}>
       <SettingsContent />
     </QueryClientProvider>
   );
+  return { ...view, queryClient };
 }
 
 function clickSettingsSection(label: string) {
@@ -593,6 +601,8 @@ describe('Settings page', () => {
     settingsMocks.auth.clearSession.mockReset();
     hooksMocks.changePassword.mockReset();
     hooksMocks.changePassword.mockResolvedValue(undefined);
+    hooksMocks.getAppVersion.mockReset().mockResolvedValue({ version: '2026.09.4+dev' });
+    hooksMocks.getUpdateCheckSettings.mockReset().mockResolvedValue({ enabled: false, frequency: 'daily' });
     settingsMocks.auth.setDefaultVehicleId.mockReset();
     settingsMocks.auth.setActiveVehicleId.mockReset();
     settingsMocks.auth.accessToken = undefined;
@@ -656,6 +666,120 @@ describe('Settings page', () => {
   it('renders the Vehicles section heading', () => {
     renderSettings();
     expect(screen.getAllByText('Vehicles').length).toBeGreaterThan(0);
+  });
+
+  it('shows the running version in a Settings-only link to GitHub Releases', async () => {
+    settingsMocks.auth.accessToken = 'session-token';
+    renderSettings();
+
+    const versionLink = await screen.findByRole('link', { name: /^2026\.09\.4\+dev\. Update checks off/i });
+    expect(versionLink).toHaveAttribute('href', 'https://github.com/bballdavis/Riviamigo/releases');
+    expect(versionLink).toHaveAttribute('target', '_blank');
+    expect(versionLink).toHaveAttribute('rel', 'noopener noreferrer');
+    expect(versionLink).toHaveTextContent('2026.09.4+dev');
+    expect(versionLink).toHaveTextContent('Update checks off');
+  });
+
+  it('shows up to date or the newer remote version as the version subtitle', async () => {
+    settingsMocks.auth.accessToken = 'session-token';
+    hooksMocks.getUpdateCheckSettings.mockResolvedValue({ enabled: true, frequency: 'daily' });
+    const snapshot = (latestVersion: string, updateAvailable: boolean) => JSON.stringify({
+      lastAttemptAt: 1, lastSuccessfulAt: 1, latestVersion, updateAvailable, error: null,
+    });
+    localStorage.setItem('rm-github-release-check-v1', snapshot('2026.09.4', false));
+    const { unmount } = renderSettings();
+    expect(await screen.findByRole('link', { name: /Up to date/ })).toBeInTheDocument();
+    unmount();
+
+    localStorage.setItem('rm-github-release-check-v1', snapshot('2026.10.1', true));
+    renderSettings();
+    expect(await screen.findByRole('link', { name: /2026\.10\.1 available/ })).toBeInTheDocument();
+    localStorage.removeItem('rm-github-release-check-v1');
+  });
+
+  it('clears the available subtitle when the running version reaches the cached latest release', async () => {
+    settingsMocks.auth.accessToken = 'session-token';
+    hooksMocks.getUpdateCheckSettings.mockResolvedValue({ enabled: true, frequency: 'daily' });
+    writeReleaseCheckSnapshot({
+      lastAttemptAt: Date.now(), lastSuccessfulAt: Date.now(),
+      latestVersion: '2026.10.2', updateAvailable: true, error: null,
+    });
+    const { queryClient } = renderSettings();
+    expect(await screen.findByRole('link', { name: /2026\.10\.2 available/ })).toBeInTheDocument();
+    act(() => queryClient.setQueryData(['app-version'], { version: '2026.10.2' }));
+
+    const link = await screen.findByRole('link', { name: /^2026\.10\.2\. Up to date\./ });
+    expect(link).not.toHaveTextContent('available');
+    expect(screen.getByText('Up to date')).toHaveClass('text-fg-tertiary');
+  });
+
+  it.each(['2026.09.4', '2026.10.2'])('shows checks off ahead of the cached %s result', async (latestVersion) => {
+    settingsMocks.auth.accessToken = 'session-token';
+    writeReleaseCheckSnapshot({
+      lastAttemptAt: Date.now(), lastSuccessfulAt: Date.now(),
+      latestVersion, updateAvailable: true, error: null,
+    });
+    renderSettings();
+
+    const link = await screen.findByRole('link', { name: /Update checks off/ });
+    expect(link).not.toHaveTextContent(/Up to date|available/);
+    expect(screen.getByText('Update checks off')).toHaveClass('text-fg-tertiary');
+  });
+
+  it.each([null, '2026.09.4', '2026.10.2'])('shows a failed check ahead of the cached %s result', async (latestVersion) => {
+    settingsMocks.auth.accessToken = 'session-token';
+    hooksMocks.getUpdateCheckSettings.mockResolvedValue({ enabled: true, frequency: 'daily' });
+    writeReleaseCheckSnapshot({
+      lastAttemptAt: Date.now(), lastSuccessfulAt: latestVersion ? Date.now() - 1000 : null,
+      latestVersion, updateAvailable: latestVersion ? true : null, error: 'GitHub returned HTTP 403.',
+    });
+    renderSettings();
+
+    const link = await screen.findByRole('link', { name: /Update check failed/ });
+    expect(link).not.toHaveTextContent(/Up to date|available/);
+  });
+
+  it.each(['getAppVersion', 'getUpdateCheckSettings'] as const)('does not claim up to date when %s fails', async (method) => {
+    settingsMocks.auth.accessToken = 'session-token';
+    hooksMocks.getUpdateCheckSettings.mockResolvedValue({ enabled: true, frequency: 'daily' });
+    hooksMocks[method].mockRejectedValue(new Error('Offline'));
+    writeReleaseCheckSnapshot({
+      lastAttemptAt: Date.now(), lastSuccessfulAt: Date.now(),
+      latestVersion: '2026.09.4', updateAvailable: false, error: null,
+    });
+    renderSettings();
+
+    expect(await screen.findByRole('link', { name: /Update status unavailable/ })).not.toHaveTextContent('Up to date');
+  });
+
+  it('does not describe an enabled check as running before it starts', async () => {
+    settingsMocks.auth.accessToken = 'session-token';
+    hooksMocks.getUpdateCheckSettings.mockResolvedValue({ enabled: true, frequency: 'daily' });
+    renderSettings();
+
+    expect(await screen.findByRole('link', { name: /Not checked yet/ })).not.toHaveTextContent(/Up to date|Checking for updates/);
+  });
+
+  it('does not claim up to date when the running version cannot be compared', async () => {
+    settingsMocks.auth.accessToken = 'session-token';
+    hooksMocks.getUpdateCheckSettings.mockResolvedValue({ enabled: true, frequency: 'daily' });
+    hooksMocks.getAppVersion.mockResolvedValue({ version: 'unknown' });
+    writeReleaseCheckSnapshot({
+      lastAttemptAt: Date.now(), lastSuccessfulAt: Date.now(),
+      latestVersion: '2026.10.2', updateAvailable: false, error: null,
+    });
+    renderSettings();
+
+    expect(await screen.findByRole('link', { name: /Unable to compare versions/ })).not.toHaveTextContent('Up to date');
+  });
+
+  it('labels missing running build metadata as unknown', async () => {
+    settingsMocks.auth.accessToken = 'session-token';
+    const hooks = await import('@riviamigo/hooks');
+    vi.mocked(hooks.api.getAppVersion).mockResolvedValueOnce({ version: 'unknown' });
+    renderSettings();
+
+    expect(await screen.findByRole('link', { name: /^Unknown version\./i })).toHaveTextContent('Unknown version');
   });
 
   it('uses a chart icon for the Charts settings section', () => {

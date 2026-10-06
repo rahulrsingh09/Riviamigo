@@ -22,6 +22,7 @@ const metadataModules = new Set(
 // checks stay in the Rust handlers and are protected below by the deprecated
 // helper ban.
 const authorizationMatrix = new Map([
+  ['app_info', 'session'],
   ['api_keys', 'session_admin_or_vehicle_manager'],
   ['auth', 'public_metadata_and_session'],
   ['backfill', 'session_admin'],
@@ -54,12 +55,18 @@ const authorizationMatrix = new Map([
   ['vehicles', 'vehicle_read_and_session_mutation'],
 ]);
 
+const testOnlyFiles = new Set(routeFiles.flatMap((module) => {
+  const source = fs.readFileSync(path.join(routesDir, `${module}.rs`), 'utf8');
+  return [...source.matchAll(/#\[cfg\(test\)\]\s*#\[path = "([^"/]+)\.rs"\]\s*mod \w+;/g)]
+    .map((match) => match[1]);
+}));
+
 const missing = [];
 const missingMatrixEntries = [];
 const deprecatedOwnershipHelperUses = [];
 for (const module of routeFiles) {
   const source = fs.readFileSync(path.join(routesDir, `${module}.rs`), 'utf8');
-  if (!source.includes('.route(')) continue;
+  if (testOnlyFiles.has(module) || !source.includes('.route(')) continue;
 
   const covered = module === 'auth'
     ? routerSource.includes('.merge(auth::protected_router())') && routerSource.includes('.merge(auth::metadata_router())')

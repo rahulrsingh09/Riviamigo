@@ -149,17 +149,7 @@ pub struct ConnectionSettingsRow {
     pub updated_at: DateTime<Utc>,
 }
 
-pub fn connection_allowed(id: &str) -> bool {
-    matches!(id, RIVIAN_ACCOUNT | S3_BACKUP) || super::outbound_policy::optional_traffic_allowed()
-}
-
-pub fn require_connection_allowed(id: &str) -> Result<(), AppError> {
-    if connection_allowed(id) {
-        Ok(())
-    } else {
-        Err(AppError::ExternalConnectionDisabled(id.to_string()))
-    }
-}
+pub use crate::private_deployment::outbound::{connection_allowed, require_connection_allowed};
 
 impl ConnectionSettingsRow {
     fn apply_outbound_policy(mut self) -> Self {

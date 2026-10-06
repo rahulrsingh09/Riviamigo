@@ -101,6 +101,7 @@ const sidebars: SidebarsConfig = {
       collapsed: false,
       items: [
         'architecture/backend-data-flow',
+        'architecture/private-deployment',
         'architecture/unification-baseline',
         'architecture/theming',
         'architecture/frontend-error-observability',

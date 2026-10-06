@@ -336,5 +336,11 @@ async fn authorization_disabling_user_revokes_refresh_and_api_sessions() {
         StatusCode::OK
     );
     assert_eq!(f.refresh(&refresh).await.status(), StatusCode::UNAUTHORIZED);
+    assert_eq!(
+        f.request("GET", "/v1/vehicles", &key, Value::Null)
+            .await
+            .status(),
+        StatusCode::UNAUTHORIZED
+    );
     f.cleanup().await;
 }

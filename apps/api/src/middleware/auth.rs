@@ -19,6 +19,8 @@ pub struct Claims {
     pub exp: i64,
     pub iat: i64,
     pub default_vehicle_id: Option<Uuid>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub sid: Option<Uuid>,
 }
 
 #[derive(Debug, Clone)]
@@ -60,6 +62,7 @@ pub struct AppState {
     pub jwt_keys: Arc<JwtKeys>,
     pub age_key: String,
     pub config: crate::config::Config,
+    pub resources: Arc<crate::services::resource_limits::ResourceLimits>,
     /// Short-lived in-memory cache for address search results: normalised query -> (cached_at, json).
     /// Rate limiting is handled by the shared scheduler in `services::nominatim`.
     pub nominatim_cache: Arc<tokio::sync::RwLock<HashMap<String, (Instant, serde_json::Value)>>>,
@@ -105,7 +108,7 @@ impl FromRequestParts<AppState> for AuthUser {
             .map_err(|_| AppError::Unauthorized)?
             .claims;
 
-        require_active_user(&state.pool, claims.sub).await?;
+        crate::services::sessions::require_enabled_session(&state.pool, &claims).await?;
 
         Ok(AuthUser {
             user_id: claims.sub,
@@ -113,18 +116,6 @@ impl FromRequestParts<AppState> for AuthUser {
             api_access_level: None,
             api_vehicle_id: None,
         })
-    }
-}
-
-pub async fn require_active_user(pool: &sqlx::PgPool, user_id: Uuid) -> Result<(), AppError> {
-    match sqlx::query_scalar::<_, bool>("SELECT is_disabled FROM riviamigo.users WHERE id = $1")
-        .bind(user_id)
-        .fetch_optional(pool)
-        .await?
-    {
-        Some(false) => Ok(()),
-        Some(true) => Err(AppError::Forbidden),
-        None => Err(AppError::Unauthorized),
     }
 }
 
@@ -265,6 +256,15 @@ pub fn issue_access_token(
     default_vehicle_id: Option<Uuid>,
     keys: &JwtKeys,
 ) -> anyhow::Result<String> {
+    issue_session_access_token(user_id, default_vehicle_id, None, keys)
+}
+
+pub fn issue_session_access_token(
+    user_id: Uuid,
+    default_vehicle_id: Option<Uuid>,
+    sid: Option<Uuid>,
+    keys: &JwtKeys,
+) -> anyhow::Result<String> {
     use jsonwebtoken::{encode, Header};
     let now = chrono::Utc::now().timestamp();
     let claims = Claims {
@@ -273,6 +273,7 @@ pub fn issue_access_token(
         exp: now + 900, // 15 min
         iat: now,
         default_vehicle_id,
+        sid,
     };
     Ok(encode(
         &Header::new(Algorithm::RS256),

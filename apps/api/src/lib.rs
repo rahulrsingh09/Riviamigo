@@ -9,6 +9,7 @@ pub mod logging;
 pub mod middleware;
 pub mod models;
 pub mod parallax;
+pub mod private_deployment;
 pub mod routes;
 pub mod services;
 

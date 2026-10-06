@@ -1174,7 +1174,7 @@ export interface AddVehicleBody {
 export interface AddVehicleResult {
   vehicle_id: string;
   vehicle_saved?: boolean;
-  telemetry_status?: 'starting' | 'delayed';
+  telemetry_status?: 'starting' | 'delayed' | 'unchanged';
   telemetry_error?: string | null;
 }
 
@@ -1321,6 +1321,17 @@ export type DashboardChartFavorites = Record<string, string>;
 
 export interface AppTimezone {
   timezone: string;
+}
+
+export interface AppVersionResponse {
+  version: string;
+}
+
+export type UpdateCheckFrequency = 'hourly' | 'daily' | 'weekly' | 'monthly';
+
+export interface UpdateCheckSettings {
+  enabled: boolean;
+  frequency: UpdateCheckFrequency;
 }
 
 export type ApiAccessLevel = 'read' | 'view' | 'edit' | 'admin' | (string & {});

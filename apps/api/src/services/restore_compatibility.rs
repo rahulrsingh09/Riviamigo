@@ -3,15 +3,12 @@ use serde::{Deserialize, Serialize};
 use serde_json::Value;
 use sha2::{Digest, Sha256};
 use sqlx::{postgres::PgPoolOptions, AssertSqlSafe, Executor, PgPool, Postgres};
-use std::path::{Path, PathBuf};
-use tokio::{fs, process::Command};
 use url::Url;
 use uuid::Uuid;
 
 use crate::{
     db::migrations::{self, LedgerValidationKind, MigrationIdentity, MIGRATION_CHAIN_ID, MIGRATOR},
     errors::AppError,
-    services::backups,
 };
 
 pub const RECOVERY_FORMAT_V1: &str = "riviamigo-recovery-v1";
@@ -115,94 +112,8 @@ pub struct CandidatePreparationReport {
     pub foreign_keys_validated: bool,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, Eq)]
-pub struct DumpInspection {
-    pub has_riviamigo_schema: bool,
-    pub has_timeseries_schema: bool,
-}
-
+pub use super::restore_dump_inspection::{inspect_recovery_dump, DumpInspection};
 pub use migrations::{compiled_migration_ledger, latest_migration_version};
-
-pub async fn inspect_recovery_dump(package: &Path) -> Result<DumpInspection, AppError> {
-    let package = package.to_path_buf();
-    let temporary = std::env::temp_dir().join(format!("riviamigo-dump-inspect-{}", Uuid::new_v4()));
-    let output = async {
-        backups::extract_recovery_package(&package, &temporary).await?;
-        let dump = temporary.join("database.dump");
-        let pg_restore = resolve_pg_restore_executable().await.ok_or_else(|| {
-            AppError::DependencyUnavailable(
-                "pg_restore is unavailable for restore preflight".into(),
-            )
-        })?;
-        let inspected = Command::new(pg_restore)
-            .arg("--schema-only")
-            .arg("--file=-")
-            .arg(&dump)
-            .output()
-            .await
-            .map_err(|error| {
-                AppError::DependencyUnavailable(format!(
-                    "pg_restore is unavailable for restore preflight: {error}"
-                ))
-            })?;
-        if !inspected.status.success() {
-            return Err(AppError::Validation(format!(
-                "pg_restore could not inspect the recovery dump: {}",
-                String::from_utf8_lossy(&inspected.stderr).trim()
-            )));
-        }
-        let schema = String::from_utf8_lossy(&inspected.stdout);
-        Ok(DumpInspection {
-            has_riviamigo_schema: schema.contains("CREATE SCHEMA riviamigo"),
-            has_timeseries_schema: schema.contains("CREATE SCHEMA timeseries"),
-        })
-    }
-    .await;
-    let _ = fs::remove_dir_all(&temporary).await;
-    output
-}
-
-async fn resolve_pg_restore_executable() -> Option<PathBuf> {
-    if Command::new("pg_restore")
-        .arg("--version")
-        .output()
-        .await
-        .is_ok_and(|output| output.status.success())
-    {
-        return Some(PathBuf::from("pg_restore"));
-    }
-    find_windows_pg_restore()
-}
-
-#[cfg(windows)]
-fn find_windows_pg_restore() -> Option<PathBuf> {
-    for root in [
-        std::env::var_os("ProgramFiles"),
-        std::env::var_os("ProgramFiles(x86)"),
-    ]
-    .into_iter()
-    .flatten()
-    {
-        let postgres = PathBuf::from(root).join("PostgreSQL");
-        let Ok(entries) = std::fs::read_dir(postgres) else {
-            continue;
-        };
-        let mut versions = entries.filter_map(Result::ok).collect::<Vec<_>>();
-        versions.sort_by_key(|entry| std::cmp::Reverse(entry.file_name()));
-        for version in versions {
-            let candidate = version.path().join("bin").join("pg_restore.exe");
-            if candidate.is_file() {
-                return Some(candidate);
-            }
-        }
-    }
-    None
-}
-
-#[cfg(not(windows))]
-fn find_windows_pg_restore() -> Option<PathBuf> {
-    None
-}
 
 pub async fn runtime_database_profile(pool: &PgPool) -> Result<DatabaseProfile, AppError> {
     let postgres_major: i32 =
@@ -438,8 +349,21 @@ pub async fn schema_fingerprint(pool: &PgPool) -> Result<String, AppError> {
 }
 
 pub async fn validate_schema_contract(pool: &PgPool) -> Result<SchemaContractReport, AppError> {
+    validate_schema_contract_for_source(pool, true).await
+}
+
+async fn validate_schema_contract_for_source(
+    pool: &PgPool,
+    charts_required: bool,
+) -> Result<SchemaContractReport, AppError> {
     let mut missing_relations = Vec::new();
     for relation in REQUIRED_SCHEMA_RELATIONS {
+        // Charts were added in migration 11, after the immutable baseline.
+        // Historical candidates still need their fingerprint/ledger verified
+        // before forward migrations; the final contract always requires charts.
+        if *relation == "riviamigo.charts" && !charts_required {
+            continue;
+        }
         let present: bool = sqlx::query_scalar("SELECT to_regclass($1) IS NOT NULL")
             .bind(relation)
             .fetch_one(pool)
@@ -472,7 +396,7 @@ pub async fn validate_schema_contract(pool: &PgPool) -> Result<SchemaContractRep
 /// targets the live database.
 pub async fn prepare_candidate_schema(
     pool: &PgPool,
-    candidate_database_url: &str,
+    administrative_database_url: &str,
     manifest: &Value,
 ) -> anyhow::Result<CandidatePreparationReport> {
     let format = manifest
@@ -485,7 +409,10 @@ pub async fn prepare_candidate_schema(
     let source = source_profile_from_manifest(manifest)?;
     validate_source_schema_metadata(&source).map_err(|error| anyhow::anyhow!(error.message))?;
 
-    let source_schema = validate_schema_contract(pool).await?;
+    let exact_prefix = migrations::validate_ledger_prefix(&source.migration_ledger).is_ok();
+    let source_schema =
+        validate_schema_contract_for_source(pool, exact_prefix && source.migration_version >= 11)
+            .await?;
     if !source_schema.required_relations_present
         || !source_schema.telemetry_hypertable
         || !source_schema.foreign_keys_validated
@@ -511,7 +438,6 @@ pub async fn prepare_candidate_schema(
         );
     }
 
-    let exact_prefix = migrations::validate_ledger_prefix(&source.migration_ledger).is_ok();
     if exact_prefix {
         migrations::restore_ledger(pool, &source.migration_ledger).await?;
     } else {
@@ -519,7 +445,7 @@ pub async fn prepare_candidate_schema(
         // restored schema. Accept a legacy SQLx ledger only when the physical
         // schema is exactly the immutable public baseline; otherwise fail
         // closed rather than guessing how to transform historical data.
-        let baseline = baseline_schema_fingerprint(candidate_database_url).await?;
+        let baseline = baseline_schema_fingerprint(administrative_database_url).await?;
         if source_schema.schema_fingerprint != baseline {
             anyhow::bail!(
                 "recovery package uses an unrecognized migration ledger and its restored schema is not the public baseline"
@@ -546,6 +472,9 @@ pub async fn prepare_candidate_schema(
     MIGRATOR
         .run_direct(None, &mut *migration_connection, false)
         .await?;
+    drop(migration_connection);
+    crate::services::restore_policy::sanitize(pool).await?;
+    let mut migration_connection = pool.acquire().await?;
     ensure_sanitized_authentication_settings(&mut *migration_connection).await?;
     drop(migration_connection);
 
@@ -577,14 +506,13 @@ pub async fn prepare_candidate_schema(
 /// Provider credentials and OIDC settings are intentionally excluded from
 /// backups. A restored candidate must nevertheless have the migration's safe
 /// defaults so startup and break-glass password recovery remain available.
-/// `DO NOTHING` is important: this helper must never overwrite settings that a
-/// restore package or a prior compatibility step already supplied.
+/// Restored rows are never allowed to select the authentication provider.
 async fn ensure_sanitized_authentication_settings<'c, E>(executor: E) -> Result<(), sqlx::Error>
 where
     E: Executor<'c, Database = Postgres>,
 {
     sqlx::query(
-        "INSERT INTO riviamigo.authentication_settings (id) VALUES (TRUE) ON CONFLICT (id) DO NOTHING",
+        "INSERT INTO riviamigo.authentication_settings (id) VALUES (TRUE) ON CONFLICT (id) DO UPDATE SET oidc_enabled = FALSE, password_login_enabled = TRUE, issuer_url = NULL, public_base_url = NULL, client_id = NULL, client_secret_encrypted = NULL, button_label = DEFAULT, scopes = DEFAULT, token_auth_method = DEFAULT, auto_signup = FALSE, auto_link_verified_email = FALSE, allowed_email_domains = DEFAULT, required_claim_name = NULL, required_claim_value = NULL, last_validation_at = NULL, last_validation_fingerprint = NULL, updated_by = NULL, updated_at = now(), oidc_auto_login = FALSE",
     )
     .execute(executor)
     .await?;
@@ -1055,18 +983,18 @@ mod tests {
         .expect("seed existing settings");
         ensure_sanitized_authentication_settings(&mut *transaction)
             .await
-            .expect("preserve existing settings");
+            .expect("sanitize existing settings");
         let preserved = sqlx::query(
             "SELECT oidc_enabled,password_login_enabled,client_secret_encrypted FROM riviamigo.authentication_settings WHERE id=TRUE",
         )
         .fetch_one(&mut *transaction)
         .await
         .expect("preserved settings");
-        assert!(preserved.get::<bool, _>("oidc_enabled"));
-        assert!(!preserved.get::<bool, _>("password_login_enabled"));
+        assert!(!preserved.get::<bool, _>("oidc_enabled"));
+        assert!(preserved.get::<bool, _>("password_login_enabled"));
         assert_eq!(
             preserved.get::<Option<Vec<u8>>, _>("client_secret_encrypted"),
-            Some(b"secret".to_vec())
+            None
         );
         transaction.rollback().await.expect("rollback test data");
     }

@@ -51,6 +51,7 @@ impl Fixture {
                 jwt_keys,
                 age_key: generated.age_key,
                 config,
+                resources: Default::default(),
                 nominatim_cache: Default::default(),
                 supervisor: crate::ingestion::supervisor::SupervisorHandle::noop(),
             },
@@ -127,8 +128,10 @@ impl Fixture {
         let refresh = format!("synthetic-refresh-{}", Uuid::new_v4());
         use sha2::{Digest, Sha256};
         sqlx::query(
-            "INSERT INTO riviamigo.refresh_tokens (user_id, token_hash, expires_at)
-             VALUES ($1, $2, now() + interval '1 day')",
+            "WITH family AS (
+                 INSERT INTO riviamigo.session_families(user_id) VALUES ($1) RETURNING id
+             ) INSERT INTO riviamigo.refresh_tokens (user_id, token_hash, expires_at, family_id)
+               SELECT $1, $2, now() + interval '1 day', id FROM family",
         )
         .bind(user_id)
         .bind(Sha256::digest(refresh.as_bytes()).to_vec())
@@ -201,6 +204,7 @@ impl Fixture {
             "vehicle_credentials",
             "vehicle_runtime_state",
             "refresh_tokens",
+            "session_families",
             "api_keys",
             "vehicle_invites",
             "account_invitations",

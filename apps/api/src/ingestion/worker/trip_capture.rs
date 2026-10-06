@@ -227,7 +227,7 @@ mod tests {
                 .await
                 .unwrap();
             let pool = PgPool::connect_with(options.database(&name)).await.unwrap();
-            sqlx::migrate!("./migrations").run(&pool).await.unwrap();
+            crate::db::migrations::MIGRATOR.run(&pool).await.unwrap();
             let user_id = Uuid::new_v4();
             sqlx::query("INSERT INTO riviamigo.users(id,email,password_hash) VALUES($1,'synthetic@example.invalid','unused')")
                 .bind(user_id).execute(&pool).await.unwrap();

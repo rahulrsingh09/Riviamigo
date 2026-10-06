@@ -1,3 +1,6 @@
+use crate::private_deployment::enrollment::{
+    lock_active_enrollment_user, lock_credential_membership, lock_enrollment,
+};
 use axum::{
     body::Body,
     extract::{Path, Query, State},
@@ -275,9 +278,7 @@ struct AddVehicleBody {
     name: Option<String>,
     home_lat: Option<f64>,
     home_lng: Option<f64>,
-    model: Option<String>,
     trim: Option<String>,
-    vin: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -1384,6 +1385,7 @@ async fn lookup_rivian_vehicles(
 ) -> Result<Vec<RivianVehicleSummary>, AppError> {
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(30))
+        .no_proxy()
         .redirect(reqwest::redirect::Policy::none())
         .build()
         .map_err(|error| AppError::Internal(error.into()))?;
@@ -1395,17 +1397,12 @@ async fn lookup_rivian_vehicles(
 fn require_account_vehicle(
     account_vehicles: &[RivianVehicleSummary],
     rivian_vehicle_id: &str,
-) -> Result<(), AppError> {
-    if account_vehicles
+) -> Result<RivianVehicleSummary, AppError> {
+    account_vehicles
         .iter()
-        .any(|vehicle| vehicle.id == rivian_vehicle_id)
-    {
-        Ok(())
-    } else {
-        Err(AppError::Validation(
-            "Rivian account does not include this vehicle".into(),
-        ))
-    }
+        .find(|vehicle| vehicle.id == rivian_vehicle_id)
+        .cloned()
+        .ok_or_else(|| AppError::Validation("Rivian account does not include this vehicle".into()))
 }
 
 async fn add_vehicle_with_lookup(
@@ -1416,7 +1413,7 @@ async fn add_vehicle_with_lookup(
         &crate::ingestion::session_store::RivianTokenBundle,
     ) -> Result<Vec<RivianVehicleSummary>, AppError>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let rivian_vehicle_id = body.rivian_vehicle_id.clone();
+    let rivian_vehicle_id = body.rivian_vehicle_id.trim().to_owned();
 
     info!(
         user_id = %auth.user_id,
@@ -1441,29 +1438,13 @@ async fn add_vehicle_with_lookup(
     })?;
 
     let account_vehicles = lookup(&tokens).await?;
-    require_account_vehicle(&account_vehicles, &rivian_vehicle_id)?;
-
-    let identity = age_identity(&state)?;
-    let encrypted = crate::ingestion::session_store::encrypt_tokens(&tokens, &identity)
-        .map_err(AppError::Internal)?;
+    let verified = require_account_vehicle(&account_vehicles, &rivian_vehicle_id)?;
 
     let mut tx = state.pool.begin().await?;
-    lock_active_enrollment_user(&mut tx, auth.user_id).await?;
-    // The schema only makes Rivian IDs unique per user, so serialize enrollment globally.
-    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 1))")
-        .bind(&rivian_vehicle_id)
-        .execute(&mut *tx)
-        .await?;
-    let existing_vehicle_id: Option<Uuid> = sqlx::query_scalar(
-        "SELECT id FROM riviamigo.vehicles WHERE rivian_vehicle_id = $1 FOR UPDATE",
-    )
-    .bind(&rivian_vehicle_id)
-    .fetch_optional(&mut *tx)
-    .await?;
+    let existing_vehicle_id = lock_enrollment(&mut tx, auth.user_id, &rivian_vehicle_id).await?;
 
+    let is_new = existing_vehicle_id.is_none();
     let vehicle_id = if let Some(existing_vehicle_id) = existing_vehicle_id {
-        lock_credential_membership(&mut tx, auth.user_id, existing_vehicle_id).await?;
-
         sqlx::query(
             "INSERT INTO riviamigo.vehicle_user_settings
              (vehicle_id, user_id, display_name)
@@ -1488,10 +1469,10 @@ async fn add_vehicle_with_lookup(
         .bind(auth.user_id)
         .bind(&rivian_vehicle_id)
         .bind(canonical_vehicle_model(
-            body.model.as_deref().unwrap_or("R1T"),
+            verified.model.as_deref().unwrap_or("R1T"),
         ))
         .bind(body.trim.as_deref())
-        .bind(body.vin.as_deref())
+        .bind(verified.vin.as_deref())
         .bind(body.name.as_deref().map(canonical_vehicle_name))
         .bind(body.home_lat)
         .bind(body.home_lng)
@@ -1524,7 +1505,11 @@ async fn add_vehicle_with_lookup(
         vehicle_id
     };
 
-    sqlx::query(
+    if is_new {
+        let identity = age_identity(&state)?;
+        let encrypted = crate::ingestion::session_store::encrypt_tokens(&tokens, &identity)
+            .map_err(AppError::Internal)?;
+        sqlx::query(
         "INSERT INTO riviamigo.vehicle_credentials (vehicle_id, encrypted_tokens, token_created_at) \
          VALUES ($1,$2,now())
          ON CONFLICT (vehicle_id) DO UPDATE
@@ -1536,6 +1521,7 @@ async fn add_vehicle_with_lookup(
     .bind(encrypted.as_slice())
     .execute(&mut *tx)
     .await?;
+    }
 
     // Set as default vehicle if user has none.
     sqlx::query(
@@ -1562,7 +1548,8 @@ async fn add_vehicle_with_lookup(
     .execute(&mut *tx)
     .await?;
 
-    sqlx::query(
+    if is_new {
+        sqlx::query(
         "INSERT INTO riviamigo.vehicle_runtime_state
          (vehicle_id, is_online, worker_health, worker_health_msg, auth_state, auth_reason_code, updated_at)
          VALUES ($1, FALSE, 'starting', 'Initializing Rivian telemetry collector', 'authorized', NULL, now())
@@ -1577,12 +1564,15 @@ async fn add_vehicle_with_lookup(
     .bind(vehicle_id)
     .execute(&mut *tx)
     .await?;
+    }
 
     tx.commit().await?;
 
     // The vehicle and credentials are durable after commit. Artwork and one-time
     // session cleanup must not turn a successful add into a client-visible error.
-    queue_vehicle_artwork_repair(&state, vehicle_id).await;
+    if is_new {
+        queue_vehicle_artwork_repair(&state, vehicle_id).await;
+    }
 
     if let Err(error) = redis::AsyncCommands::del::<_, ()>(&mut conn, &key).await {
         warn!(
@@ -1599,57 +1589,22 @@ async fn add_vehicle_with_lookup(
         "vehicle.add.persisted"
     );
 
-    let telemetry_start_queued = state
-        .supervisor
-        .send(SupervisorCommand::StartWorker { vehicle_id })
-        .await;
+    let telemetry_start_queued = is_new
+        && state
+            .supervisor
+            .send(SupervisorCommand::StartWorker { vehicle_id })
+            .await;
 
     Ok(Json(serde_json::json!({
         "vehicle_id": vehicle_id,
         "vehicle_saved": true,
-        "telemetry_status": if telemetry_start_queued { "starting" } else { "delayed" },
-        "telemetry_error": if telemetry_start_queued {
+        "telemetry_status": if !is_new { "unchanged" } else if telemetry_start_queued { "starting" } else { "delayed" },
+        "telemetry_error": if !is_new || telemetry_start_queued {
             serde_json::Value::Null
         } else {
             serde_json::Value::String("worker supervisor unavailable; retry telemetry start".into())
         },
     })))
-}
-
-async fn lock_active_enrollment_user(
-    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-    user_id: Uuid,
-) -> Result<(), AppError> {
-    match sqlx::query_scalar::<_, bool>(
-        "SELECT is_disabled FROM riviamigo.users WHERE id = $1 FOR UPDATE",
-    )
-    .bind(user_id)
-    .fetch_optional(&mut **tx)
-    .await?
-    {
-        Some(false) => Ok(()),
-        Some(true) => Err(AppError::Forbidden),
-        None => Err(AppError::Unauthorized),
-    }
-}
-
-async fn lock_credential_membership(
-    tx: &mut sqlx::Transaction<'_, sqlx::Postgres>,
-    user_id: Uuid,
-    vehicle_id: Uuid,
-) -> Result<(), AppError> {
-    let role = sqlx::query_scalar::<_, String>(
-        "SELECT role FROM riviamigo.vehicle_memberships
-         WHERE vehicle_id = $1 AND user_id = $2 FOR SHARE",
-    )
-    .bind(vehicle_id)
-    .bind(user_id)
-    .fetch_optional(&mut **tx)
-    .await?;
-    match role.as_deref() {
-        Some("owner" | "manager") => Ok(()),
-        _ => Err(AppError::Forbidden),
-    }
 }
 
 async fn refresh_vehicle_credentials(
@@ -5362,6 +5317,53 @@ mod tests {
     use tower::ServiceExt;
     use uuid::Uuid;
 
+    #[tokio::test]
+    async fn verified_account_lookup_uses_scoped_gateway_and_provider_metadata() {
+        use crate::{
+            ingestion::session_store::RivianTokenBundle,
+            private_deployment::outbound::with_mock_gateway,
+        };
+        use serde_json::json;
+        let gateway = axum::Router::new().route(
+            "/graphql",
+            axum::routing::post(
+                |headers: http::HeaderMap, Json(body): Json<serde_json::Value>| async move {
+                    assert_eq!(headers["A-Sess"], "synthetic-app");
+                    assert_eq!(headers["U-Sess"], "synthetic-user");
+                    assert_eq!(headers["Csrf-Token"], "synthetic-csrf");
+                    assert_eq!(headers["Authorization"], "Bearer synthetic-access");
+                    assert_eq!(body["operationName"], "getUserInfo");
+                    Json(json!({"data":{"currentUser":{"vehicles":[{
+                        "id":"verified-id", "vin":"provider-vin", "vehicle":{"model":"R1S"}
+                    }]}}}))
+                },
+            ),
+        );
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let url = format!("http://{}/graphql", listener.local_addr().unwrap());
+        let server = tokio::spawn(async move { axum::serve(listener, gateway).await.unwrap() });
+        let tokens = RivianTokenBundle {
+            access_token: "synthetic-access".into(),
+            refresh_token: "synthetic-refresh".into(),
+            app_session_token: "synthetic-app".into(),
+            user_session_token: "synthetic-user".into(),
+            csrf_token: "synthetic-csrf".into(),
+            created_at: chrono::Utc::now(),
+        };
+        with_mock_gateway(url, async {
+            let vehicles = super::lookup_rivian_vehicles(&tokens).await.unwrap();
+            assert!(matches!(
+                super::require_account_vehicle(&vehicles, "forged-id"),
+                Err(crate::errors::AppError::Validation(_))
+            ));
+            let verified = super::require_account_vehicle(&vehicles, "verified-id").unwrap();
+            assert_eq!(verified.vin.as_deref(), Some("provider-vin"));
+            assert_eq!(verified.model.as_deref(), Some("R1S"));
+        })
+        .await;
+        server.abort();
+    }
+
     #[test]
     fn maps_rejected_rivian_credentials_to_an_actionable_error() {
         assert!(matches!(
@@ -5459,6 +5461,7 @@ mod tests {
             restore_agent_key_file: "/backups/.restore-agent-key".into(),
             recovery: crate::config::RecoveryConfig::default(),
             origin_bind: crate::config::OriginBindConfig::default(),
+            security: Default::default(),
             rivian_ws_reconnect_initial_seconds: 10,
             rivian_ws_reconnect_max_seconds: 900,
             rivian_raw_event_retention_days: 7,
@@ -5480,6 +5483,7 @@ mod tests {
                 std::collections::HashMap::new(),
             )),
             supervisor: crate::ingestion::supervisor::SupervisorHandle::noop(),
+            resources: Default::default(),
         }
     }
 
@@ -5525,6 +5529,7 @@ mod tests {
             restore_agent_key_file: "/backups/.restore-agent-key".into(),
             recovery: crate::config::RecoveryConfig::default(),
             origin_bind: crate::config::OriginBindConfig::default(),
+            security: Default::default(),
             rivian_ws_reconnect_initial_seconds: 10,
             rivian_ws_reconnect_max_seconds: 900,
             rivian_raw_event_retention_days: 7,
@@ -5547,6 +5552,7 @@ mod tests {
                 std::collections::HashMap::new(),
             )),
             supervisor: crate::ingestion::supervisor::SupervisorHandle::noop(),
+            resources: Default::default(),
         };
 
         crate::routes::build_router(state)
@@ -5749,6 +5755,7 @@ mod tests {
             restore_agent_key_file: "/backups/.restore-agent-key".into(),
             recovery: crate::config::RecoveryConfig::default(),
             origin_bind: crate::config::OriginBindConfig::default(),
+            security: Default::default(),
             rivian_ws_reconnect_initial_seconds: 10,
             rivian_ws_reconnect_max_seconds: 900,
             rivian_raw_event_retention_days: 7,

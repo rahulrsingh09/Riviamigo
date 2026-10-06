@@ -2,6 +2,10 @@ use anyhow::{bail, Context};
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use sqlx::{migrate::Migrator, Connection, PgConnection, PgPool, Postgres, Row, Transaction};
+use std::sync::LazyLock;
+
+#[path = "private_catalog.rs"]
+mod private_catalog;
 
 #[cfg(test)]
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -13,7 +17,12 @@ const MIGRATION_HEARTBEAT: std::time::Duration = std::time::Duration::from_secs(
 
 /// The one migration catalog used by startup, backup creation, restore
 /// planning, candidate preparation, and explicit chain adoption.
-pub static MIGRATOR: Migrator = sqlx::migrate!("./migrations");
+pub static MIGRATOR: LazyLock<Migrator> = LazyLock::new(|| {
+    private_catalog::compose(
+        sqlx::migrate!("./migrations"),
+        sqlx::migrate!("./migrations-private"),
+    )
+});
 
 /// The public baseline is a schema snapshot. Later migrations are deliberately
 /// not included here: callers use this to prove or reconstruct the baseline,

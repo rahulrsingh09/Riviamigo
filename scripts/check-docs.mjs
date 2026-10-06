@@ -340,7 +340,13 @@ function checkEnvironmentReferenceCoverage() {
   );
   const runtimeFields = [...configBlock.matchAll(/pub ([a-z][a-z0-9_]+):/g)]
     .map((match) => match[1].toUpperCase())
-    .filter((name) => !["RATE_LIMIT", "RECOVERY", "ORIGIN_BIND"].includes(name));
+    .filter((name) => !["RATE_LIMIT", "RECOVERY", "ORIGIN_BIND", "SECURITY"].includes(name));
+  const securityBlock = configContent.slice(
+    configContent.indexOf("pub struct SecurityConfig"),
+    configContent.indexOf("impl Default for SecurityConfig"),
+  );
+  const securityFields = [...securityBlock.matchAll(/pub ([a-z][a-z0-9_]+):/g)]
+    .map((match) => match[1].toUpperCase());
   const rateBlock = configContent.slice(
     configContent.indexOf("pub struct RateLimitConfig"),
     configContent.indexOf("pub struct RecoveryConfig"),
@@ -362,6 +368,7 @@ function checkEnvironmentReferenceCoverage() {
   const directRuntimeVars = ["RIVIAN_GRAPHQL_GATEWAY_URL", "RUST_LOG"];
   for (const name of [
     ...runtimeFields,
+    ...securityFields,
     ...rateFields,
     ...recoveryFields,
     ...originFields,

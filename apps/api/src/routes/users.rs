@@ -408,13 +408,7 @@ async fn update_user(
     .execute(&mut *tx)
     .await?;
     if body.is_disabled == Some(true) {
-        sqlx::query(
-            "UPDATE riviamigo.refresh_tokens SET revoked_at = now()
-             WHERE user_id = $1 AND revoked_at IS NULL",
-        )
-        .bind(target_user_id)
-        .execute(&mut *tx)
-        .await?;
+        crate::services::sessions::revoke_user_sessions(&mut tx, target_user_id).await?;
         sqlx::query(
             "UPDATE riviamigo.api_keys SET revoked_at = now(), updated_at = now()
              WHERE user_id = $1 AND revoked_at IS NULL",

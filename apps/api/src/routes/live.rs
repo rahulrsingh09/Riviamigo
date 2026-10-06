@@ -91,42 +91,17 @@ async fn live_handler(
         .ok_or(AppError::Validation("vehicle_id required".into()))?;
 
     let claims = extract_jwt_from_headers(&headers, &state.jwt_keys)?;
-
-    require_live_access(&state.pool, &claims, vid).await?;
-
+    authorize_live(&state.pool, &claims, vid)
+        .await
+        .map_err(|_| AppError::Unauthorized)?;
+    let permit = state
+        .resources
+        .live(claims.sub, vid, &state.config.security)?;
     Ok(ws
+        .max_message_size(4096)
+        .max_frame_size(4096)
         .protocols(["bearer"])
-        .on_upgrade(move |socket| handle_socket(socket, vid, state, claims)))
-}
-
-async fn require_live_access(
-    pool: &sqlx::PgPool,
-    claims: &Claims,
-    vehicle_id: Uuid,
-) -> Result<(), AppError> {
-    if claims.exp <= Utc::now().timestamp() {
-        return Err(AppError::Unauthorized);
-    }
-    let allowed: bool = tokio::time::timeout(
-        LIVE_AUTH_TIMEOUT,
-        sqlx::query_scalar(
-            "SELECT EXISTS(
-                SELECT 1 FROM riviamigo.vehicle_memberships m
-                JOIN riviamigo.users u ON u.id = m.user_id
-                JOIN riviamigo.vehicles v ON v.id = m.vehicle_id
-                WHERE m.vehicle_id = $1 AND m.user_id = $2 AND u.is_disabled = FALSE
-            )",
-        )
-        .bind(vehicle_id)
-        .bind(claims.sub)
-        .fetch_one(pool),
-    )
-    .await
-    .map_err(|_| AppError::Unauthorized)??;
-    if !allowed || claims.exp <= Utc::now().timestamp() {
-        return Err(AppError::Unauthorized);
-    }
-    Ok(())
+        .on_upgrade(move |socket| handle_socket(socket, vid, state, claims, permit)))
 }
 
 /// GET /v1/vehicles/{id}/live-session
@@ -278,39 +253,91 @@ fn live_session_response(raw: Option<String>) -> axum::response::Response {
     }
 }
 
-async fn handle_socket(socket: WebSocket, vehicle_id: Uuid, state: AppState, claims: Claims) {
+async fn authorize_live(
+    pool: &sqlx::PgPool,
+    claims: &Claims,
+    vehicle_id: Uuid,
+) -> Result<(), (u16, &'static str)> {
+    tokio::time::timeout(LIVE_AUTH_TIMEOUT, async {
+        crate::services::sessions::require_enabled_session(pool, claims)
+            .await
+            .map_err(|error| match error {
+                AppError::Forbidden | AppError::Unauthorized => (4401, "Session ended"),
+                _ => (1011, "Authorization unavailable"),
+            })?;
+        // Legacy memberships can survive vehicle deletion.
+        let allowed: bool = sqlx::query_scalar(
+            "SELECT EXISTS(
+                SELECT 1 FROM riviamigo.vehicle_memberships m
+                JOIN riviamigo.vehicles v ON v.id = m.vehicle_id
+                WHERE m.vehicle_id = $1 AND m.user_id = $2
+            )",
+        )
+        .bind(vehicle_id)
+        .bind(claims.sub)
+        .fetch_one(pool)
+        .await
+        .map_err(|_| (1011, "Authorization unavailable"))?;
+        if !allowed {
+            return Err((4403, "Vehicle access removed"));
+        }
+        if claims.exp <= Utc::now().timestamp() {
+            return Err((4401, "Session expired"));
+        }
+        Ok(())
+    })
+    .await
+    .unwrap_or(Err((1011, "Authorization unavailable")))
+}
+
+async fn handle_socket(
+    socket: WebSocket,
+    vehicle_id: Uuid,
+    state: AppState,
+    claims: Claims,
+    _permit: crate::services::resource_limits::ResourcePermit,
+) {
     let (mut sink, mut stream) = socket.split();
     let topic = format!("vehicle:{vehicle_id}:status");
+    let remaining = chrono::DateTime::from_timestamp(claims.exp, 0)
+        .map(|expires| (expires - Utc::now()).to_std().unwrap_or_default())
+        .unwrap_or_default();
+    let expiry = tokio::time::Instant::now() + remaining;
 
-    let mut pubsub = match state.redis.get_async_pubsub().await {
-        Ok(c) => c,
-        Err(e) => {
-            tracing::error!(err=%e, "redis pubsub connect failed");
+    let mut pubsub = match tokio::time::timeout_at(
+        expiry.min(tokio::time::Instant::now() + std::time::Duration::from_secs(5)),
+        state.redis.get_async_pubsub(),
+    )
+    .await
+    {
+        Ok(Ok(c)) => c,
+        _ => {
+            tracing::error!("redis pubsub connect failed or timed out");
             return;
         }
     };
-    if let Err(e) = pubsub.subscribe(&topic).await {
-        tracing::error!(err=%e, "redis subscribe failed");
+    if !matches!(
+        tokio::time::timeout_at(
+            expiry.min(tokio::time::Instant::now() + std::time::Duration::from_secs(5)),
+            pubsub.subscribe(&topic)
+        )
+        .await,
+        Ok(Ok(()))
+    ) {
+        tracing::error!("redis subscribe failed");
         return;
     }
 
-    let mut keepalive_interval = tokio::time::interval(tokio::time::Duration::from_secs(30));
-    let mut auth_interval = tokio::time::interval(LIVE_AUTH_INTERVAL);
-    auth_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
-    let expires = tokio::time::sleep(std::time::Duration::from_secs(
-        (claims.exp - Utc::now().timestamp()).max(0) as u64,
-    ));
-    tokio::pin!(expires);
+    let mut keepalive_interval = tokio::time::interval(LIVE_AUTH_INTERVAL);
+    keepalive_interval.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Skip);
     let mut msg_stream = pubsub.into_on_message();
 
     loop {
         tokio::select! {
             biased;
-            _ = &mut expires => break,
-            _ = auth_interval.tick() => {
-                if require_live_access(&state.pool, &claims, vehicle_id).await.is_err() {
-                    break;
-                }
+            _ = tokio::time::sleep_until(expiry) => {
+                close_live(&mut sink, 4401, "Session expired").await;
+                break;
             }
             msg = msg_stream.next() => {
                 match msg {
@@ -319,23 +346,28 @@ async fn handle_socket(socket: WebSocket, vehicle_id: Uuid, state: AppState, cla
                             Ok(p) => p,
                             Err(_) => continue,
                         };
-                        // Check again at delivery so queued telemetry cannot bypass revocation.
-                        if require_live_access(&state.pool, &claims, vehicle_id).await.is_err() {
+                        // Queued telemetry must not outlive the recipient's authorization.
+                        if let Err((code, reason)) = authorize_live(&state.pool, &claims, vehicle_id).await {
+                            close_live(&mut sink, code, reason).await;
                             break;
                         }
-                        if !send_live_message(&mut sink, Message::Text(payload.into())).await { break; }
+                        if !send_live(&mut sink, Message::Text(payload.into()), expiry).await { break; }
                     }
                     None => break,
                 }
             }
             _ = keepalive_interval.tick() => {
-                if !send_live_message(&mut sink, Message::Text(LIVE_KEEPALIVE_MESSAGE.into())).await { break; }
-                if !send_live_message(&mut sink, Message::Ping(Vec::new().into())).await { break; }
+                if let Err((code, reason)) = authorize_live(&state.pool, &claims, vehicle_id).await {
+                    close_live(&mut sink, code, reason).await;
+                    break;
+                }
+                if !send_live(&mut sink, Message::Text(LIVE_KEEPALIVE_MESSAGE.into()), expiry).await { break; }
+                if !send_live(&mut sink, Message::Ping(Vec::new().into()), expiry).await { break; }
             }
             msg = stream.next() => {
                 match msg {
                     Some(Ok(Message::Text(text))) if is_live_probe(text.as_str()) => {
-                        if !send_live_message(&mut sink, Message::Text(LIVE_KEEPALIVE_MESSAGE.into())).await { break; }
+                        if !send_live(&mut sink, Message::Text(LIVE_KEEPALIVE_MESSAGE.into()), expiry).await { break; }
                     }
                     Some(Ok(Message::Pong(_))) => {}
                     Some(Ok(Message::Close(_))) | None => break,
@@ -344,206 +376,37 @@ async fn handle_socket(socket: WebSocket, vehicle_id: Uuid, state: AppState, cla
             }
         }
     }
-    send_live_message(
-        &mut sink,
-        Message::Close(Some(CloseFrame {
-            code: 1008,
-            reason: "Live authorization ended".into(),
-        })),
-    )
-    .await;
 }
 
-async fn send_live_message(
+async fn send_live(
     sink: &mut futures::stream::SplitSink<WebSocket, Message>,
     message: Message,
+    expiry: tokio::time::Instant,
 ) -> bool {
     matches!(
-        tokio::time::timeout(LIVE_AUTH_TIMEOUT, sink.send(message)).await,
+        tokio::time::timeout_at(
+            expiry.min(tokio::time::Instant::now() + std::time::Duration::from_secs(5)),
+            sink.send(message)
+        )
+        .await,
         Ok(Ok(()))
     )
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use axum::http::HeaderMap;
-    use uuid::Uuid;
-
-    use crate::{
-        keys::generate_keys,
-        middleware::auth::{issue_access_token, JwtKeys},
-    };
-
-    fn make_keys() -> JwtKeys {
-        let k = generate_keys().expect("key generation");
-        JwtKeys::new(&k.jwt_private_pem, &k.jwt_public_pem).expect("JwtKeys::new")
-    }
-
-    fn headers_with_proto(proto: &str) -> HeaderMap {
-        let mut h = HeaderMap::new();
-        h.insert(
-            "sec-websocket-protocol",
-            proto.parse().expect("header value"),
-        );
-        h
-    }
-
-    #[test]
-    fn missing_proto_header_is_unauthorized() {
-        let keys = make_keys();
-        let result = extract_jwt_from_headers(&HeaderMap::new(), &keys);
-        assert!(matches!(result, Err(AppError::Unauthorized)));
-    }
-
-    #[test]
-    fn proto_without_bearer_prefix_is_unauthorized() {
-        let keys = make_keys();
-        let result = extract_jwt_from_headers(&headers_with_proto("graphql-ws"), &keys);
-        assert!(matches!(result, Err(AppError::Unauthorized)));
-    }
-
-    #[test]
-    fn malformed_jwt_is_unauthorized() {
-        let keys = make_keys();
-        let result = extract_jwt_from_headers(&headers_with_proto("bearer.notavalidtoken"), &keys);
-        assert!(matches!(result, Err(AppError::Unauthorized)));
-    }
-
-    #[test]
-    fn jwt_signed_by_different_key_is_unauthorized() {
-        let keys = make_keys();
-        let other_keys = make_keys();
-        let user_id = Uuid::new_v4();
-        // Sign with `other_keys`, verify with `keys` → should fail
-        let token = issue_access_token(user_id, None, &other_keys).expect("issue_access_token");
-        let result =
-            extract_jwt_from_headers(&headers_with_proto(&format!("bearer.{token}")), &keys);
-        assert!(matches!(result, Err(AppError::Unauthorized)));
-    }
-
-    #[test]
-    fn valid_jwt_returns_correct_claims() {
-        let keys = make_keys();
-        let user_id = Uuid::new_v4();
-        let vid = Uuid::new_v4();
-        let token = issue_access_token(user_id, Some(vid), &keys).expect("issue_access_token");
-        let claims =
-            extract_jwt_from_headers(&headers_with_proto(&format!("bearer.{token}")), &keys)
-                .expect("valid JWT should succeed");
-        assert_eq!(claims.sub, user_id);
-        assert_eq!(claims.iss, "riviamigo.app");
-        assert_eq!(claims.default_vehicle_id, Some(vid));
-    }
-
-    #[test]
-    fn websocket_auth_accepts_standard_access_tokens() {
-        let keys = make_keys();
-        let user_id = Uuid::new_v4();
-        let token = issue_access_token(user_id, None, &keys).expect("issue_access_token");
-
-        let claims =
-            extract_jwt_from_headers(&headers_with_proto(&format!("bearer.{token}")), &keys)
-                .expect("websocket auth should accept normal API access tokens");
-
-        assert_eq!(claims.sub, user_id);
-    }
-
-    #[test]
-    fn bearer_with_surrounding_protocols_is_parsed() {
-        let keys = make_keys();
-        let user_id = Uuid::new_v4();
-        let token = issue_access_token(user_id, None, &keys).expect("issue_access_token");
-        // Browsers may send multiple subprotocols separated by commas
-        let proto = format!("graphql-ws, bearer.{token}, some-other");
-        let claims = extract_jwt_from_headers(&headers_with_proto(&proto), &keys)
-            .expect("should find bearer. among multiple protocols");
-        assert_eq!(claims.sub, user_id);
-    }
-
-    #[test]
-    fn recognizes_only_probe_control_messages() {
-        assert!(is_live_probe(r#"{"type":"probe"}"#));
-        assert!(is_live_probe(r#"{"type":"probe","request_id":"ignored"}"#));
-        assert!(!is_live_probe(r#"{"type":"keepalive"}"#));
-        assert!(!is_live_probe(r#"{"vehicle_id":"not-a-probe"}"#));
-        assert!(!is_live_probe("not-json"));
-    }
-
-    #[test]
-    fn keepalive_message_contains_no_vehicle_data() {
-        assert_eq!(LIVE_KEEPALIVE_MESSAGE, r#"{"type":"keepalive"}"#);
-    }
-
-    #[test]
-    fn live_session_response_returns_200_for_a_snapshot() {
-        let response = live_session_response(Some(r#"{"power_kw":9.6}"#.to_string()));
-        assert_eq!(response.status(), axum::http::StatusCode::OK);
-        assert_eq!(
-            response
-                .headers()
-                .get("content-type")
-                .and_then(|value| value.to_str().ok()),
-            Some("application/json")
-        );
-    }
-
-    #[test]
-    fn live_session_response_returns_204_without_a_snapshot() {
-        let response = live_session_response(None);
-        assert_eq!(response.status(), axum::http::StatusCode::NO_CONTENT);
-    }
-
-    #[test]
-    fn fresh_parallax_fields_override_legacy_individually() {
-        let now = Utc::now();
-        let merged = merge_live_session(
-            Some(r#"{"power_kw":7.2,"energy_kwh":3.1,"ts":"2026-08-28T10:00:00Z"}"#.into()),
-            Some(ActiveLiveSession {
-                parallax_live_power_kw: Some(11.4),
-                parallax_total_charged_kwh: None,
-                parallax_pack_energy_kwh: Some(2.8),
-                parallax_thermal_energy_kwh: None,
-                parallax_time_remaining_minutes: Some(42),
-                parallax_power_observed_at: Some(now),
-                parallax_total_energy_observed_at: Some(now),
-                parallax_pack_energy_observed_at: Some(now),
-                parallax_thermal_energy_observed_at: None,
-                parallax_time_observed_at: Some(now),
-            }),
-            now,
-        )
-        .unwrap();
-        let value: serde_json::Value = serde_json::from_str(&merged).unwrap();
-        assert_eq!(value["power_kw"], 11.4);
-        assert_eq!(value["energy_kwh"], 3.1);
-        assert_eq!(value["pack_energy_kwh"], 2.8);
-        assert_eq!(value["provenance"]["power_kw"]["source"], "parallax");
-        assert_eq!(
-            value["provenance"]["energy_kwh"]["source"],
-            "legacy_charging_session"
-        );
-    }
-
-    #[test]
-    fn stale_parallax_never_replaces_legacy_and_no_active_session_returns_none() {
-        let now = Utc::now();
-        let active = ActiveLiveSession {
-            parallax_live_power_kw: Some(99.0),
-            parallax_total_charged_kwh: None,
-            parallax_pack_energy_kwh: None,
-            parallax_thermal_energy_kwh: None,
-            parallax_time_remaining_minutes: None,
-            parallax_power_observed_at: Some(now - chrono::Duration::minutes(3)),
-            parallax_total_energy_observed_at: None,
-            parallax_pack_energy_observed_at: None,
-            parallax_thermal_energy_observed_at: None,
-            parallax_time_observed_at: None,
-        };
-        let merged =
-            merge_live_session(Some(r#"{"power_kw":6.6}"#.into()), Some(active), now).unwrap();
-        let value: serde_json::Value = serde_json::from_str(&merged).unwrap();
-        assert_eq!(value["power_kw"], 6.6);
-        assert!(merge_live_session(Some(r#"{"power_kw":6.6}"#.into()), None, now).is_none());
-    }
+async fn close_live(
+    sink: &mut futures::stream::SplitSink<WebSocket, Message>,
+    code: u16,
+    reason: &'static str,
+) {
+    let _ = tokio::time::timeout(
+        std::time::Duration::from_secs(1),
+        sink.send(Message::Close(Some(CloseFrame {
+            code,
+            reason: reason.into(),
+        }))),
+    )
+    .await;
 }
+
+#[cfg(test)]
+mod tests;
