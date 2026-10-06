@@ -1,8 +1,14 @@
 import React from 'react';
-import { render, screen, act } from '@testing-library/react';
+import { render as renderBase, screen, act } from '@testing-library/react';
 import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import { useVehicleStatus, useLiveStatusStore } from '@riviamigo/hooks';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { StatusBar } from '@riviamigo/ui/primitives';
+
+const render: typeof renderBase = (ui, options) => {
+  const client = new QueryClient();
+  return renderBase(<QueryClientProvider client={client}>{ui}</QueryClientProvider>, options);
+};
 
 class MockWebSocket {
   static instances: MockWebSocket[] = [];

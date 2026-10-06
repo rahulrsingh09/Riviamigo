@@ -271,9 +271,7 @@ struct AddVehicleBody {
     name: Option<String>,
     home_lat: Option<f64>,
     home_lng: Option<f64>,
-    model: Option<String>,
     trim: Option<String>,
-    vin: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -1372,7 +1370,7 @@ async fn add_vehicle(
     auth: AuthUser,
     Json(body): Json<AddVehicleBody>,
 ) -> Result<Json<serde_json::Value>, AppError> {
-    let rivian_vehicle_id = body.rivian_vehicle_id.clone();
+    let rivian_vehicle_id = body.rivian_vehicle_id.trim().to_owned();
 
     info!(
         user_id = %auth.user_id,
@@ -1396,17 +1394,28 @@ async fn add_vehicle(
         AppError::RivianConnectSessionExpired
     })?;
 
-    let identity = age_identity(&state)?;
-    let encrypted = crate::ingestion::session_store::encrypt_tokens(&tokens, &identity)
-        .map_err(AppError::Internal)?;
+    // The connect session proves sign-in, not access to the ID supplied by the browser.
+    let verified = verify_account_vehicle(&tokens, &rivian_vehicle_id).await?;
+
+    let mut tx = state.pool.begin().await?;
+    // Serialize both first enrollment of a remote vehicle and default selection
+    // for one user. Hash collisions only delay work; they cannot grant access.
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
+        .bind(format!("enrollment:user:{}", auth.user_id))
+        .execute(&mut *tx)
+        .await?;
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtextextended($1, 0))")
+        .bind(format!("enrollment:vehicle:{rivian_vehicle_id}"))
+        .execute(&mut *tx)
+        .await?;
 
     let existing_vehicle_id: Option<Uuid> =
         sqlx::query_scalar("SELECT id FROM riviamigo.vehicles WHERE rivian_vehicle_id = $1")
             .bind(&rivian_vehicle_id)
-            .fetch_optional(&state.pool)
+            .fetch_optional(&mut *tx)
             .await?;
 
-    let mut tx = state.pool.begin().await?;
+    let is_new = existing_vehicle_id.is_none();
 
     let vehicle_id = if let Some(existing_vehicle_id) = existing_vehicle_id {
         let already_member = sqlx::query_scalar::<_, bool>(
@@ -1424,7 +1433,7 @@ async fn add_vehicle(
         if !already_member {
             sqlx::query(
                 "INSERT INTO riviamigo.vehicle_memberships (vehicle_id, user_id, role, is_default)
-                 VALUES ($1, $2, 'owner', FALSE)",
+                 VALUES ($1, $2, 'viewer', FALSE)",
             )
             .bind(existing_vehicle_id)
             .bind(auth.user_id)
@@ -1456,10 +1465,10 @@ async fn add_vehicle(
         .bind(auth.user_id)
         .bind(&rivian_vehicle_id)
         .bind(canonical_vehicle_model(
-            body.model.as_deref().unwrap_or("R1T"),
+            verified.model.as_deref().unwrap_or("R1T"),
         ))
         .bind(body.trim.as_deref())
-        .bind(body.vin.as_deref())
+        .bind(verified.vin.as_deref())
         .bind(body.name.as_deref().map(canonical_vehicle_name))
         .bind(body.home_lat)
         .bind(body.home_lng)
@@ -1492,7 +1501,11 @@ async fn add_vehicle(
         vehicle_id
     };
 
-    sqlx::query(
+    if is_new {
+        let identity = age_identity(&state)?;
+        let encrypted = crate::ingestion::session_store::encrypt_tokens(&tokens, &identity)
+            .map_err(AppError::Internal)?;
+        sqlx::query(
         "INSERT INTO riviamigo.vehicle_credentials (vehicle_id, encrypted_tokens, token_created_at) \
          VALUES ($1,$2,now())
          ON CONFLICT (vehicle_id) DO UPDATE
@@ -1504,6 +1517,7 @@ async fn add_vehicle(
     .bind(encrypted.as_slice())
     .execute(&mut *tx)
     .await?;
+    }
 
     // Set as default vehicle if user has none.
     sqlx::query(
@@ -1530,7 +1544,8 @@ async fn add_vehicle(
     .execute(&mut *tx)
     .await?;
 
-    sqlx::query(
+    if is_new {
+        sqlx::query(
         "INSERT INTO riviamigo.vehicle_runtime_state
          (vehicle_id, is_online, worker_health, worker_health_msg, auth_state, auth_reason_code, updated_at)
          VALUES ($1, FALSE, 'starting', 'Initializing Rivian telemetry collector', 'authorized', NULL, now())
@@ -1545,12 +1560,15 @@ async fn add_vehicle(
     .bind(vehicle_id)
     .execute(&mut *tx)
     .await?;
+    }
 
     tx.commit().await?;
 
     // The vehicle and credentials are durable after commit. Artwork and one-time
     // session cleanup must not turn a successful add into a client-visible error.
-    queue_vehicle_artwork_repair(&state, vehicle_id).await;
+    if is_new {
+        queue_vehicle_artwork_repair(&state, vehicle_id).await;
+    }
 
     if let Err(error) = redis::AsyncCommands::del::<_, ()>(&mut conn, &key).await {
         warn!(
@@ -1567,21 +1585,41 @@ async fn add_vehicle(
         "vehicle.add.persisted"
     );
 
-    let telemetry_start_queued = state
-        .supervisor
-        .send(SupervisorCommand::StartWorker { vehicle_id })
-        .await;
+    let telemetry_start_queued = is_new
+        && state
+            .supervisor
+            .send(SupervisorCommand::StartWorker { vehicle_id })
+            .await;
 
     Ok(Json(serde_json::json!({
         "vehicle_id": vehicle_id,
         "vehicle_saved": true,
-        "telemetry_status": if telemetry_start_queued { "starting" } else { "delayed" },
-        "telemetry_error": if telemetry_start_queued {
+        "telemetry_status": if !is_new { "unchanged" } else if telemetry_start_queued { "starting" } else { "delayed" },
+        "telemetry_error": if !is_new || telemetry_start_queued {
             serde_json::Value::Null
         } else {
             serde_json::Value::String("worker supervisor unavailable; retry telemetry start".into())
         },
     })))
+}
+
+async fn verify_account_vehicle(
+    tokens: &crate::ingestion::session_store::RivianTokenBundle,
+    vehicle_id: &str,
+) -> Result<RivianVehicleSummary, AppError> {
+    let client = reqwest::Client::builder()
+        .no_proxy()
+        .redirect(reqwest::redirect::Policy::none())
+        .timeout(Duration::from_secs(30))
+        .build()
+        .map_err(|e| AppError::Internal(e.into()))?;
+    let vehicles = crate::ingestion::rivian_auth::rivian_user_vehicles(&client, tokens)
+        .await
+        .map_err(|_| AppError::RivianApi("Unable to verify Rivian vehicle access".into()))?;
+    vehicles
+        .into_iter()
+        .find(|vehicle| vehicle.id == vehicle_id)
+        .ok_or_else(|| AppError::Validation("Rivian account does not include this vehicle".into()))
 }
 
 async fn refresh_vehicle_credentials(
@@ -1610,24 +1648,7 @@ async fn refresh_vehicle_credentials(
     .await?
     .ok_or(AppError::RivianConnectSessionExpired)?;
 
-    let client = reqwest::Client::builder()
-        .timeout(Duration::from_secs(30))
-        .build()
-        .unwrap_or_default();
-    let account_vehicles = crate::ingestion::rivian_auth::rivian_user_vehicles(&client, &tokens)
-        .await
-        .map_err(|e| {
-            warn!(vehicle_id = %vid, user_id = %auth.user_id, error = %e, "vehicle.refresh_credentials.fetch_user_vehicles_failed");
-            AppError::RivianApi("Unable to verify Rivian vehicle access".into())
-        })?;
-    if !account_vehicles
-        .iter()
-        .any(|vehicle| vehicle.id == rivian_vehicle_id)
-    {
-        return Err(AppError::Validation(
-            "Rivian account does not include this vehicle".into(),
-        ));
-    }
+    verify_account_vehicle(&tokens, &rivian_vehicle_id).await?;
 
     let identity = age_identity(&state)?;
     let encrypted = crate::ingestion::session_store::encrypt_tokens(&tokens, &identity)
@@ -5358,6 +5379,7 @@ mod tests {
             restore_agent_key_file: "/backups/.restore-agent-key".into(),
             recovery: crate::config::RecoveryConfig::default(),
             origin_bind: crate::config::OriginBindConfig::default(),
+            security: Default::default(),
             rivian_ws_reconnect_initial_seconds: 10,
             rivian_ws_reconnect_max_seconds: 900,
             rivian_raw_event_retention_days: 7,
@@ -5379,6 +5401,7 @@ mod tests {
                 std::collections::HashMap::new(),
             )),
             supervisor: crate::ingestion::supervisor::SupervisorHandle::noop(),
+            resources: Default::default(),
         }
     }
 
@@ -5424,6 +5447,7 @@ mod tests {
             restore_agent_key_file: "/backups/.restore-agent-key".into(),
             recovery: crate::config::RecoveryConfig::default(),
             origin_bind: crate::config::OriginBindConfig::default(),
+            security: Default::default(),
             rivian_ws_reconnect_initial_seconds: 10,
             rivian_ws_reconnect_max_seconds: 900,
             rivian_raw_event_retention_days: 7,
@@ -5446,6 +5470,7 @@ mod tests {
                 std::collections::HashMap::new(),
             )),
             supervisor: crate::ingestion::supervisor::SupervisorHandle::noop(),
+            resources: Default::default(),
         };
 
         crate::routes::build_router(state)
@@ -5648,6 +5673,7 @@ mod tests {
             restore_agent_key_file: "/backups/.restore-agent-key".into(),
             recovery: crate::config::RecoveryConfig::default(),
             origin_bind: crate::config::OriginBindConfig::default(),
+            security: Default::default(),
             rivian_ws_reconnect_initial_seconds: 10,
             rivian_ws_reconnect_max_seconds: 900,
             rivian_raw_event_retention_days: 7,

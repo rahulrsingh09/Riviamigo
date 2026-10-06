@@ -1174,7 +1174,7 @@ export interface AddVehicleBody {
 export interface AddVehicleResult {
   vehicle_id: string;
   vehicle_saved?: boolean;
-  telemetry_status?: 'starting' | 'delayed';
+  telemetry_status?: 'starting' | 'delayed' | 'unchanged';
   telemetry_error?: string | null;
 }
 

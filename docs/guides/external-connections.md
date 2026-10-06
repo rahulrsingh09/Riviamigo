@@ -97,3 +97,18 @@ addresses, search text, query strings, credentials, VINs, and vehicle names.
 Use **Test with synthetic data** before relying on a provider. The result is separate from runtime health, so testing an unsaved endpoint never overwrites the installed provider's last-success record. Each result shows named checks and safe messages; it uses a generic location, map tile, or icon name rather than a real drive.
 
 For a release or a new self-hosted endpoint, verify every enabled connection, then inspect a signed-in browser's network panel. Browser requests should target only Riviamigo's same-origin basemap and Iconify proxy paths. A configuration or tile failure switches the map to a neutral recovery state with the matching retry action; it must not leave a blank interactive map. See [Frontend error observability](../architecture/frontend-error-observability.md) for the safe diagnostic fields and expected quiet failures.
+
+## Destination checks and bounded caches
+
+Provider DNS is checked for every new outbound request and approved addresses
+are pinned for the connection. Mixed public/private answers, metadata and
+link-local destinations, and redirects fail closed. Private weather/geocoder
+CIDRs must match the saved connection policy; OIDC/S3 private CIDRs are operator
+environment settings. Response bodies are bounded by actual bytes, including
+chunked transfers.
+
+Basemap resources share a 128 MiB cache budget and expire after seven days by
+default. Least-recently-used basemap entries can expire earlier under pressure;
+operational Redis keys do not participate. Legacy permanent tile entries are
+invalidated in bounded scans during upgrade, so some map requests become cold
+cache misses. Manual purge remains available.

@@ -634,6 +634,7 @@ function apiEnv() {
     DATABASE_URL: `postgresql://riviamigo:devpassword@localhost:${ports.postgres}/riviamigo?options=-c%20search_path%3Driviamigo,timeseries,public`,
     REDIS_URL: `redis://localhost:${ports.redis}`,
     S3_ENDPOINT: `http://localhost:${ports.garageApi}`,
+    S3_ALLOW_DEVELOPMENT_GARAGE: 'true',
     S3_ACCESS_KEY: 'GKdeadbeef0000000000000000000000',
     S3_SECRET_KEY: 'deadbeef0000000000000000000000000000000000000000000000000000cafe',
     PORT: String(ports.api),
