@@ -139,8 +139,11 @@ that lock; serialize them with this controller.
    `POST /v1/projects/riviamigo-private/services/telemetry-app/build` with only
    `{"sha":"<full-sha>"}`. Do not select `latest`.
 5. Poll `/services/telemetry-app/build/<build-id>` for the exact SHA and explicit
-   concluded success, with a 30-minute deadline. No failed or uncertain POST is
-   retried automatically.
+   concluded success, with a 30-minute deadline. Continue polling during the
+   documented `QUEUED`, `PENDING`, `STARTING`, `CLONING`, `BUILDING`, `UPLOADING`,
+   and `IN_PROGRESS` states. Failed, unschedulable and unknown states halt;
+   `SUCCESS` alone is insufficient without both `concluded: true` and
+   `success: true`. No failed or uncertain POST is retried automatically.
 6. After build success, take a **fresh** remote custom-format `pg_dump` under
    `/backups/pre-deploy-<UTC>.dump`. The fixed script uses `set -eu`, `umask 077`,
    normalizes `options=-c+` to `options=-c%20`, refuses to overwrite a dump, and
@@ -208,7 +211,7 @@ HTTP probes use GET without following redirects:
 
 - Origin `/health` with `X-Riviamigo-Edge`: `200`.
 - Origin `/v1/vehicles` with that gateway token but **no app token**: `401`.
-- Origin `/health` without gateway token: `403`.
+- Origin `/` without gateway token: `403`.
 - Workers origin `/` without credentials: `401`/`403`, or an HTTPS redirect to
   a `*.cloudflareaccess.com/cdn-cgi/access/login...` destination.
 

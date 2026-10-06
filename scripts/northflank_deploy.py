@@ -388,7 +388,8 @@ class Northflank:
                 require(build.get("success") is True and build["status"] == "SUCCESS",
                         "build-failed")
                 return
-            require(build["status"] in ("PENDING", "QUEUED", "BUILDING", "RUNNING"),
+            require(build["status"] in ("PENDING", "QUEUED", "STARTING", "CLONING",
+                                        "BUILDING", "UPLOADING", "IN_PROGRESS"),
                     "build-failed-or-unknown")
             time.sleep(10)
         raise Halt("build-timeout")

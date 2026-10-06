@@ -396,6 +396,9 @@ class AdapterTests(unittest.TestCase):
             {"id": "build", "sha": OLD, "status": "SUCCESS", "concluded": True, "success": True},
             {"id": "other", "sha": NEW, "status": "SUCCESS", "concluded": True, "success": True},
             {"id": "build", "sha": NEW, "status": "UNKNOWN", "concluded": False},
+            *({"id": "build", "sha": NEW, "status": status, "concluded": False}
+              for status in ("UNSCHEDULABLE", "ABORTED", "FAILURE",
+                             "SUBMISSION_FAILURE", "CRASHED", "SUCCESS")),
         ]
         for result in cases:
             with patch.object(adapter, "request", return_value=result):
@@ -404,6 +407,22 @@ class AdapterTests(unittest.TestCase):
         with patch.object(deploy.time, "monotonic", side_effect=[0, 1801]):
             with self.assertRaisesRegex(deploy.Halt, "build-timeout"):
                 adapter.wait_build("build", NEW)
+
+    def test_documented_build_progress_requires_explicit_concluded_success(self):
+        adapter = self.adapter()
+        progress = ("QUEUED", "PENDING", "STARTING", "CLONING",
+                    "BUILDING", "UPLOADING", "IN_PROGRESS")
+        responses = [{"id": "build", "sha": NEW, "status": status, "concluded": False}
+                     for status in progress]
+        responses.append({"id": "build", "sha": NEW, "status": "SUCCESS",
+                          "concluded": True, "success": True})
+        with patch.object(adapter, "request", side_effect=responses) as request, \
+             patch.object(deploy.time, "sleep") as sleep:
+            adapter.wait_build("build", NEW)
+        self.assertEqual(request.call_count, len(responses))
+        self.assertEqual(sleep.call_count, len(progress))
+        self.assertTrue(all(call[0] == ("GET", deploy.APP + "/build/build")
+                            for call in request.call_args_list))
 
     def test_provider_build_route_and_in_progress_rollout(self):
         adapter = self.adapter()
