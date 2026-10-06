@@ -119,6 +119,7 @@ overrides:
   qs: 6.16.0
   serialize-javascript: 7.0.5
   seroval: 1.6.8
+  shell-quote: 1.12.0
   source-map-js: 1.2.2
   svgo: 3.3.5
   smol-toml: 1.9.0
@@ -12104,10 +12105,10 @@ packages:
       }
     engines: { node: '>=8' }
 
-  shell-quote@1.10.0:
+  shell-quote@1.12.0:
     resolution:
       {
-        integrity: sha512-w1aiOKwKuRgtwAReIIj89puqg+I7GvX4IbLrvmhXbzQsj1+Zwi4VO3+fa6ZF91TWSjIxoEkKnMeHcLEODK5ZXA==,
+        integrity: sha512-PcByqNyT/38F2kDNi006HAMRJaULuBzq/FOsw3qdZvX/GA9W/jamDaRskgHjubHiftXK5sIFxLNkvrXUwcof6Q==,
       }
     engines: { node: '>= 0.4' }
 
@@ -19901,7 +19902,7 @@ snapshots:
   launch-editor@2.14.1:
     dependencies:
       picocolors: 1.1.1
-      shell-quote: 1.10.0
+      shell-quote: 1.12.0
 
   leven@3.1.0: {}
 
@@ -22071,7 +22072,7 @@ snapshots:
 
   shebang-regex@3.0.0: {}
 
-  shell-quote@1.10.0: {}
+  shell-quote@1.12.0: {}
 
   side-channel-list@1.0.1:
     dependencies:
