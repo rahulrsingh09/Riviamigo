@@ -94,6 +94,19 @@ describe('ExternalConnectionsSection', () => {
     vi.clearAllMocks();
   });
 
+  it.each([true, false])('reports gateway maps accurately without ineffective provider controls (admin=%s)', async (canManage) => {
+    const data = basemapResponse({ enabled: true, editable: false, execution: 'Cloudflare gateway', cache: null });
+    data.can_manage = canManage;
+    apiMocks.getExternalConnections.mockResolvedValue(data);
+    renderSection();
+
+    expect(await screen.findByText('Street maps enabled')).toBeInTheDocument();
+    expect(screen.getByText('See Cloudflare usage')).toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Disable optional' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Save' })).not.toBeInTheDocument();
+    expect(screen.queryByRole('button', { name: 'Test with synthetic data' })).not.toBeInTheDocument();
+  });
+
   it('shows disclosures and feature loss without controls to read-only users', async () => {
     apiMocks.getExternalConnections.mockResolvedValue(response(false));
     renderSection();

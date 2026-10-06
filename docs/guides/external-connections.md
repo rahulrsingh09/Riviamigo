@@ -10,7 +10,15 @@ Open **Settings > External Connections** to inspect provider status. This fork's
 telemetry-only policy disables Open-Meteo, Nominatim, basemaps, Iconify, and new
 vehicle-artwork downloads. The application also uses local/system font fallbacks
 instead of contacting Google Fonts. Existing trip data, cached labels, weather
-history, and local artwork are retained. Maps show routes on a neutral background.
+history, and local artwork are retained. Without a gateway map capability, maps
+show routes on a neutral background.
+
+The private Cloudflare gateway can enable a fixed OpenFreeMap integration with
+`ENABLE_FREE_MAPS=true`. Settings then reports this map provider as enabled and
+read-only. This exception serves public cartography through the gateway, leaving
+the server's other optional providers and custom URLs blocked. See
+[free street maps](./private-origin-gateway.md#optional-free-street-maps) for
+privacy, free-plan limits, and disabling the capability.
 
 The guard applies at request time and cannot be relaxed in Settings or by old
 saved `enabled`, `custom`, API-key, bearer-token, or private-network allowlist

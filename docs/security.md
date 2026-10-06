@@ -200,6 +200,15 @@ opening the icon picker cannot restore that transport. Uncached remote icons and
 online icon searches remain unavailable. The initial theme uses static HTML
 attributes, so the page does not need an inline-script exception.
 
+The Cloudflare gateway has an opt-in, fixed OpenFreeMap proxy. This exception
+preserves the API's optional-provider denial and the browser's same-origin CSP.
+It validates Access before serving public cartography, verifies the normal app
+response before adapting map configuration, strips credentials on map downloads,
+and enforces fixed paths, redirect denial, type checks, timeouts and size bounds.
+Map tiles contain no private telemetry; app authorization remains required for
+trip data. Cloudflare-added IP headers may reach OpenFreeMap. See the
+[gateway map contract](guides/private-origin-gateway.md#optional-free-street-maps).
+
 ### Runtime packages and recovery
 
 The runtime installs current distribution security updates, retains the PostgreSQL

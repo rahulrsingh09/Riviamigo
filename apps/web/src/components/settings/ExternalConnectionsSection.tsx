@@ -30,6 +30,7 @@ export function ExternalConnectionsSection() {
 
   const canManage = connections.data?.can_manage ?? false;
   const items = connections.data?.connections ?? [];
+  const gatewayMaps = items.some((item) => item.id === 'basemap' && item.enabled && item.execution === 'Cloudflare gateway');
   const [selectedId, setSelectedId] = React.useState<string | null>(null);
   const selected = items.find((connection) => connection.id === selectedId) ?? items[0];
 
@@ -45,10 +46,12 @@ export function ExternalConnectionsSection() {
             <div>
               <CardTitle>External Connections</CardTitle>
               <p className="mt-1 max-w-3xl text-sm text-fg-tertiary">
-                Optional location and media providers are disabled in this telemetry-only build, including saved custom providers. Existing local data is retained.
+                {gatewayMaps
+                  ? 'Street maps use OpenFreeMap. Other optional location and media providers remain disabled. Existing local data is retained.'
+                  : 'Optional location and media providers are disabled in this telemetry-only build, including saved custom providers. Existing local data is retained.'}
               </p>
             </div>
-            {canManage ? (
+            {canManage && !gatewayMaps ? (
               <Button
                 variant="danger"
                 size="sm"
@@ -69,12 +72,14 @@ export function ExternalConnectionsSection() {
         <CardContent>
           <div className="grid gap-3 md:grid-cols-3">
             <SummaryItem label="Policy" value="Telemetry-only" />
-            <SummaryItem label="Optional providers" value="Disabled by deployment" />
+            <SummaryItem label="Optional providers" value={gatewayMaps ? 'Street maps enabled' : 'Disabled by deployment'} />
             <SummaryItem label="Artwork" value="Local or packaged" />
           </div>
           {!canManage && !connections.isLoading ? (
             <p className="mt-4 rounded-lg border border-border bg-bg-elevated/40 p-3 text-sm text-fg-tertiary">
-              These settings are visible to everyone. Optional external traffic is disabled by this deployment.
+              {gatewayMaps
+                ? 'Street maps are managed by this deployment. Other optional external services remain disabled.'
+                : 'These settings are visible to everyone. Optional external traffic is disabled by this deployment.'}
             </p>
           ) : null}
         </CardContent>
@@ -234,7 +239,7 @@ function ConnectionCard({
       <CardContent className="grid gap-4">
         <div className="grid gap-2 text-xs sm:grid-cols-2">
           <Info label="Runs from" value={connection.execution} />
-          <Info label="Requests today" value={String(connection.request_count_today)} />
+          <Info label="Requests today" value={connection.execution === 'Cloudflare gateway' ? 'See Cloudflare usage' : String(connection.request_count_today)} />
           <Info label="Endpoint" value={connection.endpoint ?? 'Managed elsewhere'} mono />
                           <Info label="Last attempt" value={connection.last_attempt_at ? formatAppDateTime(connection.last_attempt_at) : 'No recorded request'} />
                           <Info label="Last success" value={connection.last_success_at ? formatAppDateTime(connection.last_success_at) : 'No recorded request'} />

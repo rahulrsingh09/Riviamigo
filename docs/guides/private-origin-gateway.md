@@ -33,7 +33,7 @@ and Access are on their free plans before deployment; this repository does not
 activate or upgrade a subscription.
 
 Copy `apps/private-gateway/wrangler.example.json` to a private deployment
-configuration and fill in its five variables. `PUBLIC_ORIGIN` is the address
+configuration and fill in its five required variables. `PUBLIC_ORIGIN` is the address
 you will open, `UPSTREAM_ORIGIN` is the Northflank HTTPS origin,
 `ACCESS_ISSUER` is your Cloudflare Access team URL, `ACCESS_AUDIENCE` is the
 Access application's audience tag, and `ALLOWED_EMAILS` is a comma-separated
@@ -66,7 +66,7 @@ Access credentials, including the CLI `Cf-Access-Token` header, are stripped
 before proxying. App authorization, refresh
 cookies, request bodies, and WebSocket protocols are preserved. The proxy uses
 a fixed origin, never follows origin redirects, rejects alternate hostnames,
-and disables response caching. Worker request logging is disabled in the
+and disables application-response caching. Worker request logging is disabled in the
 example configuration. Cloudflare processes the proxied traffic, including
 login requests; it is part of the hosting trust boundary.
 
@@ -75,3 +75,50 @@ CPU per request. Confirm current allowances and existing account usage in
 Cloudflare before enabling the proxy. Reaching a free quota can interrupt
 access; it is not a reason to upgrade automatically. Telemetry collection
 runs on Northflank and does not depend on an open browser or this proxy.
+
+## Optional free street maps
+
+Set `ENABLE_FREE_MAPS=true` on the Worker to enable only OpenFreeMap. The default
+is `false`. This is a gateway capability; it does not relax the API's optional
+outbound policy, enable vehicle commands, or unlock custom provider URLs.
+No database migration or additional service is needed.
+
+The existing authenticated basemap configuration response is adapted only after
+the API returns HTTP 200. App login failures and disabled-user responses remain
+unchanged. Public map assets require the same verified Cloudflare Access identity
+as the rest of the gateway, but do not require an app session: those assets contain
+public cartography, never trip geometry or account records. Private vehicle routes
+still require the application's normal authorization.
+
+The Worker downloads maps directly from the fixed HTTPS host
+`tiles.openfreemap.org`, avoiding Northflank map-download bandwidth and disk use.
+It accepts only known style, tile, sprite and glyph paths, bounds zoom/coordinates,
+blocks redirects, discards request credentials/cookies and provider cookies, and
+limits responses to 4 MiB (512 KiB for styles) with a 10-second timeout. Resource
+URLs in styles and tile manifests are validated and rewritten to the existing
+same-origin map paths. The browser's external-network CSP stays unchanged.
+Browsers may cache public cartography for five minutes (style/manifest) or one day
+(other assets); application data remains `no-store`.
+
+OpenFreeMap receives requested map areas and network metadata. Cloudflare may
+forward the viewer's IP in platform-added headers; this is not anonymous map
+access. No Rivian credentials, application tokens, trip IDs, or route polylines
+are deliberately sent to the map provider. Styles include OpenFreeMap,
+OpenMapTiles and OpenStreetMap attribution.
+
+OpenFreeMap's public instance currently requires no account, API key, or payment.
+Map downloads still consume Workers requests, sharing the Free plan's daily
+allowance with the dashboard. No paid resource, storage binding, subscription
+upgrade, or automatic upgrade is configured by this feature. Hitting a Free
+limit can interrupt maps and dashboard access; the Northflank collector continues
+independently. Free hosting does not guarantee availability or future pricing.
+Review [OpenFreeMap](https://openfreemap.org/) and
+[Workers pricing](https://developers.cloudflare.com/workers/platform/pricing/)
+before deployment.
+
+Settings reports the gateway map provider as enabled and read-only. Its API-side
+request/cache counters do not measure gateway traffic; consult Cloudflare usage.
+Other optional providers stay disabled. To disable street maps, deploy
+`ENABLE_FREE_MAPS=false`; map configuration is not cached and existing public map
+assets in browser caches contain no account data. The API-only installation
+continues to show routes on a neutral background.

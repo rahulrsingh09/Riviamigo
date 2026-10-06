@@ -285,3 +285,10 @@ available/system fonts, keeping the same type scale and design tokens. Schedule
 widgets retain their read views and a read-only notice; vehicle-write controls
 are unavailable at every viewport width. Artwork uses local cached or packaged
 images only.
+
+## Gateway map status
+
+External Connections reflects an enabled deployment-managed map provider without
+offering ineffective edit or disable controls. Its request-count field directs
+the owner to Cloudflare usage, rather than presenting API counters as map usage.
+Other optional services retain their disabled status.

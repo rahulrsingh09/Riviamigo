@@ -1,4 +1,12 @@
 import { createRemoteJWKSet, jwtVerify } from 'jose';
+import {
+  basemapConfiguration,
+  describeGatewayMaps,
+  mapResource,
+  MAP_PREFIX,
+  MAP_CONFIG,
+  CONNECTIONS,
+} from './maps.mjs';
 
 const keySets = new Map();
 
@@ -66,7 +74,11 @@ function denied(status, message) {
   });
 }
 
-export function createGateway({ upstreamFetch = fetch, keySetFor = accessKeys } = {}) {
+export function createGateway({
+  upstreamFetch = fetch,
+  mapFetch = fetch,
+  keySetFor = accessKeys,
+} = {}) {
   return {
     async fetch(request, env) {
       let config;
@@ -101,6 +113,18 @@ export function createGateway({ upstreamFetch = fetch, keySetFor = accessKeys } 
         }
       } catch {
         return denied(403, 'Access denied.');
+      }
+
+      const mapsEnabled = env.ENABLE_FREE_MAPS === 'true';
+      if (
+        mapsEnabled &&
+        request.method === 'POST' &&
+        incoming.pathname === CONNECTIONS + '/disable-optional'
+      ) {
+        return denied(403, 'Street maps are managed by this deployment.');
+      }
+      if (mapsEnabled && incoming.pathname.startsWith(MAP_PREFIX)) {
+        return mapResource(request, mapFetch);
       }
 
       const target = new URL(config.upstreamOrigin);
@@ -149,6 +173,30 @@ export function createGateway({ upstreamFetch = fetch, keySetFor = accessKeys } 
       }
       // Preserve the WebSocket object on an upgrade response.
       if (response.status === 101) return response;
+
+      if (
+        mapsEnabled &&
+        request.method === 'GET' &&
+        response.status === 200 &&
+        [MAP_CONFIG, CONNECTIONS].includes(incoming.pathname)
+      ) {
+        try {
+          const body = await response.json();
+          if (incoming.pathname === MAP_CONFIG && typeof body.enabled !== 'boolean') {
+            return denied(502, 'Map configuration unavailable.');
+          }
+          const headers = new Headers(response.headers);
+          for (const name of ['Content-Length', 'Content-Encoding', 'ETag', 'Content-MD5']) {
+            headers.delete(name);
+          }
+          response = Response.json(
+            incoming.pathname === MAP_CONFIG ? basemapConfiguration() : describeGatewayMaps(body),
+            { headers }
+          );
+        } catch {
+          return denied(502, 'Map configuration unavailable.');
+        }
+      }
 
       const responseHeaders = new Headers(response.headers);
       responseHeaders.set('Cache-Control', 'private, no-store');

@@ -15,8 +15,10 @@ const bindings = {
   ACCESS_AUDIENCE: 'synthetic-audience-1234567890',
   ALLOWED_EMAILS: 'owner@example.test',
   GATEWAY_TOKEN: 'synthetic-gateway-token-abcdefghijklmnopqrstuvwxyz',
+  ENABLE_FREE_MAPS: 'true',
 };
 let originRequests = 0;
+let mapRequests = 0;
 const runtime = new Miniflare({
   telemetry: { enabled: false },
   logRequests: false,
@@ -46,10 +48,29 @@ const runtime = new Miniflare({
             if (url.origin === bindings.ACCESS_ISSUER && url.pathname === '/cdn-cgi/access/certs') {
               return Response.json({ keys: [key] });
             }
+            if (url.origin === 'https://tiles.openfreemap.org') {
+              mapRequests++;
+              assert.equal(request.headers.get('Authorization'), null);
+              assert.equal(request.headers.get('Cookie'), null);
+              assert.equal(request.headers.get('X-Riviamigo-Edge'), null);
+              assert.equal(request.headers.get('Cf-Access-Jwt-Assertion'), null);
+              return Response.json({
+                version: 8,
+                sources: {
+                  planet: { type: 'vector', url: 'https://tiles.openfreemap.org/planet' },
+                },
+                layers: [],
+              });
+            }
             assert.equal(url.origin, bindings.UPSTREAM_ORIGIN);
             assert.equal(request.headers.get('X-Riviamigo-Edge'), bindings.GATEWAY_TOKEN);
             assert.equal(request.headers.get('Cf-Access-Jwt-Assertion'), null);
             originRequests++;
+            if (url.pathname === '/v1/external/basemap/config') {
+              return request.headers.get('Authorization') === 'Bearer synthetic-app'
+                ? Response.json({ enabled: false })
+                : new Response('Unauthorized', { status: 401 });
+            }
             if (request.headers.get('Upgrade') === 'websocket') {
               assert.deepEqual(
                 request.headers
@@ -90,6 +111,33 @@ try {
   const denied = await runtime.dispatchFetch(bindings.PUBLIC_ORIGIN + '/');
   assert.equal(denied.status, 403);
   assert.equal(originRequests, 0);
+  const configPath = bindings.PUBLIC_ORIGIN + '/v1/external/basemap/config';
+  const configDenied = await runtime.dispatchFetch(configPath, {
+    headers: { 'Cf-Access-Jwt-Assertion': token },
+  });
+  assert.equal(configDenied.status, 401);
+  const mapConfig = await runtime.dispatchFetch(configPath, {
+    headers: { 'Cf-Access-Jwt-Assertion': token, Authorization: 'Bearer synthetic-app' },
+  });
+  assert.equal((await mapConfig.json()).resolved_provider, 'openfreemap');
+  const originBeforeMap = originRequests;
+  const map = await runtime.dispatchFetch(
+    bindings.PUBLIC_ORIGIN + '/v1/external/basemap/openfreemap/styles/dark',
+    {
+      headers: {
+        'Cf-Access-Jwt-Assertion': token,
+        Authorization: 'Bearer synthetic-app',
+        Cookie: 'refresh_token=synthetic',
+      },
+    }
+  );
+  assert.equal(map.status, 200);
+  assert.equal(
+    (await map.json()).sources.planet.url,
+    'https://riviamigo.invalid/v1/external/basemap/openfreemap/planet'
+  );
+  assert.equal(mapRequests, 1);
+  assert.equal(originRequests, originBeforeMap);
   const result = await runtime.dispatchFetch(bindings.PUBLIC_ORIGIN + '/api/auth/login', {
     method: 'POST',
     headers: {
@@ -137,6 +185,8 @@ try {
     realJwtValidationWithJwksFetch: true,
     httpRequestBodyAndCookiePreserved: true,
     actualWebSocketUpgradeAndEcho: true,
+    mapConfigurationRequiresAppAuthentication: true,
+    mapAssetsExcludeCredentialsAndNorthflankTraffic: true,
     originRequests,
     syntheticOnly: true,
   };

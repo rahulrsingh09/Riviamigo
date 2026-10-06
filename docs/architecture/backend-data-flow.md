@@ -94,6 +94,13 @@ tail. `odometer_daily` has a separate hourly, materialized-only policy.
 
 Optional outbound services are governed by `external_connection_settings`, not environment variables. Weather and Nominatim execute on the server. Basemap and Iconify browser requests terminate at authenticated same-origin proxy routes. Custom endpoints are validated before storage, secrets are age-encrypted and write-only, and disabling a provider is enforced at the shared service seam.
 
+The private fork disables these optional API provider paths. Its Cloudflare
+gateway may independently opt into fixed OpenFreeMap cartography with
+`ENABLE_FREE_MAPS=true`: it adapts successful authenticated map configuration
+responses and serves Access-protected public map resources directly, without
+routing tile bytes through the API. No private trip data moves into that map
+proxy. See the [gateway contract](../guides/private-origin-gateway.md).
+
 Parallax collection runs as an integrated, isolated Tokio acquisition subsystem inside each production
 vehicle worker. It opens its own allowlisted GraphQL WebSocket and writes normalized,
 typed readings to the `timeseries.parallax_*` tables. A bounded channel also passes validated R2-relevant power, GNSS, odometer, closure, tire, and cabin readings to the canonical worker, where they enter latest status and telemetry history. Parallax frames cannot create or end charge sessions. The collector never stores raw payloads, network identifiers, or credentials. Its failure cannot stall

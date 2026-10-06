@@ -19,10 +19,16 @@ Riviamigo still needs to communicate with services that make its features work:
   mutations are denied by the backend. Tokens themselves are **not provider-enforced
   read-only**; a compromised server or stolen token retains its provider permissions.
 - **Optional location/media providers:** Open-Meteo, Nominatim, basemaps, Iconify,
-  and new vehicle-artwork downloads are disabled in this fork, even if old saved
+  and new vehicle-artwork downloads are disabled at the API in this fork, even if old saved
   settings enable them. Custom/self-hosted provider paths and synthetic provider
   tests are disabled too. Existing local data and artwork are retained. Browser
   artwork sources must be local, and Google Fonts is no longer requested.
+- **Optional gateway maps:** `ENABLE_FREE_MAPS=true` enables fixed OpenFreeMap
+  cartography through the Cloudflare gateway. OpenFreeMap receives map areas and
+  network metadata, potentially including viewer IP headers added by Cloudflare.
+  The proxy sends no application/Rivian credentials, cookies, trip IDs, or private
+  route geometry to OpenFreeMap. Public map tiles, label glyphs, and map symbols
+  may be cached in the browser. Private account and trip responses remain uncached.
 - **Your configured S3-compatible backup service:** backup uploads, only when you enable it.
 - **Your configured OIDC provider:** when SSO is enabled, Riviamigo sends the
   server-side authorization-code exchange and receives the claims required for
@@ -31,8 +37,9 @@ Riviamigo still needs to communicate with services that make its features work:
   does not send vehicle telemetry or Rivian credentials to the OIDC provider.
 
 **Settings > External Connections** reports the effective disabled state of
-optional providers. Administrators cannot override this deployment guard with
-saved settings. Maps retain exact trip geometry on a neutral background; missing
+optional API providers. Administrators cannot override this deployment guard with
+saved settings. The gateway reports its optional fixed map provider separately
+as enabled and read-only. Without it, maps retain trip geometry on a neutral background; missing
 vehicle images use packaged fallbacks. See [external connections](guides/external-connections.md)
 for the disabled custom-provider paths and the requirements for any future opt-in.
 

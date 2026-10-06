@@ -12,6 +12,7 @@
     "UPSTREAM_ORIGIN": "https://YOUR-PRIVATE-ORIGIN.code.run",
     "ACCESS_ISSUER": "https://YOUR-TEAM.cloudflareaccess.com",
     "ACCESS_AUDIENCE": "YOUR_ACCESS_APPLICATION_AUDIENCE",
-    "ALLOWED_EMAILS": "you@example.com"
+    "ALLOWED_EMAILS": "you@example.com",
+    "ENABLE_FREE_MAPS": "false"
   }
 }
