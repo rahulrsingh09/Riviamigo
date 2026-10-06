@@ -28,7 +28,7 @@ const sidebars: SidebarsConfig = {
       type: 'category',
       label: 'Authentication',
       collapsed: false,
-      items: ['guides/oidc-sso'],
+      items: ['guides/oidc-sso', 'guides/private-origin-gateway'],
     },
     {
       type: 'category',

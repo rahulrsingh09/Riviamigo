@@ -37,6 +37,11 @@ jobs:
       - run: pnpm deps:check
       - run: pnpm security:routes
       - run: pnpm test:scripts
+      - name: Verify origin gateway with nginx
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y nginx
+          python3 scripts/test-origin-gate.py
       - run: pnpm test:packages
       - run: pnpm docs:check
       - run: pnpm build

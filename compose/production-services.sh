@@ -68,6 +68,10 @@ prepare_storage() {
 trap 'shutdown; exit 0' TERM INT
 
 prepare_storage
+if ! /app/render-origin-gate.sh; then
+  exit 1
+fi
+unset RIVIAMIGO_GATEWAY_TOKEN
 /app/riviamigo-restore-agent 2> >(normalize_child_errors restore-agent) &
 agent_pid=$!
 nginx -g 'daemon off;' 2> >(normalize_child_errors nginx) &
