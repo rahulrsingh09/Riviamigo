@@ -30,6 +30,9 @@ export const EMPTY_RELEASE_CHECK: ReleaseCheckSnapshot = {
   error: null,
 };
 
+let memorySnapshot = { ...EMPTY_RELEASE_CHECK };
+let snapshotNotPersisted = false;
+
 function parseVersion(value: string): [number, number, number] | null {
   const match = /^v?(\d{4})\.(\d{1,2})\.(\d+)(?:\+dev(?:\.\d+)?)?$/.exec(value.trim());
   if (!match) return null;
@@ -41,10 +44,10 @@ function parseVersion(value: string): [number, number, number] | null {
   return [year, month, patch];
 }
 
-export function isNewerRelease(currentVersion: string, releaseTag: string): boolean {
+export function isNewerRelease(currentVersion: string, releaseTag: string): boolean | null {
   const current = parseVersion(currentVersion);
   const latest = parseVersion(releaseTag);
-  if (!current || !latest) return false;
+  if (!current || !latest) return null;
   for (let index = 0; index < current.length; index += 1) {
     if (latest[index]! !== current[index]!) return latest[index]! > current[index]!;
   }
@@ -62,9 +65,8 @@ export function isReleaseCheckDue(
 export function readReleaseCheckSnapshot(storage?: Storage): ReleaseCheckSnapshot {
   try {
     const raw = (storage ?? window.localStorage).getItem(RELEASE_CHECK_STORAGE_KEY);
-    if (!raw) return { ...EMPTY_RELEASE_CHECK };
-    const value = JSON.parse(raw) as Partial<ReleaseCheckSnapshot>;
-    return {
+    const value = (raw ? JSON.parse(raw) : null) as Partial<ReleaseCheckSnapshot> | null;
+    const stored: ReleaseCheckSnapshot = value ? {
       lastAttemptAt: typeof value.lastAttemptAt === 'number' && Number.isFinite(value.lastAttemptAt)
         ? value.lastAttemptAt
         : null,
@@ -74,20 +76,29 @@ export function readReleaseCheckSnapshot(storage?: Storage): ReleaseCheckSnapsho
       latestVersion: typeof value.latestVersion === 'string' ? value.latestVersion : null,
       updateAvailable: typeof value.updateAvailable === 'boolean' ? value.updateAvailable : null,
       error: typeof value.error === 'string' ? value.error : null,
-    };
+    } : { ...EMPTY_RELEASE_CHECK };
+    // A failed write must not let an older stored result erase this tab's attempt.
+    if (!snapshotNotPersisted || (stored.lastAttemptAt ?? -Infinity) > (memorySnapshot.lastAttemptAt ?? -Infinity)) {
+      memorySnapshot = stored;
+      snapshotNotPersisted = false;
+    }
   } catch {
-    return { ...EMPTY_RELEASE_CHECK };
+    // Keep the last known attempt when storage is denied or unreadable.
   }
+  return { ...memorySnapshot };
 }
 
 export function writeReleaseCheckSnapshot(
   snapshot: ReleaseCheckSnapshot,
   storage?: Storage,
 ): void {
+  memorySnapshot = { ...snapshot };
+  snapshotNotPersisted = true;
   try {
     (storage ?? window.localStorage).setItem(RELEASE_CHECK_STORAGE_KEY, JSON.stringify(snapshot));
+    snapshotNotPersisted = false;
   } catch {
-    // Retain the in-memory status update below if browser storage is unavailable.
+    // The in-memory snapshot remains available when storage cannot be written.
   }
   if (typeof window !== 'undefined') {
     window.dispatchEvent(new Event(RELEASE_CHECK_STATUS_EVENT));

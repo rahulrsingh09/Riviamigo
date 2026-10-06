@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   EMPTY_RELEASE_CHECK,
   LATEST_RELEASE_API_URL,
@@ -12,14 +12,20 @@ import {
 } from '../releaseCheck';
 
 describe('GitHub release checks', () => {
-  beforeEach(() => localStorage.clear());
+  beforeEach(() => {
+    writeReleaseCheckSnapshot(EMPTY_RELEASE_CHECK);
+    localStorage.clear();
+    readReleaseCheckSnapshot();
+  });
+  afterEach(() => vi.restoreAllMocks());
 
   it('compares calendar releases and ignores the development build suffix', () => {
     expect(isNewerRelease('2026.09.4+dev', '2026.10.1')).toBe(true);
     expect(isNewerRelease('2026.09.4+dev', '2026.09.4')).toBe(false);
     expect(isNewerRelease('2026.09.4', '2026.09.3')).toBe(false);
-    expect(isNewerRelease('unknown', '2026.10.1')).toBe(false);
-    expect(isNewerRelease('2026.13.1', '2027.01.0')).toBe(false);
+    expect(isNewerRelease('unknown', '2026.10.1')).toBeNull();
+    expect(isNewerRelease('2026.13.1', '2027.01.0')).toBeNull();
+    expect(isNewerRelease('2026.10.1', 'invalid')).toBeNull();
   });
 
   it('uses exact hourly, daily, weekly, and 30-day monthly intervals', () => {
@@ -45,6 +51,55 @@ describe('GitHub release checks', () => {
       'error', 'lastAttemptAt', 'lastSuccessfulAt', 'latestVersion', 'updateAvailable',
     ]);
     localStorage.removeItem(RELEASE_CHECK_STORAGE_KEY);
+    expect(readReleaseCheckSnapshot()).toEqual(EMPTY_RELEASE_CHECK);
+  });
+
+  it('retains a previously read snapshot when reads become denied', () => {
+    const snapshot = { ...EMPTY_RELEASE_CHECK, lastAttemptAt: 100, error: 'HTTP 403' };
+    localStorage.setItem(RELEASE_CHECK_STORAGE_KEY, JSON.stringify(snapshot));
+    expect(readReleaseCheckSnapshot()).toEqual(snapshot);
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new DOMException('Denied', 'SecurityError');
+    });
+    expect(readReleaseCheckSnapshot()).toEqual(snapshot);
+  });
+
+  it.each(['SecurityError', 'QuotaExceededError'])('retains failed writes after %s even with an older stored result', (name) => {
+    const old = { ...EMPTY_RELEASE_CHECK, lastAttemptAt: 100 };
+    writeReleaseCheckSnapshot(old);
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('Cannot write', name);
+    });
+    const attempted = { ...old, lastAttemptAt: 200, error: 'HTTP 403' };
+    writeReleaseCheckSnapshot(attempted);
+
+    expect(readReleaseCheckSnapshot()).toEqual(attempted);
+    expect(JSON.parse(localStorage.getItem(RELEASE_CHECK_STORAGE_KEY)!)).toEqual(old);
+    readReleaseCheckSnapshot().lastAttemptAt = null;
+    expect(readReleaseCheckSnapshot()).toEqual(attempted);
+  });
+
+  it('retains writes when access to localStorage itself is denied', () => {
+    vi.spyOn(window, 'localStorage', 'get').mockImplementation(() => {
+      throw new DOMException('Denied', 'SecurityError');
+    });
+    const snapshot = { ...EMPTY_RELEASE_CHECK, lastAttemptAt: 100 };
+    writeReleaseCheckSnapshot(snapshot);
+    expect(readReleaseCheckSnapshot()).toEqual(snapshot);
+  });
+
+  it('accepts a newer result from another tab after a failed local write', () => {
+    const writes = vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('Full', 'QuotaExceededError');
+    });
+    writeReleaseCheckSnapshot({ ...EMPTY_RELEASE_CHECK, lastAttemptAt: 100 });
+    expect(readReleaseCheckSnapshot().lastAttemptAt).toBe(100);
+    writes.mockRestore();
+    const remote = { ...EMPTY_RELEASE_CHECK, lastAttemptAt: 200, error: 'HTTP 403' };
+    localStorage.setItem(RELEASE_CHECK_STORAGE_KEY, JSON.stringify(remote));
+    expect(readReleaseCheckSnapshot()).toEqual(remote);
+
+    localStorage.clear();
     expect(readReleaseCheckSnapshot()).toEqual(EMPTY_RELEASE_CHECK);
   });
 

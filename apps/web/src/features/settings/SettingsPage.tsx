@@ -688,17 +688,26 @@ export function SettingsContent({ initialSection, oidcFeedback, oidcFeedbackKind
     staleTime: 60_000,
     retry: false,
   });
-  const versionSubtitle = releaseCheck.updateAvailable && releaseCheck.latestVersion
-    ? `${releaseCheck.latestVersion} available`
-    : releaseCheck.latestVersion
-      ? 'Up to date'
-      : updateCheckSettings.data?.enabled === false
-        ? 'Update checks off'
-        : releaseCheck.error
-          ? 'Update check failed'
-          : releaseCheck.checking || updateCheckSettings.data?.enabled
-            ? 'Checking for updates…'
-            : ' ';
+  const showUpdateAvailable = updateCheckSettings.data?.enabled === true
+    && !updateCheckSettings.isError && !appVersion.isError
+    && !releaseCheck.checking && !releaseCheck.error && releaseCheck.updateAvailable === true;
+  const versionSubtitle = updateCheckSettings.data?.enabled === false
+    ? 'Update checks off'
+    : updateCheckSettings.isError || appVersion.isError
+      ? 'Update status unavailable'
+      : updateCheckSettings.data?.enabled !== true
+        ? ' '
+        : releaseCheck.checking
+          ? 'Checking for updates…'
+          : releaseCheck.error
+            ? 'Update check failed'
+            : showUpdateAvailable
+              ? `${releaseCheck.latestVersion} available`
+              : releaseCheck.updateAvailable === false
+                ? 'Up to date'
+                : releaseCheck.latestVersion
+                  ? 'Unable to compare versions'
+                  : 'Not checked yet';
 
   const apiKeys = useQuery({
     queryKey: queryKeys.apiKeys.all,
@@ -1079,7 +1088,7 @@ export function SettingsContent({ initialSection, oidcFeedback, oidcFeedbackKind
             <span className="block font-mono text-2xl font-semibold font-display tracking-tight text-fg">
               {runningVersionLabel}
             </span>
-            <span className={`mt-0.5 block text-sm ${releaseCheck.updateAvailable ? 'text-status-warning' : 'text-fg-tertiary'}`}>
+            <span className={`mt-0.5 block text-sm ${showUpdateAvailable ? 'text-status-warning' : 'text-fg-tertiary'}`}>
               {versionSubtitle}
             </span>
           </a>

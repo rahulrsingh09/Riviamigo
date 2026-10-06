@@ -4,6 +4,7 @@ import { api, queryKeys } from '@riviamigo/hooks';
 import type { UpdateCheckFrequency } from '@riviamigo/types';
 import {
   RELEASE_CHECK_STATUS_EVENT,
+  RELEASE_CHECK_STORAGE_KEY,
   UPDATE_CHECK_INTERVALS_MS,
   fetchLatestStableRelease,
   isNewerRelease,
@@ -22,17 +23,30 @@ export function readReleaseCheckStatus(): ReleaseCheckStatus {
 
 export function useReleaseCheckStatus(): ReleaseCheckStatus {
   const [status, setStatus] = React.useState<ReleaseCheckStatus>(readReleaseCheckStatus);
+  const version = useQuery({
+    queryKey: queryKeys.appVersion.current,
+    queryFn: () => api.getAppVersion(),
+    enabled: false,
+  });
   React.useEffect(() => {
     const refresh = () => setStatus(readReleaseCheckStatus());
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === null || event.key === RELEASE_CHECK_STORAGE_KEY) refresh();
+    };
     window.addEventListener(RELEASE_CHECK_STATUS_EVENT, refresh);
-    window.addEventListener('storage', refresh);
+    window.addEventListener('storage', onStorage);
     refresh();
     return () => {
       window.removeEventListener(RELEASE_CHECK_STATUS_EVENT, refresh);
-      window.removeEventListener('storage', refresh);
+      window.removeEventListener('storage', onStorage);
     };
   }, []);
-  return status;
+  return {
+    ...status,
+    updateAvailable: status.lastSuccessfulAt !== null && status.latestVersion && version.data?.version
+      ? isNewerRelease(version.data.version, status.latestVersion)
+      : null,
+  };
 }
 
 function snapshotForResult(
@@ -55,7 +69,6 @@ function frequencyInterval(frequency: UpdateCheckFrequency) {
 
 export function useGithubReleaseCheck() {
   const status = useReleaseCheckStatus();
-  const checkingRef = React.useRef(false);
   const settings = useQuery({
     queryKey: queryKeys.updateCheck.current,
     queryFn: () => api.getUpdateCheckSettings(),
@@ -75,26 +88,27 @@ export function useGithubReleaseCheck() {
   const currentVersion = version.data?.version;
 
   React.useEffect(() => {
-    if (!enabled || !currentVersion || currentVersion === 'unknown') return;
+    if (!enabled || !currentVersion || isNewerRelease(currentVersion, currentVersion) === null) return;
     let disposed = false;
     let timer: number | undefined;
     const interval = frequencyInterval(frequency);
 
     const scheduleNext = (snapshot = readReleaseCheckSnapshot()) => {
       if (disposed) return;
+      window.clearTimeout(timer);
       const dueAt = snapshot.lastAttemptAt === null ? Date.now() : snapshot.lastAttemptAt + interval;
-      timer = window.setTimeout(runIfDue, Math.max(250, dueAt - Date.now()));
+      timer = window.setTimeout(runIfDue, Math.min(2_147_483_647, Math.max(250, dueAt - Date.now())));
     };
 
     const runIfDue = async () => {
       if (disposed || document.visibilityState === 'hidden') return;
+      window.clearTimeout(timer);
+      if (releaseCheckInProgress) return;
       const previous = readReleaseCheckSnapshot();
       if (!isReleaseCheckDue(previous.lastAttemptAt, frequency)) {
         scheduleNext(previous);
         return;
       }
-      if (checkingRef.current) return;
-      checkingRef.current = true;
       releaseCheckInProgress = true;
       window.dispatchEvent(new Event(RELEASE_CHECK_STATUS_EVENT));
       const attemptedAt = Date.now();
@@ -113,16 +127,20 @@ export function useGithubReleaseCheck() {
         };
         writeReleaseCheckSnapshot(result);
       } finally {
-        checkingRef.current = false;
         releaseCheckInProgress = false;
         window.dispatchEvent(new Event(RELEASE_CHECK_STATUS_EVENT));
-        if (!disposed) scheduleNext(readReleaseCheckSnapshot());
       }
     };
 
     const checkWhenVisible = () => {
       if (document.visibilityState === 'visible') void runIfDue();
     };
+    const reschedule = () => scheduleNext();
+    const onStorage = (event: StorageEvent) => {
+      if (event.key === null || event.key === RELEASE_CHECK_STORAGE_KEY) reschedule();
+    };
+    window.addEventListener(RELEASE_CHECK_STATUS_EVENT, reschedule);
+    window.addEventListener('storage', onStorage);
     void runIfDue();
     window.addEventListener('focus', checkWhenVisible);
     document.addEventListener('visibilitychange', checkWhenVisible);
@@ -131,6 +149,8 @@ export function useGithubReleaseCheck() {
       if (timer !== undefined) window.clearTimeout(timer);
       window.removeEventListener('focus', checkWhenVisible);
       document.removeEventListener('visibilitychange', checkWhenVisible);
+      window.removeEventListener(RELEASE_CHECK_STATUS_EVENT, reschedule);
+      window.removeEventListener('storage', onStorage);
     };
   }, [currentVersion, enabled, frequency]);
 
@@ -138,6 +158,6 @@ export function useGithubReleaseCheck() {
     settings,
     version,
     status,
-    updateAvailable: status.updateAvailable === true,
+    updateAvailable: enabled && status.updateAvailable === true,
   };
 }
