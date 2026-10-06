@@ -187,8 +187,132 @@ It exercises the real browser UI without a Rivian connection or live API.
    hardened tip is its ancestor, then fast-forward the default to that exact SHA.
    If the base moved incompatibly, prepare and test another integration. Reusable
    run summaries are evidence; they do not grant a branch-protection bypass.
-6. Only after tests and review, propose a separate deployment of the tested immutable
-   commit/image with the backup and rollback plan below. Candidate publication does not activate the schedule or change the live deployment.
+6. Only after tests and review, deploy the tested immutable commit/image with the
+   backup and rollback plan below. Deployment remains manual until a maintainer
+   explicitly installs the local consumer described below. Candidate publication
+   does not activate the schedule or change the live deployment.
+
+## Deployment readiness contract
+
+The existing **Fork validation** (`.github/workflows/fork-ci.yml`) push run is the
+GitHub signal. No extra action, `workflow_run` workflow, artifact, custom status,
+webhook, deployment credential or self-hosted runner is needed. The upstream
+workflow's `ready_for_maintainer_review` summary is **not** deployment readiness.
+Upstream candidates still need actual security/migration/workflow review, both
+exact-SHA checks and protected default-branch promotion first.
+
+`scripts/fork-deploy-readiness.mjs` is a read-only, one-shot public GitHub API
+consumer, not a deployment command or installed trigger. It sends no authorization
+header and does not read GitHub/cloud credentials. Its tests run automatically
+through the existing `pnpm test:scripts` CI step.
+
+The checker pins repository ID `1406366405`, workflow ID `375880117`, repository
+name, workflow path/name and branch. These IDs were verified against the public
+API; replacement, rename or policy drift needs explicit review of this contract.
+The following must all hold:
+
+| Evidence | Required value |
+| --- | --- |
+| Repository | Public, active `rahulrsingh09/Riviamigo`; default remains `hardening/private-telemetry` |
+| Branch | Protected; both required contexts still enforced for everyone and bound to GitHub Actions app `15368` |
+| Workflow | Active `Fork validation`, exact workflow ID/path |
+| Run | Latest push run number for the current full default SHA; `completed` and `success` |
+| Required jobs | Exactly one each of `Fork frontend and policy` and `Fork backend and security regressions`, both completed successfully on that SHA, run ID and attempt |
+| Freshness | Branch SHA/protection and run ID/attempt/success reread after the jobs |
+| Deduplication | SHA absent from the local successful-deployment ledger |
+
+The jobs endpoint binds required check names to this workflow run; unrelated
+same-name commit statuses are not evidence. PRs, review branches, manual runs,
+scheduled/reusable candidate runs, skipped/neutral/cancelled jobs, missing or
+truncated results and stale attempts emit no item. A newer pending or failed
+push cannot fall back to an older successful push. The attempt-specific jobs
+endpoint deliberately requires both checks in one attempt: after a partial rerun,
+use **Re-run all jobs** if readiness is withheld for missing jobs.
+
+### Local setup and consumer boundary
+
+Install a reviewed, pinned copy of the checker outside candidate/build checkouts.
+Do not fetch and execute a new checker from the candidate before deciding whether
+to trust it. Keep its deployment state outside Git, owned by the local deployer:
+
+```json
+{"deployedShas":["<full SHA of a successfully verified deployment>"]}
+```
+
+Replace the placeholder with a 40-character lowercase commit SHA; the checker
+rejects malformed or missing state. An empty array is valid only when intentionally
+initializing a deployment history. After an independently authorized deployment,
+seed its SHA **after** verification so enabling the trigger cannot redeploy it.
+
+Example invocation after installing the reviewed checker at the chosen local path:
+
+```sh
+node /trusted/riviamigo-control/scripts/fork-deploy-readiness.mjs \
+  --state /trusted/riviamigo-control/deployed.json
+```
+
+Stdout is one JSON object: `schemaVersion: 1`, `ready`, `reason`, and `items`.
+Only `ready: true` has an item with `id`, `repository`, `branch`, `sha`,
+`workflowId`, `runId`, and `runAttempt`. The stable ID is
+`rahulrsingh09/Riviamigo:hardening/private-telemetry:<full-sha>`; a rerun or another
+run on that SHA never changes it. Ordinary not-ready results exit zero with
+`items: []`. Invalid state/arguments, API failures and rate limiting exit nonzero
+with no items. **Exit zero alone never authorizes deployment.** The checker never
+updates the ledger, launches a build, downloads Actions artifacts, runs candidate
+code, or deploys.
+
+A local KiRoom shell source can poll every 15 minutes (`*/15 * * * *`, UTC).
+A ready poll performs seven public GET requests; budget for shared-IP rate limits
+and back off on errors. Extract only the ready item's ID from the compact JSON:
+
+```text
+"items":\[\{"id":"(?<deployment>rahulrsingh09/Riviamigo:hardening/private-telemetry:[0-9a-f]{40})"
+```
+
+Use `{{deployment}}` as the extraction key template and `new_items` detection.
+Do not treat the whole JSON response as an item: even a not-ready response is
+nonempty. KiRoom deduplicates successful **dispatch**, which is different from
+successful deployment. A dispatched action that fails requires a deliberate
+retry/recovery; do not assume another poll retries it or reset dedup globally.
+The parent/operator creates and enables this trigger separately after installing
+and validating the deterministic local deploy command.
+
+The local background action must:
+
+1. Accept only the fixed repository/branch and full SHA; invoke a fixed local
+   command with structured arguments. Do not use GitHub titles, summaries, logs,
+   artifacts or commit messages as commands or agent instructions.
+2. Acquire one deployment lock and reread the successful-deployment ledger.
+   Run this checker again under the lock, and require the returned SHA to equal
+   the queued SHA. Drop stale work when the default changes; never substitute a
+   newer SHA into an old action.
+3. Verify protected promotion/review evidence and unchanged workflow/security
+   policy. Public branch metadata does not prove that a human reviewed code or
+   expose every protection setting. The checker cannot replace that review.
+4. Enforce the existing free resource/replica limits, preserve credentials and
+   keys, take a fresh database backup, retain the previous immutable image and
+   build only the approved SHA. Keep cloud-native automatic branch builds off.
+   Build/test processes must not inherit production credentials.
+5. Revalidate the queued SHA immediately before deployment if a build took time.
+   Deploy and verify using the separately authorized local procedure. Only after
+   success, atomically append the SHA to the deployment ledger and record
+   image/backup/run evidence. On failure, preserve recovery material, stop and
+   report; never mark success or retry a migration blindly.
+
+Polling is a snapshot, not an atomic transaction with GitHub or production. The
+local lock, revalidation, success ledger and recovery handling remain mandatory.
+Before enabling, test not-ready, repeated SHA, stale queued SHA, overlapping
+actions, API failure and failed-deployment recovery without production commands.
+
+### Migration and rollback boundary
+
+The `df97d50bbecd99807001da1d9f34cffc7f1fb3bd` to
+`de6a85f63de2697023b0670cf33d38a40f0367cd` upgrade preserves private migration
+`28` and maps upstream `28+` into `1000028+`. Rollback needs the **pre-upgrade
+database backup, original RSA/AGE keys and old immutable image together**.
+Starting the old binary against the new forward-only ledger is not rollback.
+Follow the existing separate database-administrator recovery procedure; never
+give the running application extra privileges or replace the original keys.
 
 ## Release and data checks
 

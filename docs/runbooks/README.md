@@ -26,6 +26,8 @@ This directory is canonical for operational and process runbooks. Update it when
   Required authenticated-gateway posture, production secret requirements, and verification steps for shared instances.
 - [`key-custody.md`](./key-custody.md)
   External key provisioning, preserving legacy keys during migration, and recovery requirements.
+- [`private-fork-maintenance.md`](./private-fork-maintenance.md)
+  Reviewed upstream integration and credential-free CI readiness for a local deployment consumer.
 - [`release-images.md`](./release-images.md)
   Calendar Version releases, public GHCR images, pre-release images from `dev`, and recovery steps.
 - [`backup-restore.md`](./backup-restore.md)
