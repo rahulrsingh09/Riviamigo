@@ -42,6 +42,11 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y nginx
           python3 scripts/test-origin-gate.py
+      - name: Verify private gateway in the Workers runtime
+        run: |
+          pnpm --filter @riviamigo/private-gateway build
+          npm install --prefix "$RUNNER_TEMP/gateway-runtime" --ignore-scripts --no-fund --no-audit --registry https://registry.npmjs.org miniflare@5.20261001.0-alpha
+          RIVIAMIGO_MINIFLARE_MODULE="$RUNNER_TEMP/gateway-runtime/node_modules/miniflare" node apps/private-gateway/runtime-check.mjs
       - run: pnpm test:packages
       - run: pnpm docs:check
       - run: pnpm build

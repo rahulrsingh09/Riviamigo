@@ -63,6 +63,9 @@ apps/web/vite.config.js
 apps/docs/build/
 apps/docs/.docusaurus/
 .pnpm-store/
+.wrangler/
+.dev.vars*
+apps/private-gateway/wrangler.json
 
 # pnpm
 pnpm-debug.log*

@@ -1,0 +1,146 @@
+import assert from 'node:assert/strict';
+import { createRequire } from 'node:module';
+import { readFile } from 'node:fs/promises';
+import { generateKeyPair, exportJWK, SignJWT } from 'jose';
+const require = createRequire(import.meta.url);
+const { Miniflare, Response, WebSocketPair } = require(
+  process.env.RIVIAMIGO_MINIFLARE_MODULE ?? 'miniflare'
+);
+const { privateKey, publicKey } = await generateKeyPair('RS256');
+const key = { ...(await exportJWK(publicKey)), kid: 'runtime-test' };
+const bindings = {
+  PUBLIC_ORIGIN: 'https://private.synthetic.workers.dev',
+  UPSTREAM_ORIGIN: 'https://synthetic.code.run',
+  ACCESS_ISSUER: 'https://synthetic.cloudflareaccess.com',
+  ACCESS_AUDIENCE: 'synthetic-audience-1234567890',
+  ALLOWED_EMAILS: 'owner@example.test',
+  GATEWAY_TOKEN: 'synthetic-gateway-token-abcdefghijklmnopqrstuvwxyz',
+};
+let originRequests = 0;
+const runtime = new Miniflare({
+  telemetry: { enabled: false },
+  logRequests: false,
+  workers: [
+    {
+      config: {
+        name: 'private-gateway',
+        compatibilityDate: '2026-10-06',
+        manifest: {
+          mainModule: 'worker.mjs',
+          modules: {
+            'worker.mjs': {
+              type: 'esm',
+              contents: await readFile(new URL('./dist/worker.mjs', import.meta.url), 'utf8'),
+            },
+          },
+        },
+        env: Object.fromEntries(
+          Object.entries(bindings).map(([name, value]) => [name, { type: 'text', value }])
+        ),
+      },
+      dev: {
+        outboundService: {
+          type: 'fetcher',
+          handler: async (request) => {
+            const url = new URL(request.url);
+            if (url.origin === bindings.ACCESS_ISSUER && url.pathname === '/cdn-cgi/access/certs') {
+              return Response.json({ keys: [key] });
+            }
+            assert.equal(url.origin, bindings.UPSTREAM_ORIGIN);
+            assert.equal(request.headers.get('X-Riviamigo-Edge'), bindings.GATEWAY_TOKEN);
+            assert.equal(request.headers.get('Cf-Access-Jwt-Assertion'), null);
+            originRequests++;
+            if (request.headers.get('Upgrade') === 'websocket') {
+              assert.deepEqual(
+                request.headers
+                  .get('Sec-WebSocket-Protocol')
+                  .split(',')
+                  .map((value) => value.trim()),
+                ['bearer', 'bearer.synthetic']
+              );
+              const pair = new WebSocketPair();
+              pair[1].accept();
+              pair[1].addEventListener('message', (event) => pair[1].send('echo:' + event.data));
+              return new Response(null, {
+                status: 101,
+                webSocket: pair[0],
+                headers: { 'Sec-WebSocket-Protocol': 'bearer' },
+              });
+            }
+            return Response.json({
+              body: request.method === 'POST' ? await request.json() : null,
+              path: url.pathname,
+              cookie: request.headers.get('Cookie'),
+            });
+          },
+        },
+      },
+    },
+  ],
+});
+try {
+  const token = await new SignJWT({ email: bindings.ALLOWED_EMAILS })
+    .setProtectedHeader({ alg: 'RS256', kid: key.kid })
+    .setSubject('runtime-owner')
+    .setIssuer(bindings.ACCESS_ISSUER)
+    .setAudience(bindings.ACCESS_AUDIENCE)
+    .setIssuedAt()
+    .setExpirationTime('5m')
+    .sign(privateKey);
+  const denied = await runtime.dispatchFetch(bindings.PUBLIC_ORIGIN + '/');
+  assert.equal(denied.status, 403);
+  assert.equal(originRequests, 0);
+  const result = await runtime.dispatchFetch(bindings.PUBLIC_ORIGIN + '/api/auth/login', {
+    method: 'POST',
+    headers: {
+      'Cf-Access-Jwt-Assertion': token,
+      'Content-Type': 'application/json',
+      Cookie: 'CF_Authorization=synthetic; refresh_token=synthetic',
+    },
+    body: JSON.stringify({ email: 'synthetic@example.test', password: 'synthetic-only' }),
+  });
+  assert.equal(result.status, 200);
+  const payload = await result.json();
+  assert.equal(payload.body.password, 'synthetic-only');
+  assert.equal(payload.cookie, 'refresh_token=synthetic');
+  const upgrade = await runtime.dispatchFetch(bindings.PUBLIC_ORIGIN + '/api/ws', {
+    headers: {
+      'Cf-Access-Jwt-Assertion': token,
+      Upgrade: 'websocket',
+      Connection: 'Upgrade',
+      'Sec-WebSocket-Protocol': 'bearer, bearer.synthetic',
+    },
+  });
+  if (upgrade.status !== 101) console.error('Runtime upgrade diagnostic:', await upgrade.text());
+  assert.equal(upgrade.status, 101);
+  const socket = upgrade.webSocket;
+  assert(socket);
+  socket.accept();
+  const reply = new Promise((resolve, reject) => {
+    const timeout = setTimeout(() => reject(new Error('WebSocket timeout')), 5000);
+    socket.addEventListener(
+      'message',
+      (event) => {
+        clearTimeout(timeout);
+        resolve(event.data);
+      },
+      { once: true }
+    );
+  });
+  socket.send('probe');
+  assert.equal(await reply, 'echo:probe');
+  socket.close();
+  const evidence = {
+    testedAt: new Date().toISOString(),
+    runtime: 'workerd via Miniflare',
+    unauthorizedDeniedBeforeOrigin: true,
+    realJwtValidationWithJwksFetch: true,
+    httpRequestBodyAndCookiePreserved: true,
+    actualWebSocketUpgradeAndEcho: true,
+    originRequests,
+    syntheticOnly: true,
+  };
+  console.log(JSON.stringify(evidence));
+} finally {
+  await runtime.dispose();
+}

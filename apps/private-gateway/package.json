@@ -1,0 +1,16 @@
+{
+  "name": "@riviamigo/private-gateway",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "esbuild src/worker.mjs --bundle --format=esm --platform=browser --outfile=dist/worker.mjs",
+    "test": "node --test test/*.test.mjs"
+  },
+  "dependencies": {
+    "jose": "6.2.12"
+  },
+  "devDependencies": {
+    "esbuild": "catalog:"
+  }
+}
