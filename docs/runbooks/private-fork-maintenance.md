@@ -201,9 +201,14 @@ workflow's `ready_for_maintainer_review` summary is **not** deployment readiness
 Upstream candidates still need actual security/migration/workflow review, both
 exact-SHA checks and protected default-branch promotion first.
 
-`scripts/fork-deploy-readiness.mjs` is a read-only, one-shot public GitHub API
-consumer, not a deployment command or installed trigger. It sends no authorization
-header and does not read GitHub/cloud credentials. Its tests run automatically
+`scripts/fork-deploy-readiness.mjs` is a read-only, one-shot GitHub metadata
+consumer, not a deployment command or installed trigger. Its default transport
+uses the public API without credentials. The installed deployment configuration
+uses `--github-cli /absolute/canonical/path/to/gh` to reuse the host's saved GitHub
+login for fixed read-only requests and avoid the shared anonymous quota.
+The checker never extracts the token or forwards inherited cloud secrets.
+Both transports enforce the same readiness evidence; authentication errors stop
+the authenticated transport without a public fallback. Its tests run automatically
 through the existing `pnpm test:scripts` CI step.
 
 The checker pins repository ID `1406366405`, workflow ID `375880117`, repository

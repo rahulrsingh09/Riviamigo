@@ -24,7 +24,7 @@ PROJECT = "/v1/projects/riviamigo-private"
 APP = PROJECT + "/services/telemetry-app"
 BRANCH = "hardening/private-telemetry"
 REPOSITORY = "rahulrsingh09/Riviamigo"
-READINESS_HASH = "bd96a92e561d0f0d4da53a9392adb39e22999c4ae44afc4c51c88cdd09155fdc"
+READINESS_HASH = "c113d52b70432ca88a9b9473bc5af7e1c2236e7a46e3b519acb942013bbe0205"
 SHA = re.compile(r"[0-9a-f]{40}")
 CHECKSUM = re.compile(r"[0-9a-f]{96}")
 HISTORY = ("telemetry", "trips", "charges", "statePeriods", "vehicles", "users", "credentials")
@@ -156,6 +156,9 @@ class Config:
             setattr(self, name, path)
         require(self.root in self.readiness.parents, "readiness-outside-control-root")
         require(digest(self.readiness) == READINESS_HASH, "readiness-pin-mismatch")
+        self.github_cli = (trusted_path(data["github_cli"]) if data.get("github_cli") else None)
+        if self.github_cli:
+            outside_git(self.github_cli)
         self.state = self.state_dir / "deployed.json"
         self.origin = self.https_origin(data["origin_url"])
         self.access = self.https_origin(data["access_url"])
@@ -341,8 +344,11 @@ class Northflank:
 
     def readiness(self, sha):
         require(digest(self.config.readiness) == READINESS_HASH, "readiness-pin-mismatch")
-        result = json.loads(self.command([str(self.config.node), str(self.config.readiness),
-                                         "--state", str(self.config.state)]))
+        argv = [str(self.config.node), str(self.config.readiness),
+                "--state", str(self.config.state)]
+        if self.config.github_cli:
+            argv.extend(["--github-cli", str(self.config.github_cli)])
+        result = json.loads(self.command(argv))
         entries = result.get("items")
         require(result.get("schemaVersion") == 1 and result.get("ready") is True
                 and isinstance(entries, list) and len(entries) == 1, "ci-not-ready")

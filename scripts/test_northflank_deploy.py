@@ -389,6 +389,24 @@ class AdapterTests(unittest.TestCase):
             with self.assertRaisesRegex(deploy.Halt, "^local-command-unavailable-or-timeout$"):
                 adapter.command(["/fixed/node"])
 
+    def test_readiness_forwards_only_the_configured_cli_path(self):
+        adapter = self.adapter()
+        adapter.config.readiness = Path("/private/readiness.mjs")
+        adapter.config.state = Path("/private/deployed.json")
+        item = {"sha": NEW, "repository": deploy.REPOSITORY, "branch": deploy.BRANCH,
+                "id": f"{deploy.REPOSITORY}:{deploy.BRANCH}:{NEW}"}
+        output = json.dumps({"schemaVersion": 1, "ready": True, "items": [item]})
+        for binary in (None, Path("/private/gh")):
+            adapter.config.github_cli = binary
+            with patch.object(deploy, "digest", return_value=deploy.READINESS_HASH), \
+                 patch.object(adapter, "command", return_value=output) as command:
+                self.assertEqual(adapter.readiness(NEW), item)
+            expected = ["/fixed/node", "/private/readiness.mjs",
+                        "--state", "/private/deployed.json"]
+            if binary:
+                expected.extend(["--github-cli", "/private/gh"])
+            self.assertEqual(command.call_args[0][0], expected)
+
     def test_build_failure_wrong_sha_and_timeout(self):
         adapter = self.adapter()
         cases = [

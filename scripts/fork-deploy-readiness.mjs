@@ -1,4 +1,8 @@
-import { readFileSync, realpathSync } from 'node:fs';
+import { execFile } from 'node:child_process';
+import { readFileSync, realpathSync, statSync } from 'node:fs';
+import { homedir } from 'node:os';
+import { dirname, isAbsolute } from 'node:path';
+import { promisify } from 'node:util';
 import { pathToFileURL } from 'node:url';
 
 export const POLICY = Object.freeze({
@@ -24,6 +28,41 @@ const trustedRepository = (repository) =>
   repository?.id === POLICY.repositoryId &&
   repository.full_name === POLICY.repository &&
   repository.private === false;
+
+export function githubCliFetch(binary, { execute = promisify(execFile) } = {}) {
+  if (!isAbsolute(binary) || realpathSync(binary) !== binary) throw new Error('Untrusted GitHub CLI');
+  const info = statSync(binary);
+  if (!info.isFile() || info.uid !== process.getuid() || (info.mode & 0o022)) {
+    throw new Error('Untrusted GitHub CLI');
+  }
+  return async (url, options) => {
+    const parsed = new URL(url);
+    const base = `/repos/${POLICY.repository}`;
+    if (parsed.origin !== 'https://api.github.com' || parsed.username || parsed.password ||
+        parsed.hash || (parsed.pathname !== base && !parsed.pathname.startsWith(`${base}/`)) ||
+        options.method !== 'GET' || options.redirect !== 'error') {
+      throw new Error('Untrusted metadata request');
+    }
+    try {
+      const { stdout } = await execute(binary, [
+        'api', '--hostname', 'github.com', '--method', 'GET',
+        '--header', 'Accept: application/vnd.github+json',
+        '--header', 'X-GitHub-Api-Version: 2022-11-28',
+        '--', parsed.pathname.slice(1) + parsed.search,
+      ], {
+        encoding: 'utf8', timeout: 20_000, maxBuffer: 8 * 1024 * 1024,
+        env: {
+          HOME: homedir(), PATH: `${dirname(binary)}:/usr/bin:/bin`, LANG: 'C.UTF-8',
+          GH_PROMPT_DISABLED: '1', GIT_TERMINAL_PROMPT: '0',
+        },
+      });
+      JSON.parse(stdout);
+      return new Response(stdout, { status: 200 });
+    } catch {
+      throw new Error('Authenticated GitHub metadata unavailable');
+    }
+  };
+}
 
 function trustedBranch(branch) {
   const protection = branch?.protection?.required_status_checks;
@@ -148,11 +187,14 @@ export async function checkDeploymentReadiness(state, { fetchImpl = fetch } = {}
 
 if (process.argv[1] && import.meta.url === pathToFileURL(realpathSync(process.argv[1])).href) {
   try {
-    if (process.argv.length !== 4 || process.argv[2] !== '--state') {
-      throw new Error('Usage: node scripts/fork-deploy-readiness.mjs --state /trusted/deployed.json');
+    if (![4, 6].includes(process.argv.length) || process.argv[2] !== '--state' ||
+        (process.argv.length === 6 && process.argv[4] !== '--github-cli')) {
+      throw new Error('Invalid readiness arguments');
     }
     const state = JSON.parse(readFileSync(process.argv[3], 'utf8'));
-    const result = await checkDeploymentReadiness(state);
+    const transport = process.argv.length === 6
+      ? { fetchImpl: githubCliFetch(process.argv[5]) } : {};
+    const result = await checkDeploymentReadiness(state, transport);
     console.log(JSON.stringify(result));
     if (result.reason === 'invalid-state') process.exitCode = 1;
   } catch {

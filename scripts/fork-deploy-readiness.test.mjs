@@ -1,10 +1,10 @@
 import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
-import { mkdtempSync, readFileSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
+import { chmodSync, mkdtempSync, readFileSync, realpathSync, rmSync, symlinkSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { checkDeploymentReadiness, evaluateDeploymentReadiness, POLICY } from './fork-deploy-readiness.mjs';
+import { checkDeploymentReadiness, evaluateDeploymentReadiness, githubCliFetch, POLICY } from './fork-deploy-readiness.mjs';
 
 const sha = 'a'.repeat(40);
 const otherSha = 'b'.repeat(40);
@@ -258,4 +258,79 @@ test('CLI also executes through an installed path alias', (t) => {
   const result = spawnSync(process.execPath, [alias, '--state', state], { encoding: 'utf8' });
   assert.equal(result.status, 1);
   assert.equal(JSON.parse(result.stdout).reason, 'invalid-state');
+});
+
+function cliFixture(t) {
+  const directory = realpathSync(mkdtempSync(join(tmpdir(), 'fork-gh-cli-')));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const binary = join(directory, 'gh');
+  writeFileSync(binary, 'synthetic executable', { mode: 0o700 });
+  return binary;
+}
+
+test('authenticated transport preserves every readiness gate and uses only fixed read-only CLI requests', async (t) => {
+  const binary = cliFixture(t);
+  const mock = fakeApi(fixture());
+  const fetchImpl = githubCliFetch(binary, {
+    execute: async (file, args, options) => {
+      assert.equal(file, binary);
+      assert.deepEqual(args.slice(0, 6), ['api', '--hostname', 'github.com', '--method', 'GET', '--header']);
+      assert.equal(args.at(-2), '--');
+      assert.equal(options.timeout, 20_000);
+      assert.equal(options.maxBuffer, 8 * 1024 * 1024);
+      assert.deepEqual(Object.keys(options.env).sort(),
+        ['GH_PROMPT_DISABLED', 'GIT_TERMINAL_PROMPT', 'HOME', 'LANG', 'PATH']);
+      assert.equal(options.shell, undefined);
+      const response = await mock.fetchImpl(`https://api.github.com/${args.at(-1)}`, {
+        method: 'GET', redirect: 'error', headers: {},
+      });
+      return { stdout: await response.text() };
+    },
+  });
+  assert.equal((await checkDeploymentReadiness(emptyState(), { fetchImpl })).ready, true);
+  assert.equal(mock.calls.length, 7);
+  const failed = fixture();
+  failed.jobs.jobs[0].conclusion = 'failure';
+  const rejected = fakeApi(failed);
+  const failedTransport = githubCliFetch(binary, {
+    execute: async (_, args) => ({
+      stdout: await (await rejected.fetchImpl(`https://api.github.com/${args.at(-1)}`,
+        { method: 'GET', redirect: 'error', headers: {} })).text(),
+    }),
+  });
+  assert.equal((await checkDeploymentReadiness(emptyState(), { fetchImpl: failedTransport })).ready, false);
+});
+
+test('authenticated transport rejects unsafe binaries, foreign destinations and writes', async (t) => {
+  const binary = cliFixture(t);
+  const execute = () => assert.fail('must reject before CLI execution');
+  assert.throws(() => githubCliFetch('gh', { execute }));
+  symlinkSync(binary, `${binary}-link`);
+  assert.throws(() => githubCliFetch(`${binary}-link`, { execute }));
+  chmodSync(binary, 0o777);
+  assert.throws(() => githubCliFetch(binary, { execute }));
+  chmodSync(binary, 0o700);
+  const fetchImpl = githubCliFetch(binary, { execute });
+  for (const url of [
+    'https://evil.example/repos/rahulrsingh09/Riviamigo',
+    'https://api.github.com/repos/attacker/Riviamigo',
+    'https://api.github.com/repos/rahulrsingh09/Riviamigo-other',
+    'https://user:password@api.github.com/repos/rahulrsingh09/Riviamigo',
+    'https://api.github.com/repos/rahulrsingh09/Riviamigo#fragment',
+  ]) await assert.rejects(fetchImpl(url, { method: 'GET', redirect: 'error' }));
+  const url = `https://api.github.com/repos/${POLICY.repository}`;
+  await assert.rejects(fetchImpl(url, { method: 'POST', redirect: 'error' }));
+  await assert.rejects(fetchImpl(url, { method: 'GET', redirect: 'follow' }));
+});
+
+test('GitHub CLI authentication errors and malformed output remain redacted with no public fallback', async (t) => {
+  const binary = cliFixture(t);
+  for (const execute of [
+    async () => { throw new Error('synthetic-secret-in-cli-stderr'); },
+    async () => ({ stdout: 'synthetic-secret-invalid-json' }),
+  ]) {
+    const fetchImpl = githubCliFetch(binary, { execute });
+    await assert.rejects(fetchImpl(`https://api.github.com/repos/${POLICY.repository}`,
+      { method: 'GET', redirect: 'error' }), { message: 'Authenticated GitHub metadata unavailable' });
+  }
 });

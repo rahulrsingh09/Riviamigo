@@ -13,7 +13,7 @@ The daily agent reviews and promotes candidates to the protected default.
 This controller only consumes successful default-branch CI through the installed
 [`fork-deploy-readiness.mjs`](../../scripts/fork-deploy-readiness.mjs) contract.
 Its byte hash is pinned in the Python source:
-`bd96a92e561d0f0d4da53a9392adb39e22999c4ae44afc4c51c88cdd09155fdc`.
+`c113d52b70432ca88a9b9473bc5af7e1c2236e7a46e3b519acb942013bbe0205`.
 Changing that checker requires a reviewed controller update and installation.
 Candidate repository code, package managers, hooks, CI artifacts and commit text
 never execute locally in the credential-bearing controller.
@@ -50,6 +50,7 @@ the chosen state/review paths locally):
   "nf_cli": "/home/rahsinwb/projects/riviamigo-tooling/northflank-cli/node_modules/@northflank/cli/dist/cli.js",
   "nf_config_dir": "/home/rahsinwb/.config/northflank-riviamigo",
   "readiness": "/absolute/riviamigo-control/fork-deploy-readiness.mjs",
+  "github_cli": "/absolute/trusted/bin/gh",
   "state_dir": "/absolute/riviamigo-state",
   "reviews_dir": "/absolute/riviamigo-reviews",
   "origin_url": "https://your-northflank-origin.code.run",
@@ -63,10 +64,32 @@ The Northflank directory must already contain `config.json` with its selected
 Only the API adapter reads that token. The CLI receives `NF_CONFIG_DIR`; it reads
 the same local context. Subprocess environments start from an allowlist of
 `PATH`, `HOME`, and `LANG`. The readiness subprocess receives no Northflank config
-environment, inherited token, GitHub credential, proxy override or `NODE_OPTIONS`.
+environment, inherited token, proxy override or `NODE_OPTIONS`.
 Northflank build arguments, build files and Docker secret mounts must all be
 empty, including inherited values. No production secrets are sent to GitHub or
 passed in the build request. The deployed runtime retains its original secrets.
+
+The optional `github_cli` path enables authenticated metadata reads through the
+existing host's saved GitHub CLI login. Configure it for this installation to
+avoid the shared anonymous API quota. The trusted checker calls only
+`gh api --hostname github.com --method GET` for this repository, without a shell.
+It never extracts or prints the token. The CLI gets an allowlisted environment
+and reads its existing local login; inherited `GH_TOKEN`, `GITHUB_TOKEN`,
+`GH_CONFIG_DIR`, proxy variables, and cloud secrets are not forwarded.
+An expired login or CLI error stops readiness without an anonymous fallback.
+The CLI executable must be an absolute canonical regular file owned by the
+deployer and not writable by group or others.
+
+Configure the trigger source with the same canonical path:
+
+```sh
+node /absolute/riviamigo-control/fork-deploy-readiness.mjs \
+  --state /absolute/riviamigo-state/deployed.json \
+  --github-cli /absolute/trusted/bin/gh
+```
+
+Omitting `github_cli` retains the unauthenticated public transport. Both
+transports enforce the same repository, protection, exact-SHA and CI checks.
 
 Initialize `<state_dir>/deployed.json` only after independently verifying the
 currently deployed SHA:
