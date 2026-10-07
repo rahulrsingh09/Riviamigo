@@ -74,6 +74,7 @@ jobs:
           pnpm --filter @riviamigo/private-gateway build
           npm install --prefix "$RUNNER_TEMP/gateway-runtime" --ignore-scripts --no-fund --no-audit --registry https://registry.npmjs.org miniflare@5.20261001.0-alpha
           RIVIAMIGO_MINIFLARE_MODULE="$RUNNER_TEMP/gateway-runtime/node_modules/miniflare" node apps/private-gateway/runtime-check.mjs
+          RIVIAMIGO_MINIFLARE_MODULE="$RUNNER_TEMP/gateway-runtime/node_modules/miniflare" node apps/private-gateway/backup-runtime-check.mjs
       - run: pnpm test:packages
       - name: Install local Chromium
         run: pnpm --filter @riviamigo/web exec playwright install --with-deps chromium
@@ -114,6 +115,7 @@ jobs:
       REDIS_URL: redis://localhost:6379/
       KEY_CUSTODY_TEST_DATABASE_URL: postgresql://postgres:synthetic-ci-password@localhost:5432/postgres
       TRIP_DURABILITY_TEST_DATABASE_URL: postgresql://postgres:synthetic-ci-password@localhost:5432/postgres
+      HISTORY_TEST_DATABASE_URL: postgresql://postgres:synthetic-ci-password@localhost:5432/postgres
       RIVIAMIGO_TEST_REDIS_URL: redis://127.0.0.1:6379/
     defaults:
       run:
@@ -152,6 +154,7 @@ jobs:
           cargo test --locked --test auth_integration -- --test-threads=1
       - run: cargo test --locked --lib authorization_ -- --ignored --test-threads=1
       - run: cargo test --locked --lib keys::tests::database_custody -- --ignored
+      - run: cargo test --locked --lib history::tests::database_history -- --ignored --test-threads=1
       - run: cargo test --locked --lib ingestion::worker::trip_capture::tests -- --ignored --test-threads=1
       - name: Evaluate every Cargo advisory
         shell: bash

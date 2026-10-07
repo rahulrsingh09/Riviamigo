@@ -2,6 +2,9 @@
 
 Documentation impact: internal and documentation-site update required.
 
+For automatic off-provider backups and deletion safeguards, see
+[vehicle history protection](private-history-backups.md).
+
 The release pipeline is independent of KiRoom. GitHub runs the existing
 **Fork validation** workflow. A successful push on the protected
 `hardening/private-telemetry` branch starts **Queue verified Northflank release**

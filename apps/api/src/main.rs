@@ -36,6 +36,7 @@ async fn main() -> anyhow::Result<()> {
         .await?;
     let migration = db::migrations::run_current_migrations(&migration_pool).await?;
     migration_pool.close().await;
+    riviamigo_api::private_deployment::history::protect_history(&pool, &config).await?;
     tracing::info!(
         latest_version = migration.latest_version,
         ledger_action = ?migration.ledger_action,

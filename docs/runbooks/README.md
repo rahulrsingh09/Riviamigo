@@ -53,4 +53,5 @@ Add a runbook when:
 
 - [Local Northflank deployment controller](local-northflank-controller.md)
 - [GitHub and Northflank release pipeline](native-northflank-release.md)
+- [Vehicle history protection and encrypted backups](private-history-backups.md)
 - [KiRoom upstream review procedure](kiroom-upstream-review.md)

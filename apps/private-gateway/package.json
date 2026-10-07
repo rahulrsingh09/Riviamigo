@@ -4,7 +4,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "build": "esbuild src/worker.mjs --bundle --format=esm --platform=browser --outfile=dist/worker.mjs",
+    "build": "esbuild src/worker.mjs src/backup-worker.mjs --bundle --format=esm --platform=browser --outdir=dist --out-extension:.js=.mjs",
     "test": "node --test test/*.test.mjs"
   },
   "dependencies": {

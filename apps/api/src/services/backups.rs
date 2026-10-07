@@ -513,7 +513,8 @@ async fn run_backup_inner_for_run(
             "retention_count": settings.retention_count,
         });
         let size_bytes = i64::try_from(metadata.len()).unwrap_or(i64::MAX);
-        let retain_local = settings.local_enabled || matches!(trigger, BackupRunTrigger::PreRestore);
+        let retain_local = settings.local_enabled || matches!(trigger, BackupRunTrigger::PreRestore)
+            || crate::private_deployment::history_backup::configured();
         let mut artifact_ids = Vec::new();
         if retain_local {
             let storage_type = if matches!(trigger, BackupRunTrigger::PreRestore) { "safety" } else { "local" };
@@ -578,6 +579,9 @@ async fn run_backup_inner_for_run(
             published_key = Some(remote_locator);
         }
 
+        if !matches!(trigger, BackupRunTrigger::PreRestore) {
+            crate::private_deployment::history_backup::mirror(config, &artifact_path).await?;
+        }
         update_backup_progress(pool, run_id, "finalizing", 98).await?;
         prune_retained_artifacts(pool, config, settings.retention_count).await?;
         if let Some(s3) = settings.s3.as_ref().filter(|_| settings.s3_enabled && !matches!(trigger, BackupRunTrigger::PreRestore)) {

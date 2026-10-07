@@ -1737,6 +1737,7 @@ async fn delete_vehicle(
     axum::extract::Path(vid): axum::extract::Path<Uuid>,
 ) -> Result<Json<serde_json::Value>, AppError> {
     require_vehicle_role(&state.pool, auth.user_id, vid, &["owner"]).await?;
+    crate::private_deployment::history::require_vehicle_deletion_allowed(&state.config)?;
 
     sqlx::query("DELETE FROM riviamigo.vehicles WHERE id = $1")
         .bind(vid)
