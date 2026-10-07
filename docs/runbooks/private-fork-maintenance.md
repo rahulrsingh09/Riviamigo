@@ -2,331 +2,149 @@
 
 Documentation impact: both internal and user-facing documentation update required.
 
-The public fork is `rahulrsingh09/Riviamigo`; upstream is `bballdavis/Riviamigo`.
-Keep GitHub credentials, cloud credentials, Rivian tokens, locations and database
-exports outside Git.
+GitHub owns routine upstream synchronization, candidate validation and promotion.
+Northflank owns building, the fresh release backup, deployment and verification.
+Cloudflare owns private access and the independent encrypted backup receiver.
+KiRoom can help investigate a stopped update; none of these workflows requires
+KiRoom to be running.
 
-## Daily operation and branches
+The public fork is `rahulrsingh09/Riviamigo`; upstream is
+`bballdavis/Riviamigo`. Never put cloud credentials, Rivian tokens, vehicle
+locations, database exports or recovery keys in Git.
 
-- `hardening/private-telemetry` is the protected default and reviewed security base.
-- `main` is a fast-forward-only mirror of upstream stable `main`.
-- `review/upstream/main/<full-candidate-SHA>` holds each automatically prepared
-  stable candidate. Candidate names and commits are immutable; later upstream or
-  hardened changes produce another branch. Existing review work is never merged
-  into a new candidate.
-- Upstream `dev` is inspected for its SHA, ancestry and main/dev commit counts.
-  It is never selected by the schedule. A maintainer can explicitly select `dev`
-  in a manual run **from the trusted default branch**. Related dev candidates use
-  `review/upstream/dev/<full-candidate-SHA>`; dev never becomes the `main` mirror.
-- Validation push triggers cover the default, `review/**`, `integrate/**` and
-  `automation/**`. A pull request is not required.
+## Branches and daily operation
 
-Once installed on the default branch, `fork-upstream-sync.yml` checks daily at
-08:23 UTC and supports manual runs. GitHub schedules can be delayed, and GitHub
-can disable schedules in inactive public repositories. Check the Actions run
-summary rather than assuming every day succeeded.
+- `hardening/private-telemetry` is the protected default and deployment branch.
+- `main` is a fast-forward-only mirror of upstream stable main.
+- `review/upstream/main/<full-candidate-SHA>` contains an immutable proposed merge.
+- Upstream dev is observed but never automatically promoted. A manual sync can
+  prepare an eligible dev candidate for a separate review; it does not replace
+  the stable mirror or enter automatic promotion.
 
-The workflow resolves the hardened base and upstream refs once, merges with Git
-plumbing in an isolated bare repository, and constructs a deterministic merge
-commit with both exact parents. Its identity, timestamp and message depend only
-on those inputs. It never checks out candidate files or invokes a package manager,
-application, repository hook, custom merge driver or local action in the write job.
-A changed default-branch SHA during startup blocks the run; rerun on the new base.
+`fork-upstream-sync.yml` runs daily at **08:23 UTC** and supports a manual run
+from the trusted default branch. Schedules may be delayed or disabled by GitHub
+for inactivity; inspect the Actions run history rather than assuming a daily run.
 
-The deployed `df97d50` baseline shares ancestry with the available upstream `main`,
-but the separately integrated upstream `dev` has unrelated history. Daily automation
-assumes future stable releases retain ancestry shared with the hardened base and
-that `origin/main` remains an ancestor of upstream `main`. A maintainer's unrelated
-history integration can establish ancestry with dev; it does not prove that future
-main releases will descend from that integration. A rewritten main or missing
-common ancestor is a review blocker. Automation never uses
-`--allow-unrelated-histories`, resets, force pushes or automatic conflict resolution.
+The preparation job resolves the current hardened base and upstream refs once,
+merges with Git plumbing in a temporary bare repository, and constructs a
+repeatable candidate with both exact parents. No candidate files are checked
+out or executed by the job holding the write token. Hooks, global Git config,
+credential helpers and tree-supplied merge drivers are disabled.
 
-## Review status and failure handling
+## Automatic update path
 
-Every attempted sync writes a small `fork-sync.json` artifact (one-day retention)
-and a run summary. A separate, read-only final job reports candidate SHA,
-validation result and readiness for maintainer review. There are no messages to
-Slack, email, external review services, or AI services.
+1. Prepare a stable-main candidate. Stop for changed controls, conflicts,
+   rewritten ancestry or a moved default branch.
+2. Publish the candidate under its full SHA. Recompute the merge using the
+   trusted workflow code and verify that the published branch matches.
+3. Explicitly dispatch the existing **Fork validation** workflow on that immutable
+   candidate branch. The candidate workflow file is unchanged from the trusted
+   base because all workflow, script and build-control changes are review-gated.
+   The validation jobs have read-only GitHub permissions, synthetic database
+   fixtures, no cloud credentials and no promotion token.
+4. Wait at most 55 minutes for CI. Require both genuine GitHub Actions jobs on
+   the exact candidate, run ID and attempt. Failed, neutral, skipped, incomplete,
+   foreign or ambiguous checks do not qualify. A newer failure cannot fall back
+   to an older success.
+5. Recompute the upstream merge and controls again; recheck the candidate ref,
+   CI attempt, protected branch and base. Advance the protected branch with
+   `force: false`. GitHub still enforces its required checks; no status is
+   fabricated and no protection bypass is configured.
+6. Explicitly dispatch the same CI workflow on the new protected branch.
+   GitHub's repository token does not create ordinary push-triggered runs for
+   bot updates, so this dispatch is required. No personal access token or
+   additional GitHub App secret is needed.
+7. Successful protected-branch CI queues **riviamigo-verified-release** in
+   Northflank. Northflank verifies CI again, builds the exact commit, takes a
+   fresh backup, preserves original keys, deploys and verifies history and
+   collector health. A queued GitHub release is not a completed deployment.
 
-| Sync status | Meaning and next step |
-| --- | --- |
-| `current` | Stable upstream is already in the hardened base. No candidate or validation job is needed. |
-| `candidate-ready` | The SHA was prepared and published if `applied` is true. Wait for both validation jobs; this status alone does not mean tests passed. |
-| `controls-review-required` | Upstream changed workflows, actions, hooks, install/build configuration, scripts, backend/security code, gateway, migrations or auth controls. Review the listed paths. No candidate code executes and no refs are pushed. |
-| `conflict` | The artifact lists unresolved files. Resolve in a separate maintainer integration branch, review security/migration implications, then test that exact commit. |
-| `unrelated-history` / `mirror-diverged` | Investigate history before a manual integration. Do not overwrite the mirror or weaken protection. |
-| `candidate-moved` | A SHA-named branch points elsewhere. Investigate instead of overwriting it. |
-| `base-moved` / `source-unavailable` / `error` | Rerun from the current trusted base or fix the reported fetch/configuration failure. |
+The promoter executes only code from the triggering trusted default commit.
+Candidate validation runs on separate GitHub-hosted runners. The promoter's
+repository token is used only against fixed GitHub endpoints: read metadata,
+dispatch the one approved CI workflow, and fast-forward the one protected branch.
+It cannot deploy to Northflank or read Rivian credentials. Git subprocesses never
+inherit that token. Network errors are redacted and stop the operation.
 
-Control detection examines both upstream changes since the merge base and the
-resulting candidate versus the hardened base, including deletions and renames.
-All `.github` files and any `action.yml`/`action.yaml` are gated, regardless of name.
-Backend and migration changes are deliberately conservative review gates. The
-report's `safeToValidate` means only that this path gate passed; it is not a
-security guarantee. No claim is made that future integrations will be conflict-free.
+## What stops for review
 
-For blocked controls, the reported proposed candidate SHA is reproducible but
-**not published** (`applied: false`). This also avoids asking a contents-only token
-to update workflow files. Review source changes using the reported base/upstream
-SHAs, integrate them with maintainer credentials on an `integrate/**` or `review/**`
-branch, and validate the new exact commit. Never resolve security or migration
-conflicts by blindly choosing one side or by adding a permissive merge driver.
+| Result                                  | Required action                                                                                                                                                                            |
+| --------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `current`                               | No upstream merge is needed. Existing protected CI is left alone. If a prior promotion completed but CI dispatch was interrupted, missing protected CI can be resumed.                     |
+| `candidate-ready`                       | GitHub automatically validates and attempts promotion for stable main only. Read the automation job for the actual outcome.                                                                |
+| `controls-review-required`              | Review changed security, authentication, backend, gateway, migration, workflow, script, dependency, build-control files or existing fork patches. No candidate code executes in this path. |
+| `conflict`                              | Resolve in an isolated integration branch, preserving both upstream behavior and fork protections. Never blindly choose one side.                                                          |
+| `unrelated-history` / `mirror-diverged` | Review ancestry. Do not force-push, reset the mirror, or automatically merge unrelated histories.                                                                                          |
+| `candidate-moved` / `base-moved`        | Re-evaluate the changed refs before retrying. SHA-named candidates must never be overwritten.                                                                                              |
+| CI or API failure                       | Inspect the fixed reason code, CI and branch state. A write may have succeeded before its response was lost.                                                                               |
 
-For a local read-only check from a clean checkout (Git 2.38+ and Node 24):
+The path gate examines both upstream changes since the merge base and changes in
+the resulting candidate, including deletions and renames. All backend code,
+private gateway code, hook packages, workflows, actions, scripts, build settings,
+dependencies and recognizable authentication/security paths require review.
+Existing fork-modified paths also require review when upstream touches them,
+even if Git can merge the text without conflicts. This is conservative: many
+application updates will stop for review even if Git
+can merge them. It is not an AI security review and passing the gate is not a
+claim that arbitrary future code is safe.
 
-```sh
-git remote add upstream https://github.com/bballdavis/Riviamigo.git
-node scripts/fork-sync.mjs --json
-```
+Modules reduce overlap, but integration hooks remain in upstream files. The
+[private deployment architecture](../architecture/private-deployment.md) records
+the boundaries and remaining merge risks. Automatic conflict resolution and
+"prefer ours" merge drivers are prohibited for these controls.
 
-If the remote already exists, verify both fetch and push URLs. The check fetches
-into a temporary bare repository; it does not change local refs, the working tree
-or remote branches. `--apply` publishes only ungated candidates and fast-forward
-mirror updates atomically. It requires `FORK_SYNC_TOKEN` supplied securely to the
-process; no credential helper or stored checkout credential is used. Prefer the
-installed workflow for writes. The CLI defaults to stable main.
+A stopped update leaves the existing app running. Review may be performed with
+KiRoom, another development tool or directly in GitHub. The retired 15-minute
+KiRoom deployment trigger must remain disabled. If the daily KiRoom upstream
+trigger is retained during rollout verification, it is not a release requirement;
+disable it once the native replacement is verified to avoid competing promotions.
 
-## CI trust and cost boundaries
+## CI identity and cost boundaries
 
-Enable only `fork-ci.yml` and `fork-upstream-sync.yml` in this fork. Keep inherited
-release, documentation, image publishing and other workflows disabled, and leave
-automatic deployment on branch pushes disabled. Do not add cloud or Rivian secrets
-to Actions. Repository workflow enablement is an activation prerequisite, not
-something these scripts silently change.
+Only genuine **Fork validation** push or explicit workflow-dispatch runs on the
+current protected SHA may queue production. The repository ID, workflow ID/path,
+head repository, branch, run attempt, both job names and GitHub Actions app ID
+are verified. PR, schedule, reusable-candidate and workflow-run events do not
+qualify as production CI. The latest failed or pending run blocks older successes.
+The native guard independently checks the same contract.
 
-All jobs use standard GitHub-hosted `ubuntu-24.04` runners and refuse private
-repositories. There are no paid runners, paid APIs, third-party AI services, cloud
-resources, or Actions caches. Only the bounded metadata artifact is retained;
-public-repository runner eligibility and artifact storage limits still apply.
+Candidate dispatch runs can qualify for protected-branch promotion after the
+promoter's merge/control checks; they never directly qualify for deployment.
+Protected-branch dispatch runs repeat the full checks before the release stage.
 
-Only the metadata job has `contents: write`. Checkout uses the triggering trusted
-SHA and `persist-credentials: false`. Git runs with an allowlisted environment,
-no global/system config, no hooks, no tree-provided merge drivers, and no user
-credential helper. The write token is removed from the runner environment and is
-passed only to the final Git push subprocess as an ephemeral HTTP header. Fetch,
-merge, diff and commit subprocesses do not receive it.
+The public repository uses standard `ubuntu-24.04` GitHub-hosted runners. Jobs
+refuse private repositories. There are no paid AI review services, personal
+access tokens, paid runners or new cloud services. Only bounded sync metadata
+is retained for one day. Hosting and Actions eligibility/storage limits still
+apply; do not claim unlimited free capacity or guaranteed schedule availability.
 
-GitHub token pushes do not trigger ordinary push workflows. Instead, the daily
-workflow calls `./.github/workflows/fork-ci.yml` as a reusable workflow from the
-**same trusted workflow commit**. It passes an immutable candidate SHA, not a
-branch name, and caps validation at `contents: read`. There is no candidate-ref
-workflow dispatch, `workflow_run`, `pull_request_target`, inherited secret, local
-action, stored checkout credential or cloud identity in this path. Both validation
-jobs check that HEAD equals the requested full SHA before running candidate code.
-Changing candidate workflows cannot change the running trusted workflow definition.
+Keep these fork workflows enabled: `fork-ci.yml`, `fork-upstream-sync.yml` and
+`fork-cd.yml`. Keep inherited publishing workflows disabled. The Northflank
+service's generic automatic-CI switch stays off because the dedicated verified
+release workflow owns builds and deployment. The workflow-specific Northflank
+webhook stays in the restricted production environment; it is not available to
+candidate tests or the upstream promoter.
 
-Normal maintainer pushes use the workflow definition in the pushed commit, so
-review all workflow/action/security drift **before** pushing a manually integrated
-candidate. The automated control gate does not replace that maintainer review.
-Keep default protection, required checks, force-push prevention and deletion
-prevention enabled. Never fabricate statuses or bypass protection to promote.
+## Reviewing exceptional updates
 
-## Authentication and browser coverage
+Use a clean isolated checkout and read the actual diff before running candidate
+code. Do not mount home directories, cloud credentials, real backups or the
+Docker socket in a candidate test container. Real Rivian credentials are never
+test fixtures.
 
-Fork backend CI now executes the entire `auth_integration` target serially against
-its disposable TimescaleDB/Redis services, in addition to the existing library,
-authorization, key-custody, crypto and trip-durability regressions. All credentials
-are synthetic and services die with the runner. This includes incoming upstream
-tests once their code is integrated; it does not claim those cases exist on the
-`df97d50` baseline (which has 36 cases in this target).
+For authentication, ingestion, schema or recovery changes, validate populated
+synthetic upgrades, key custody, restart/trip durability and recovery. Preserve
+all deployed migration versions and checksums using the shared composed catalog.
+New migration identities or controller-policy changes require a separately
+validated change to the installed native guard; do not update its approval
+catalog merely to unblock a release.
 
-The integration also tests real HTTP metric responses with and without gzip to
-prevent truncated dashboard batches after stream completion.
+Push the reviewed candidate to a new `review/**`, `integrate/**` or `automation/**`
+branch, wait for its exact-SHA checks and then fast-forward the protected branch.
+Never force-push or fabricate checks. Native CI/CD handles the resulting release.
+An image-only rollback after a schema change is unsafe: preserve the matching
+pre-upgrade database backup, original keys and previous image.
 
-The incoming cases cover refresh replay and descendant revocation, disabled or
-deleted accounts, administrative re-enablement, enrollment authority, live socket
-expiry/quota/revocation, and bounded resource/history operations. Running the
-whole target avoids losing new cases through a name filter.
-
-The upstream enrollment fixture has been adapted: a production-compiled test
-proves runtime gateway overrides are rejected before any credentials are sent.
-Successful enrollment, provider-owned metadata, unchanged existing credentials,
-concurrent enrollment and owner/manager authorization run in the ignored database
-unit suite through a compile-time-only, task-local mock transport. No real Rivian
-connection is made. `fork-auth-contract.mjs` detects reintroduction of the old
-process-wide fixture; neither production URL restrictions nor assertions are relaxed.
-
-CI also verifies the composed migration catalog against the deployed `df97d50`
-ledger. See [private deployment architecture](../architecture/private-deployment.md)
-for module boundaries and migration namespace rules.
-
-Frontend CI installs Chromium and runs the existing login smoke plus
-`fork-lock.spec.ts`. The new test uses deterministic local HTTP/WebSocket fixtures,
-blocks external browser requests and checks locked, unlocked and pending telemetry
-at desktop and phone widths. Clicking the lock indicator must not send a mutation.
-It exercises the real browser UI without a Rivian connection or live API.
-
-## Activation and promotion without a PR
-
-1. Review this automation commit and its local test results. Push it with maintainer
-   credentials to a reviewed `review/**` or `automation/**` branch. Wait for the
-   existing frontend/backend required checks on that exact SHA. Do not merge or
-   deploy merely because local script tests passed.
-2. Fast-forward the protected default to the reviewed, tested commit using the
-   repository's existing protection rules. **The daily schedule and reusable trusted
-   definition are inactive until these files reach the default branch.** If another
-   integration changed the base, combine and revalidate before promotion.
-3. Confirm the repository remains public, only the two fork workflows are enabled,
-   no cloud/Rivian Actions secrets exist, and the default/protection configuration
-   is unchanged. Keep inherited publishing workflows and automatic deployment off.
-4. Manually run **Fork upstream review** from `hardening/private-telemetry` with
-   source **main**. Inspect the JSON/summary for captured SHAs, dev awareness,
-   `applied`, drift/conflict status and both validation results. Then observe the
-   next 08:23 UTC scheduled run. Choose dev only for an intentional manual review.
-5. For a ready candidate, review the exact commit. To obtain ordinary push checks
-   under existing protection rules, push it with maintainer credentials to a new
-   review branch. Re-pushing an unchanged existing branch produces no push event:
-
-   ```sh
-   git fetch origin review/upstream/main/<full-candidate-SHA>
-   git push origin <full-candidate-SHA>:refs/heads/review/promote-<full-candidate-SHA>
-   ```
-
-   Wait for the required frontend/backend checks on that SHA. Confirm the current
-   hardened tip is its ancestor, then fast-forward the default to that exact SHA.
-   If the base moved incompatibly, prepare and test another integration. Reusable
-   run summaries are evidence; they do not grant a branch-protection bypass.
-6. Only after tests and review, deploy the tested immutable commit/image with the
-   backup and rollback plan below. Deployment remains manual until a maintainer
-   explicitly installs the local consumer described below. Candidate publication
-   does not activate the schedule or change the live deployment.
-
-## Deployment readiness contract
-
-The existing **Fork validation** (`.github/workflows/fork-ci.yml`) push run is the
-GitHub signal. No extra action, `workflow_run` workflow, artifact, custom status,
-webhook, deployment credential or self-hosted runner is needed. The upstream
-workflow's `ready_for_maintainer_review` summary is **not** deployment readiness.
-Upstream candidates still need actual security/migration/workflow review, both
-exact-SHA checks and protected default-branch promotion first.
-
-`scripts/fork-deploy-readiness.mjs` is a read-only, one-shot GitHub metadata
-consumer, not a deployment command or installed trigger. Its default transport
-uses the public API without credentials. The installed deployment configuration
-uses `--github-cli /absolute/canonical/path/to/gh` to reuse the host's saved GitHub
-login for fixed read-only requests and avoid the shared anonymous quota.
-The checker never extracts the token or forwards inherited cloud secrets.
-Both transports enforce the same readiness evidence; authentication errors stop
-the authenticated transport without a public fallback. Its tests run automatically
-through the existing `pnpm test:scripts` CI step.
-
-The checker pins repository ID `1406366405`, workflow ID `375880117`, repository
-name, workflow path/name and branch. These IDs were verified against the public
-API; replacement, rename or policy drift needs explicit review of this contract.
-The following must all hold:
-
-| Evidence | Required value |
-| --- | --- |
-| Repository | Public, active `rahulrsingh09/Riviamigo`; default remains `hardening/private-telemetry` |
-| Branch | Protected; both required contexts still enforced for everyone and bound to GitHub Actions app `15368` |
-| Workflow | Active `Fork validation`, exact workflow ID/path |
-| Run | Latest push run number for the current full default SHA; `completed` and `success` |
-| Required jobs | Exactly one each of `Fork frontend and policy` and `Fork backend and security regressions`, both completed successfully on that SHA, run ID and attempt |
-| Freshness | Branch SHA/protection and run ID/attempt/success reread after the jobs |
-| Deduplication | SHA absent from the local successful-deployment ledger |
-
-The jobs endpoint binds required check names to this workflow run; unrelated
-same-name commit statuses are not evidence. PRs, review branches, manual runs,
-scheduled/reusable candidate runs, skipped/neutral/cancelled jobs, missing or
-truncated results and stale attempts emit no item. A newer pending or failed
-push cannot fall back to an older successful push. The attempt-specific jobs
-endpoint deliberately requires both checks in one attempt: after a partial rerun,
-use **Re-run all jobs** if readiness is withheld for missing jobs.
-
-### Release consumer boundary
-
-Automatic releases use the
-[GitHub and Northflank pipeline](native-northflank-release.md).
-GitHub checks readiness after protected-branch CI succeeds and starts the native
-workflow. KiRoom only reviews upstream changes and conflicts; keep the former
-15-minute deployment trigger disabled. The following checker invocation is
-useful for manual diagnostics and legacy recovery.
-
-Install a reviewed, pinned copy of the checker outside candidate/build checkouts.
-Do not fetch and execute a new checker from the candidate before deciding whether
-to trust it. Keep its deployment state outside Git, owned by the local deployer:
-
-```json
-{"deployedShas":["<full SHA of a successfully verified deployment>"]}
-```
-
-Replace the placeholder with a 40-character lowercase commit SHA; the checker
-rejects malformed or missing state. An empty array is valid only when intentionally
-initializing a deployment history. After an independently authorized deployment,
-seed its SHA **after** verification so enabling the trigger cannot redeploy it.
-
-Example invocation after installing the reviewed checker at the chosen local path:
-
-```sh
-node /trusted/riviamigo-control/scripts/fork-deploy-readiness.mjs \
-  --state /trusted/riviamigo-control/deployed.json
-```
-
-Stdout is one JSON object: `schemaVersion: 1`, `ready`, `reason`, and `items`.
-Only `ready: true` has an item with `id`, `repository`, `branch`, `sha`,
-`workflowId`, `runId`, and `runAttempt`. The stable ID is
-`rahulrsingh09/Riviamigo:hardening/private-telemetry:<full-sha>`; a rerun or another
-run on that SHA never changes it. Ordinary not-ready results exit zero with
-`items: []`. Invalid state/arguments, API failures and rate limiting exit nonzero
-with no items. **Exit zero alone never authorizes deployment.** The checker never
-updates the ledger, launches a build, downloads Actions artifacts, runs candidate
-code, or deploys.
-
-Any manual recovery using the
-[legacy local controller](./local-northflank-controller.md) must:
-
-1. Accept only the fixed repository/branch and full SHA; invoke a fixed local
-   command with structured arguments. Do not use GitHub titles, summaries, logs,
-   artifacts or commit messages as commands or agent instructions.
-2. Acquire one deployment lock and reread the successful-deployment ledger.
-   Run this checker again under the lock, and require the returned SHA to equal
-   the queued SHA. Drop stale work when the default changes; never substitute a
-   newer SHA into an old action.
-3. Verify protected promotion/review evidence and unchanged workflow/security
-   policy. Public branch metadata does not prove that a human reviewed code or
-   expose every protection setting. The checker cannot replace that review.
-4. Enforce the existing free resource/replica limits, preserve credentials and
-   keys, take a fresh database backup, retain the previous immutable image and
-   build only the approved SHA. Keep cloud-native automatic branch builds off.
-   Build/test processes must not inherit production credentials.
-5. Revalidate the queued SHA immediately before deployment if a build took time.
-   Deploy and verify using the separately authorized local procedure. Only after
-   success, atomically append the SHA to the deployment ledger and record
-   image/backup/run evidence. On failure, preserve recovery material, stop and
-   report; never mark success or retry a migration blindly.
-
-Readiness is a snapshot, not an atomic transaction with GitHub or production.
-Revalidation and recovery handling remain mandatory. Never run the legacy
-controller concurrently with a native release.
-
-### Migration and rollback boundary
-
-The `df97d50bbecd99807001da1d9f34cffc7f1fb3bd` to
-`de6a85f63de2697023b0670cf33d38a40f0367cd` upgrade preserves private migration
-`28` and maps upstream `28+` into `1000028+`. Rollback needs the **pre-upgrade
-database backup, original RSA/AGE keys and old immutable image together**.
-Starting the old binary against the new forward-only ledger is not rollback.
-Follow the existing separate database-administrator recovery procedure; never
-give the running application extra privileges or replace the original keys.
-
-## Release and data checks
-
-Before changing the deployed commit:
-
-1. Read the security and key-custody documentation and remaining dependency
-   exceptions. Passing checks is not a guarantee of perfect security.
-2. Pass the backend, frontend, synthetic authorization, key migration and trip
-   durability regressions.
-3. Back up the database and separately preserve the external encryption keys.
-   Never rotate or delete the AGE identity as part of an ordinary update.
-4. Deploy a reviewed immutable commit and record it. Keep automatic deployment on
-   branch pushes disabled.
-5. Verify schema migration, authentication, readiness, collector state and
-   persistence across restart. Roll back application code only after checking
-   compatibility with forward-only database migrations.
-
-Vehicle command blocking is an application policy. Rivian's session tokens
-themselves still carry the permissions granted by Rivian. Keep existing Rivian credentials and keys unchanged during upgrades; never use
-those credentials in candidate tests.
-Trip recovery retains observed data; it cannot reconstruct telemetry never received.
+See [native Northflank releases](native-northflank-release.md) for deployment,
+[history protection and backups](private-history-backups.md) for recovery copies,
+and [key custody](key-custody.md) for original-key requirements.

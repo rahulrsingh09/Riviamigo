@@ -64,7 +64,7 @@ export function githubCliFetch(binary, { execute = promisify(execFile) } = {}) {
   };
 }
 
-function trustedBranch(branch) {
+export function trustedBranch(branch) {
   const protection = branch?.protection?.required_status_checks;
   return branch?.name === POLICY.branch &&
     branch.protected === true &&
@@ -77,12 +77,12 @@ function trustedBranch(branch) {
         check?.context === name && check.app_id === POLICY.checkAppId));
 }
 
-function trustedRun(run, sha) {
+export function trustedRun(run, sha, branch = POLICY.branch) {
   return isId(run?.id) && isId(run.run_attempt) &&
     trustedRepository(run.repository) && trustedRepository(run.head_repository) &&
     run.workflow_id === POLICY.workflowId && run.path === POLICY.workflowPath &&
-    run.name === POLICY.workflowName && run.event === 'push' &&
-    run.head_branch === POLICY.branch && run.head_sha === sha &&
+    run.name === POLICY.workflowName && ['push', 'workflow_dispatch'].includes(run.event) &&
+    run.head_branch === branch && run.head_sha === sha &&
     run.status === 'completed' && run.conclusion === 'success';
 }
 
@@ -102,7 +102,7 @@ export function evaluateDeploymentReadiness(snapshot, state) {
   }
   const sha = branch.commit.sha;
   if (latestBranch.commit.sha !== sha) return withheld('default-branch-moved');
-  if (!trustedRun(run, sha)) return withheld('push-run-not-successful');
+  if (!trustedRun(run, sha)) return withheld('ci-run-not-successful');
   if (!trustedRun(latestRun, sha) || latestRun.id !== run.id ||
       latestRun.run_attempt !== run.run_attempt) {
     return withheld('run-changed');
@@ -164,7 +164,7 @@ export async function checkDeploymentReadiness(state, { fetchImpl = fetch } = {}
   ]);
   if (!isSha(branch?.commit?.sha)) return withheld('invalid-default-sha');
   const query = new URLSearchParams({
-    branch: POLICY.branch, event: 'push', head_sha: branch.commit.sha, per_page: '100',
+    branch: POLICY.branch, head_sha: branch.commit.sha, per_page: '100',
   });
   const runs = await api(`/actions/workflows/${POLICY.workflowId}/runs?${query}`);
   if (!Array.isArray(runs?.workflow_runs) ||
@@ -172,10 +172,10 @@ export async function checkDeploymentReadiness(state, { fetchImpl = fetch } = {}
       runs.workflow_runs.some((run) => !isId(run?.run_number) || !isId(run.id))) {
     return withheld('incomplete-runs');
   }
-  // A newer failed or pending push must never fall back to an older success.
+  // A newer failed or pending run must never fall back to an older success.
   const run = runs.workflow_runs.toSorted((a, b) => b.run_number - a.run_number)[0];
-  if (!run) return withheld('no-current-push-run');
-  if (!trustedRun(run, branch.commit.sha)) return withheld('push-run-not-successful');
+  if (!run) return withheld('no-current-ci-run');
+  if (!trustedRun(run, branch.commit.sha)) return withheld('ci-run-not-successful');
   const jobs = await api(`/actions/runs/${run.id}/attempts/${run.run_attempt}/jobs?per_page=100`);
   const [latestBranch, latestRun] = await Promise.all([
     api(branchPath), api(`/actions/runs/${run.id}`),

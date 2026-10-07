@@ -72,7 +72,9 @@ cp "/fixture/$file" "$output"
         cls.docker("cp", str(files) + "/.", cls.name + ":/fixture")
         cls.docker("exec", cls.name, "sh", "-c", "mkdir -p /backups /app; chmod 755 /fixture/curl")
         for _ in range(60):
-            if cls.docker("exec", cls.name, "pg_isready", "-U", "postgres", check=False).returncode == 0:
+            if cls.docker("exec", cls.name, "sh", "-c",
+                          'test "$(cat /proc/1/comm)" = postgres && pg_isready -U postgres',
+                          check=False).returncode == 0:
                 break
             time.sleep(1)
         else:
@@ -149,6 +151,21 @@ INSERT INTO riviamigo.vehicle_runtime_state VALUES(1,'authorized','connected',no
         run = dict(self.ci_run, conclusion="failure")
         self.docker("exec", "-i", self.name, "sh", "-c", "cat > /fixture/run", input=json.dumps(run))
         self.assertNotEqual(self.guard("preflight").returncode, 0)
+
+    def test_explicit_default_ci_dispatch_preserves_backup_and_data_guards(self):
+        run = dict(self.ci_run, event="workflow_dispatch")
+        self.docker("exec", "-i", self.name, "sh", "-c", "cat > /fixture/run", input=json.dumps(run))
+        for phase in ["preflight", "backup", "verify"]:
+            self.assert_guard(phase)
+
+    def test_dispatch_on_candidate_branch_and_other_events_are_rejected(self):
+        for mutation in [
+            {"event": "workflow_dispatch", "head_branch": "review/upstream/main/" + SHA},
+            {"event": "pull_request"}, {"event": "schedule"}, {"event": "workflow_run"},
+        ]:
+            run = dict(self.ci_run, **mutation)
+            self.docker("exec", "-i", self.name, "sh", "-c", "cat > /fixture/run", input=json.dumps(run))
+            self.assertNotEqual(self.guard("preflight").returncode, 0)
 
     def test_active_trip_is_rejected(self):
         self.sql("""INSERT INTO riviamigo.active_trip_checkpoints VALUES(1,'{"detector":{"active_trip_id":"synthetic"}}');""")

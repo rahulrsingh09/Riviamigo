@@ -211,7 +211,10 @@ export function syncFork({
       return { ...result, status: 'current', applied: apply };
     }
     // Inspect upstream deltas too: a merge may otherwise hide a changed security control.
-    result.changedControls = paths(isolated, common.text, upstream).filter(isControlPath);
+    const forkPaths = new Set(paths(isolated, common.text, base));
+    result.changedControls = paths(isolated, common.text, upstream).filter(
+      (path) => isControlPath(path) || forkPaths.has(path)
+    );
     const merged = git(
       isolated,
       ['merge-tree', '--write-tree', '--name-only', '-z', base, upstream],
@@ -270,7 +273,7 @@ export function syncFork({
       ...result,
       status: result.safeToValidate ? 'candidate-ready' : 'controls-review-required',
       reason: result.safeToValidate
-        ? 'Candidate prepared; validation and maintainer promotion are still required.'
+        ? 'Candidate prepared; genuine CI and promotion checks are still required.'
         : 'Workflow, action, build, or security controls changed. Review before executing candidate code.',
     };
   } finally {

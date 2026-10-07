@@ -6,7 +6,7 @@ For automatic off-provider backups and deletion safeguards, see
 [vehicle history protection](private-history-backups.md).
 
 The release pipeline is independent of KiRoom. GitHub runs the existing
-**Fork validation** workflow. A successful push on the protected
+**Fork validation** workflow. A successful push or explicit CI dispatch on the protected
 `hardening/private-telemetry` branch starts **Queue verified Northflank release**
 from `.github/workflows/fork-cd.yml`. That job rechecks the exact SHA, repository,
 workflow identity, branch protection and both required jobs before calling a
@@ -14,7 +14,7 @@ workflow-specific Northflank webhook.
 
 ```mermaid
 flowchart LR
-  Upstream[Upstream Riviamigo] --> Review[Daily review and integration]
+  Upstream[Upstream Riviamigo] --> Review[GitHub: check, merge and test eligible updates]
   Review --> GitHub[Protected GitHub branch]
   GitHub --> CI[GitHub Actions: tests and security]
   CI --> NF[Northflank workflow: build, backup, deploy, verify]
@@ -25,8 +25,10 @@ flowchart LR
   Rivian[Rivian telemetry] --> App
 ```
 
-KiRoom handles upstream review and conflicts. It does not poll for deployments,
-hold up a successful release, or need to remain running for the app or pipeline.
+GitHub handles eligible stable upstream updates automatically. Conflicts and
+security, existing-fork-patch or migration changes stop for review. KiRoom is an
+optional tool for those exceptions; it does not hold up an eligible update or
+need to remain running for the app or pipeline.
 The former 15-minute deployment trigger must remain disabled.
 
 ## Where to inspect it

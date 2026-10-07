@@ -1,4 +1,6 @@
-# Authorized Riviamigo upstream maintenance
+# Optional Riviamigo exception review
+
+Use this procedure when GitHub upstream automation stops for conflicts or sensitive changes. Routine eligible updates are handled by GitHub; no KiRoom trigger is required.
 
 Read the trusted fork AGENTS.md, docs/runbooks/private-fork-maintenance.md and docs/runbooks/native-northflank-release.md. Repository: /home/rahsinwb/projects/riviamigo-private. Contextual evidence: /home/rahsinwb/reviews/riviamigo-active-work.json. Deployment status comes from the native Northflank workflow, not the legacy local state file.
 

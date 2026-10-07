@@ -48,6 +48,28 @@ class Fake:
 
 
 class NativeDeploymentTests(unittest.TestCase):
+    def test_ci_accepts_only_genuine_protected_push_or_dispatch(self):
+        class Metadata(module.Adapter):
+            def __init__(self, event, branch=module.BRANCH):
+                self.event, self.branch = event, branch
+
+            def request(self, path, body=None, github=False):
+                if "/branches/" in path:
+                    return {"commit": {"sha": SHA}, "protected": True}
+                return {"id": 101, "head_sha": SHA, "head_branch": self.branch,
+                        "event": self.event, "workflow_id": 375880117,
+                        "path": ".github/workflows/fork-ci.yml",
+                        "repository": {"id": 1406366405}, "head_repository": {"id": 1406366405},
+                        "status": "completed", "conclusion": "success"}
+
+        for event in ["push", "workflow_dispatch"]:
+            Metadata(event).ci(SHA, "101")
+        for event in ["pull_request", "schedule", "workflow_run"]:
+            with self.assertRaises(Halt):
+                Metadata(event).ci(SHA, "101")
+        with self.assertRaises(Halt):
+            Metadata("workflow_dispatch", "review/candidate").ci(SHA, "101")
+
     def run_deploy(self, adapter, **overrides):
         args = {"sha": SHA, "run_id": "101", "build_id": "valid-build-1234",
                 "attestation": "provider warning\nRIVIAMIGO_NATIVE_backup_OK " + SHA + " " + str(NOW)}

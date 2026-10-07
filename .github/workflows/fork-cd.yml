@@ -27,7 +27,7 @@ jobs:
       github.event.repository.id == 1406366405 &&
       (github.event_name == 'workflow_dispatch' ||
        (github.event.workflow_run.conclusion == 'success' &&
-        github.event.workflow_run.event == 'push' &&
+        (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch') &&
         github.event.workflow_run.head_branch == 'hardening/private-telemetry' &&
         github.event.workflow_run.head_repository.id == 1406366405 &&
         github.event.workflow_run.workflow_id == 375880117))

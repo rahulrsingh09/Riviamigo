@@ -41,7 +41,7 @@ assert_sql() {
 check_ci() {
   api=https://api.github.com/repos/rahulrsingh09/Riviamigo
   fetch "$api/branches/hardening%2Fprivate-telemetry" "$tmp/branch"
-  fetch "$api/actions/workflows/375880117/runs?branch=hardening%2Fprivate-telemetry&event=push&head_sha=$sha&per_page=100" "$tmp/runs"
+  fetch "$api/actions/workflows/375880117/runs?branch=hardening%2Fprivate-telemetry&head_sha=$sha&per_page=100" "$tmp/runs"
   fetch "$api/actions/runs/$run_id" "$tmp/run"
   attempt=$(sql --set "data=$(cat "$tmp/run")" <<'SQL'
 SELECT (:'data'::jsonb ->> 'run_attempt')::bigint;
@@ -64,7 +64,7 @@ SELECT coalesce(
       jsonb_build_array(jsonb_build_object('context', name, 'app_id', 15368))))
   AND r->>'id' = :'run_id' AND r->>'workflow_id' = '375880117'
   AND r->>'path' = '.github/workflows/fork-ci.yml' AND r->>'name' = 'Fork validation'
-  AND r->>'event' = 'push' AND r->>'head_branch' = 'hardening/private-telemetry'
+  AND r->>'event' IN ('push', 'workflow_dispatch') AND r->>'head_branch' = 'hardening/private-telemetry'
   AND r->>'head_sha' = :'sha' AND r->>'status' = 'completed' AND r->>'conclusion' = 'success'
   AND r#>>'{repository,id}' = '1406366405'
   AND r#>>'{repository,full_name}' = 'rahulrsingh09/Riviamigo'

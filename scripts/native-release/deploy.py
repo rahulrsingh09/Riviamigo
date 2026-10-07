@@ -77,7 +77,7 @@ class Adapter:
                 "protected-branch-moved")
         run = self.request(base + "/actions/runs/" + run_id, github=True)
         require(str(run["id"]) == run_id and run["head_sha"] == sha
-                and run["head_branch"] == BRANCH and run["event"] == "push"
+                and run["head_branch"] == BRANCH and run["event"] in ("push", "workflow_dispatch")
                 and run["workflow_id"] == 375880117 and run["path"] == ".github/workflows/fork-ci.yml"
                 and run["repository"]["id"] == 1406366405
                 and run["head_repository"]["id"] == 1406366405

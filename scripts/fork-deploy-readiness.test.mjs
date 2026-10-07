@@ -85,7 +85,6 @@ const rejectedSnapshots = [
   ['run from a foreign head repository', (s) => { s.run.head_repository.full_name = 'attacker/Riviamigo'; }],
   ['candidate branch', (s) => { s.run.head_branch = `review/upstream/main/${sha}`; }],
   ['pull request', (s) => { s.run.event = 'pull_request'; }],
-  ['manual dispatch', (s) => { s.run.event = 'workflow_dispatch'; }],
   ['scheduled reusable candidate validation', (s) => { s.run.event = 'schedule'; }],
   ['workflow run event', (s) => { s.run.event = 'workflow_run'; }],
   ['wrong commit', (s) => { s.run.head_sha = otherSha; }],
@@ -164,7 +163,7 @@ function fakeApi(snapshot, { runs, onRequest } = {}) {
       body = branchReads++ === 0 ? snapshot.branch : snapshot.latestBranch;
     } else if (path === `/actions/workflows/${POLICY.workflowId}`) body = snapshot.workflow;
     else if (path === `/actions/workflows/${POLICY.workflowId}/runs`) {
-      assert.equal(parsed.searchParams.get('event'), 'push');
+      assert.equal(parsed.searchParams.has('event'), false);
       assert.equal(parsed.searchParams.get('branch'), POLICY.branch);
       assert.equal(parsed.searchParams.get('head_sha'), sha);
       assert.equal(parsed.searchParams.has('status'), false);
@@ -333,4 +332,14 @@ test('GitHub CLI authentication errors and malformed output remain redacted with
     await assert.rejects(fetchImpl(`https://api.github.com/repos/${POLICY.repository}`,
       { method: 'GET', redirect: 'error' }), { message: 'Authenticated GitHub metadata unavailable' });
   }
+});
+
+
+test('genuine explicit CI dispatch on the protected commit satisfies the same checks', async () => {
+  const snapshot = fixture();
+  snapshot.run.event = snapshot.latestRun.event = 'workflow_dispatch';
+  assert.equal(evaluateDeploymentReadiness(snapshot, emptyState()).ready, true);
+  assert.equal((await checkDeploymentReadiness(emptyState(), fakeApi(snapshot))).ready, true);
+  snapshot.jobs.jobs[0].head_sha = otherSha;
+  assert.equal(evaluateDeploymentReadiness(snapshot, emptyState()).ready, false);
 });

@@ -93,6 +93,25 @@ test('upstream changes to fork workflow controls require manual review', (t) => 
   assert.deepEqual(result.changedControls, ['.github/workflows/fork-ci.yml']);
 });
 
+test('a clean text merge touching an existing fork patch still requires review', (t) => {
+  const f = fixture(t);
+  const file = 'apps/web/src/components/widget.tsx';
+  const lines = Array.from({ length: 20 }, (_, i) => `line ${i}`).join('\n') + '\n';
+  f.run(f.cwd, 'checkout', 'main');
+  f.commit(file, lines);
+  f.run(f.cwd, 'push', 'upstream', 'main');
+  f.run(f.cwd, 'checkout', HARDENED_BRANCH);
+  f.run(f.cwd, 'merge', '--no-edit', 'main');
+  f.commit(file, lines.replace('line 0\n', 'private control\n'));
+  f.run(f.cwd, 'push', 'origin', HARDENED_BRANCH);
+  f.advance(file, lines.replace('line 19\n', 'upstream change\n'));
+  const result = f.syncFork({ apply: true });
+  assert.equal(result.status, 'controls-review-required');
+  assert.deepEqual(result.conflicts, []);
+  assert.deepEqual(result.changedControls, [file]);
+  assert.equal(result.applied, false);
+});
+
 test('merge conflicts keep the hardened branch intact and leave no partial merge', (t) => {
   const f = fixture(t);
   f.commit('README.md', 'security-specific change\n');
