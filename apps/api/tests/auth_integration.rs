@@ -1359,11 +1359,11 @@ async fn cancelled_metric_and_grafana_reads_cancel_active_database_work_before_r
             // For a stream, leave body consumption pending on the blocked SQL.
             to_bytes(response.into_body(), usize::MAX).await
         });
-        let pid = tokio::time::timeout(std::time::Duration::from_secs(3), async {
+        let (pid, query_start) = tokio::time::timeout(std::time::Duration::from_secs(3), async {
             loop {
-                let pid: Option<i32> = sqlx::query_scalar("SELECT pid FROM pg_stat_activity WHERE datname=current_database() AND state='active' AND wait_event_type='Lock' AND query LIKE '%timeseries.telemetry%' LIMIT 1")
+                let statement: Option<(i32, chrono::DateTime<chrono::Utc>)> = sqlx::query_as("SELECT pid, query_start FROM pg_stat_activity WHERE datname=current_database() AND state='active' AND wait_event_type='Lock' AND query LIKE '%timeseries.telemetry%' LIMIT 1")
                     .fetch_optional(&app.pool).await.unwrap();
-                if let Some(pid) = pid { break pid; }
+                if let Some(statement) = statement { break statement; }
                 tokio::time::sleep(std::time::Duration::from_millis(10)).await;
             }
         }).await.expect("actual database statement reached the lock");
@@ -1375,10 +1375,6 @@ async fn cancelled_metric_and_grafana_reads_cancel_active_database_work_before_r
                     .unwrap()
             })
             .collect();
-        waiter.abort();
-        assert!(waiter.await.unwrap_err().is_cancelled());
-        tokio::task::yield_now().await;
-        // Cleanup owns the last permit while cancellation/drain is pending.
         assert!(
             app.state
                 .resources
@@ -1386,16 +1382,21 @@ async fn cancelled_metric_and_grafana_reads_cancel_active_database_work_before_r
                 .is_err(),
             "{route}"
         );
+        waiter.abort();
+        assert!(waiter.await.unwrap_err().is_cancelled());
         tokio::time::timeout(std::time::Duration::from_secs(3), async {
             loop {
+                // Sample admission first; cancellation may finish during the database round trip.
+                let permit = app.state.resources.heavy(user, &app.state.config.security);
+                // A pooled backend can already be executing a different statement.
                 let active: bool = sqlx::query_scalar(
-                    "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE pid=$1 AND state='active')",
+                    "SELECT EXISTS(SELECT 1 FROM pg_stat_activity WHERE pid=$1 AND query_start=$2 AND state='active')",
                 )
                 .bind(pid)
+                .bind(query_start)
                 .fetch_one(&app.pool)
                 .await
                 .unwrap();
-                let permit = app.state.resources.heavy(user, &app.state.config.security);
                 if active {
                     assert!(
                         permit.is_err(),
