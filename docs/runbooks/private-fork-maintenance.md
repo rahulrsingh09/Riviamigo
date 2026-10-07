@@ -34,8 +34,7 @@ while retaining the daily entry. Publish it through the protected-branch checks
 before the test time, then confirm an actual `schedule` event and the test's cron
 expression in the trigger log. Remove the extra entry after the observation
 window even if no run appears; cron has no year field, so an entry restricted to a
-month and day would otherwise repeat annually. As of October 7, 2026, the active
-investigation includes a temporary **3:35 PM Pacific, October 7** probe.
+month and day would otherwise repeat annually.
 
 The preparation job resolves the current hardened base and upstream refs once,
 merges with Git plumbing in a temporary bare repository, and constructs a

@@ -12,9 +12,6 @@ on:
   schedule:
     - cron: '0 12 * * *'
       timezone: America/Los_Angeles
-    # Remove the October 7 scheduler probe after its observation window.
-    - cron: '35 15 7 10 *'
-      timezone: America/Los_Angeles
 
 permissions:
   contents: read
