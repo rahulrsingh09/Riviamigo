@@ -234,14 +234,17 @@ def runtime_hashes(runtime):
     return {key: hashlib.sha256(value.encode()).hexdigest() for key, value in runtime.items()}
 
 
-def free_policy(snapshot):
+def free_policy(snapshot, allowed_jobs=()):
     app, redis, db = snapshot["app"], snapshot["redis"], snapshot["db"]
     require({s["id"] for s in items(snapshot["services"], "services")}
             == {"telemetry-app", "telemetry-redis"}
             and len(items(snapshot["services"], "services")) == 2, "service-budget")
     require([a["id"] for a in items(snapshot["addons"], "addons")] == ["telemetry-db"],
             "addon-budget")
-    require(items(snapshot["jobs"], "jobs") == [], "job-budget")
+    jobs = items(snapshot["jobs"], "jobs")
+    require(sorted(job["id"] for job in jobs) == sorted(allowed_jobs), "job-budget")
+    require(all(job["billing"]["deploymentPlan"] == "nf-compute-20" for job in jobs),
+            "job-compute-budget")
     for service, identity in ((app, "telemetry-app"), (redis, "telemetry-redis")):
         require(service["id"] == identity
                 and service["billing"]["deploymentPlan"] == "nf-compute-20"

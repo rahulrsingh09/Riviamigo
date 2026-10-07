@@ -2,6 +2,11 @@
 
 Documentation impact: internal and documentation-site update required.
 
+This is the legacy manual recovery controller. Automatic releases now use the
+[GitHub/Northflank pipeline](native-northflank-release.md). Keep the old KiRoom
+deployment trigger disabled. The installation and polling instructions below
+describe the former design, not the current automatic release path.
+
 `scripts/northflank_deploy.py` is a one-shot Python 3 standard-library controller
 for the existing `riviamigo-private` project. Install a reviewed copy outside Git.
 Invoke that installed file with an absolute control root and a full lowercase SHA.
@@ -297,12 +302,9 @@ its procedure is [the upstream review runbook](kiroom-upstream-review.md).
 Only a changed main/dev pair starts an agent. Stable changes can be reviewed,
 tested and promoted; unpublished dev changes are assessed without automatic promotion.
 
-A separate background deployment trigger checks the trusted readiness script
-at **15-minute intervals**. It invokes only the locally installed controller for
-the queued exact SHA. Both triggers run outside this interactive conversation.
-KiRoom must be running and the existing host credentials must remain valid.
-GitHub CI continues independently when KiRoom is unavailable; production stays
-pinned to its current build until the local deployment checks succeed.
+The separate 15-minute deployment trigger is retired and must remain disabled.
+GitHub's successful-workflow event starts the native Northflank release workflow.
+KiRoom availability affects upstream review, not deployment or the running app.
 
 The public `/health` endpoint is intentionally available to Northflank probes.
 The origin denial test targets `/`, while `/v1/vehicles` requires app authentication

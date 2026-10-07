@@ -234,7 +234,14 @@ push cannot fall back to an older successful push. The attempt-specific jobs
 endpoint deliberately requires both checks in one attempt: after a partial rerun,
 use **Re-run all jobs** if readiness is withheld for missing jobs.
 
-### Local setup and consumer boundary
+### Release consumer boundary
+
+Automatic releases use the
+[GitHub and Northflank pipeline](native-northflank-release.md).
+GitHub checks readiness after protected-branch CI succeeds and starts the native
+workflow. KiRoom only reviews upstream changes and conflicts; keep the former
+15-minute deployment trigger disabled. The following checker invocation is
+useful for manual diagnostics and legacy recovery.
 
 Install a reviewed, pinned copy of the checker outside candidate/build checkouts.
 Do not fetch and execute a new checker from the candidate before deciding whether
@@ -266,29 +273,8 @@ with no items. **Exit zero alone never authorizes deployment.** The checker neve
 updates the ledger, launches a build, downloads Actions artifacts, runs candidate
 code, or deploys.
 
-A local KiRoom shell source can poll every 15 minutes (`*/15 * * * *`, UTC).
-A ready poll performs seven public GET requests; budget for shared-IP rate limits
-and back off on errors. Extract only the ready item's ID from the compact JSON:
-
-```text
-"items":\[\{"id":"(?<deployment>rahulrsingh09/Riviamigo:hardening/private-telemetry:[0-9a-f]{40})"
-```
-
-Use `{{deployment}}` as the extraction key template and `new_items` detection.
-Do not treat the whole JSON response as an item: even a not-ready response is
-nonempty. KiRoom deduplicates successful **dispatch**, which is different from
-successful deployment. A dispatched action that fails requires a deliberate
-retry/recovery; do not assume another poll retries it or reset dedup globally.
-The parent/operator creates and enables this trigger separately after installing
-and validating the deterministic local deploy command.
-
-The implementation and installation contract are in the
-[local Northflank controller runbook](./local-northflank-controller.md).
-`scripts/northflank_deploy.py` uses a fixed local control root, exact-SHA review
-receipts, the pinned readiness checker, a deployment lock and an atomic success
-ledger. Adding this source does not install or activate the consumer.
-
-The local background action must:
+Any manual recovery using the
+[legacy local controller](./local-northflank-controller.md) must:
 
 1. Accept only the fixed repository/branch and full SHA; invoke a fixed local
    command with structured arguments. Do not use GitHub titles, summaries, logs,
@@ -310,10 +296,9 @@ The local background action must:
    image/backup/run evidence. On failure, preserve recovery material, stop and
    report; never mark success or retry a migration blindly.
 
-Polling is a snapshot, not an atomic transaction with GitHub or production. The
-local lock, revalidation, success ledger and recovery handling remain mandatory.
-Before enabling, test not-ready, repeated SHA, stale queued SHA, overlapping
-actions, API failure and failed-deployment recovery without production commands.
+Readiness is a snapshot, not an atomic transaction with GitHub or production.
+Revalidation and recovery handling remain mandatory. Never run the legacy
+controller concurrently with a native release.
 
 ### Migration and rollback boundary
 

@@ -52,4 +52,5 @@ Add a runbook when:
 - a change introduces new recovery, publishing, or verification steps
 
 - [Local Northflank deployment controller](local-northflank-controller.md)
+- [GitHub and Northflank release pipeline](native-northflank-release.md)
 - [KiRoom upstream review procedure](kiroom-upstream-review.md)
