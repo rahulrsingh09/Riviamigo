@@ -65,6 +65,8 @@ class Adapter:
                  "jobs": PROJECT + "/jobs", "volumes": PROJECT + "/volumes",
                  "buildArguments": APP + "/build-arguments", "billing": "/v1/billing/usage"}
         snapshot = {name: self.request(path) for name, path in paths.items()}
+        snapshot["jobDetails"] = {"verified-release-controller":
+            self.request(PROJECT + "/jobs/verified-release-controller")}
         free_policy(snapshot, allowed_jobs=("verified-release-controller",))
         return snapshot
 

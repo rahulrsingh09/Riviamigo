@@ -243,8 +243,15 @@ def free_policy(snapshot, allowed_jobs=()):
             "addon-budget")
     jobs = items(snapshot["jobs"], "jobs")
     require(sorted(job["id"] for job in jobs) == sorted(allowed_jobs), "job-budget")
-    require(all(job["billing"]["deploymentPlan"] == "nf-compute-20" for job in jobs),
-            "job-compute-budget")
+    if allowed_jobs:
+        details = snapshot["jobDetails"]
+        require(set(details) == set(allowed_jobs), "incomplete-job-details")
+        require(all(job["billing"]["deploymentPlan"] == "nf-compute-20"
+                    and job["jobType"] == "manual"
+                    and job["settings"]["backoffLimit"] == 0
+                    and job["settings"]["activeDeadlineSeconds"] == 720
+                    and job["settings"]["runOnSourceChange"] == "never"
+                    for job in details.values()), "job-compute-budget")
     for service, identity in ((app, "telemetry-app"), (redis, "telemetry-redis")):
         require(service["id"] == identity
                 and service["billing"]["deploymentPlan"] == "nf-compute-20"

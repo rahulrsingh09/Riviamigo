@@ -97,12 +97,14 @@ class NativeDeploymentTests(unittest.TestCase):
 
     def test_only_one_included_job_is_allowed(self):
         snapshot = fixture()
-        snapshot["jobs"]["jobs"] = [{"id": "verified-release-controller",
-                                    "billing": {"deploymentPlan": "nf-compute-20"}}]
+        snapshot["jobs"]["jobs"] = [{"id": "verified-release-controller", "jobType": "manual"}]
+        snapshot["jobDetails"] = {"verified-release-controller": {
+            "billing": {"deploymentPlan": "nf-compute-20"}, "jobType": "manual",
+            "settings": {"backoffLimit": 0, "activeDeadlineSeconds": 720, "runOnSourceChange": "never"}}}
         free_policy(snapshot, allowed_jobs=("verified-release-controller",))
         with self.assertRaises(Halt):
             free_policy(snapshot)
-        snapshot["jobs"]["jobs"][0]["billing"]["deploymentPlan"] = "nf-compute-200"
+        snapshot["jobDetails"]["verified-release-controller"]["billing"]["deploymentPlan"] = "nf-compute-200"
         with self.assertRaises(Halt):
             free_policy(snapshot, allowed_jobs=("verified-release-controller",))
 
