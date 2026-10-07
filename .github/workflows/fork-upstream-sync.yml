@@ -12,6 +12,9 @@ on:
   schedule:
     - cron: '0 12 * * *'
       timezone: America/Los_Angeles
+    # Remove the October 7 scheduler probe after its observation window.
+    - cron: '35 15 7 10 *'
+      timezone: America/Los_Angeles
 
 permissions:
   contents: read
@@ -37,6 +40,18 @@ jobs:
       safe: ${{ steps.sync.outputs.safe }}
       status: ${{ steps.sync.outputs.status }}
     steps:
+      - name: Record workflow trigger
+        env:
+          TRIGGER_EVENT: ${{ github.event_name }}
+          TRIGGER_SCHEDULE: ${{ github.event.schedule }}
+        run: |
+          python3 - <<'PY'
+          import json, os
+          print(json.dumps({
+              "event": os.environ["TRIGGER_EVENT"],
+              "schedule": os.environ["TRIGGER_SCHEDULE"] or None,
+          }, sort_keys=True))
+          PY
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0
         with:
           ref: ${{ github.sha }}

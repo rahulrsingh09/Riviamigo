@@ -24,8 +24,18 @@ locations, database exports or recovery keys in Git.
 `fork-upstream-sync.yml` runs daily at **12:00 PM Pacific time**
 (`America/Los_Angeles`), automatically following PST/PDT, and supports a manual run
 from the trusted default branch. This is 20:00 UTC during PST and 19:00 UTC during
-PDT. Schedules may be delayed or disabled by GitHub
-for inactivity; inspect the Actions run history rather than assuming a daily run.
+PDT. GitHub may delay or drop scheduled runs under load, or disable schedules
+for inactivity. Inspect the Actions run history rather than assuming a daily run.
+The **Record workflow trigger** step reports the event type and matched cron
+expression. A successful manual run does not prove that the scheduled trigger ran.
+
+For a scheduled-trigger investigation, add a temporary date-specific cron entry
+while retaining the daily entry. Publish it through the protected-branch checks
+before the test time, then confirm an actual `schedule` event and the test's cron
+expression in the trigger log. Remove the extra entry after the observation
+window even if no run appears; cron has no year field, so an entry restricted to a
+month and day would otherwise repeat annually. As of October 7, 2026, the active
+investigation includes a temporary **3:35 PM Pacific, October 7** probe.
 
 The preparation job resolves the current hardened base and upstream refs once,
 merges with Git plumbing in a temporary bare repository, and constructs a
