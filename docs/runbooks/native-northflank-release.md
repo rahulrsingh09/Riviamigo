@@ -70,6 +70,23 @@ The independent deployment module is in `scripts/native-release/`:
    and clear the attempt marker.
 
 `render.mjs` renders the workflow; `job.mjs` renders the fixed controller job.
+`wait.sh` runs each guard asynchronously on the existing app container. Northflank's
+synchronous execute step stops waiting after 15 seconds, which can interrupt
+orchestration even when a backup completes successfully. A short preparation
+step creates a unique private operation; dispatch starts the guard; bounded
+five-second polls await its atomic completion record. Remaining polls skip after
+completion. An unconditional collector requires the exact successful guard
+result before the next release stage can run.
+
+Each operation has a five-minute deadline and a process-group timeout.
+Failed, missing, mismatched or expired results stop the release. Operation IDs
+prevent reruns from accepting an earlier result. The collector preserves the
+original backup timestamp; the deployment job still requires a backup less than
+two minutes old. Runtime state stays under `/backups/native-release/async/` on
+the existing volume. No new service, credentials, schedule or application API
+is needed. A dispatched command may outlive a cancelled workflow until its
+deadline; inspect its lock and retained attempt before retrying.
+
 The job bundles reviewed Python code and a digest-pinned official Python image.
 It never checks out or executes scripts from a release candidate. Northflank's
 native release-from-build-service node rejects combined services, so this small

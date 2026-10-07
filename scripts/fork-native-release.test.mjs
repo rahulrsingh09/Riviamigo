@@ -4,7 +4,7 @@ import { readFileSync } from 'node:fs';
 import test from 'node:test';
 import { POLICY } from './fork-deploy-readiness.mjs';
 import { queueRelease } from './fork-native-release.mjs';
-import { renderWorkflow } from './native-release/render.mjs';
+import { guardWaitSteps, renderWorkflow } from './native-release/render.mjs';
 import { renderJob } from './native-release/job.mjs';
 import { readPrivateCatalog } from './lib/private-migrations.mjs';
 
@@ -80,12 +80,25 @@ test('installed migration approval exactly matches the immutable source catalog'
 test('native workflow serializes backup, fixed job and verification without resource creation', () => {
   const workflow = renderWorkflow();
   assert.deepEqual(workflow.options, { autorun: false, concurrencyPolicy: 'queue' });
-  assert.deepEqual(workflow.spec.spec.steps.map(x => x.kind),
-    ['Action', 'Build', 'Action', 'JobRun', 'Condition', 'Action']);
+  assert.deepEqual(workflow.spec.spec.steps.filter(x => x.kind !== 'Action').map(x => x.kind),
+    ['Build', 'JobRun', 'Condition']);
+  assert.equal(workflow.spec.spec.steps.filter(x => x.kind === 'Action').length, 189);
   for (const node of workflow.spec.spec.steps.filter(x => x.kind === 'Action')) {
     assert(node.spec.spec.data.command.includes('${fn.toBase64(args.sha)}'));
     assert(!node.spec.spec.data.command.includes("'${args.sha}'"));
-    assert.equal(node.spec.spec.data.options.dispatchOnly, false);
+    assert.equal(node.spec.spec.data.options.dispatchOnly, node.ref.endsWith('Dispatch'));
+    assert(node.spec.spec.data.command.matchAll(/\$\{([^}]+)\}/g)
+      .every(match => match[1].startsWith('fn.toBase64(')));
+  }
+  for (const phase of ['preflight', 'backup', 'verify']) {
+    const nodes = guardWaitSteps(phase, 'synthetic guard');
+    assert.deepEqual(nodes.slice(0, 2).map(x => x.ref), [`${phase}Prepare`, `${phase}Dispatch`]);
+    assert.equal(nodes.at(-1).ref, phase);
+    assert.equal(nodes.at(-1).skipNodeExecution, undefined);
+    assert.equal(nodes.filter(x => x.ref.includes('Poll')).length, 60);
+    assert.equal(nodes[2].skipNodeExecution, undefined);
+    assert(nodes[3].skipNodeExecution.includes('RIVIAMIGO_ASYNC_PENDING'));
+    assert(nodes[3].skipNodeExecution.includes(`refs.${phase}Poll0.stdOut`));
   }
   const job = renderJob();
   assert.equal(job.billing.deploymentPlan, 'nf-compute-20');
@@ -93,6 +106,12 @@ test('native workflow serializes backup, fixed job and verification without reso
   assert.equal(job.settings.cron.suspended, true);
   assert.equal(job.runtimeEnvironment, undefined);
   assert(job.deployment.external.imagePath.includes('@sha256:'));
+});
+
+test('asynchronous wait validates completion, identity, freshness and child termination', () => {
+  const result = spawnSync('python3', ['-B', '-m', 'unittest', 'discover', '-s', 'scripts',
+    '-p', 'test_native_wait.py', '-v'], { cwd: new URL('..', import.meta.url), encoding: 'utf8', timeout: 90_000 });
+  assert.equal(result.status, 0, `${result.stdout}\n${result.stderr}`);
 });
 
 test('native deployment adapter rejects unapproved mutations and missing backup evidence', () => {
