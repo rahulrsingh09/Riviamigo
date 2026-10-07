@@ -3,7 +3,7 @@
 
 use crate::{
     errors::AppError,
-    services::external_connections::{RIVIAN_ACCOUNT, S3_BACKUP},
+    services::external_connections::{OPEN_METEO, RIVIAN_ACCOUNT, S3_BACKUP},
 };
 use std::{sync::OnceLock, time::Duration};
 
@@ -30,7 +30,7 @@ pub enum PolicyError {
 }
 
 pub fn connection_allowed(id: &str) -> bool {
-    matches!(id, RIVIAN_ACCOUNT | S3_BACKUP) || optional_traffic_allowed()
+    matches!(id, RIVIAN_ACCOUNT | S3_BACKUP | OPEN_METEO) || optional_traffic_allowed()
 }
 
 pub fn require_connection_allowed(id: &str) -> Result<(), AppError> {

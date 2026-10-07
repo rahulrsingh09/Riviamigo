@@ -9,6 +9,7 @@ review of authentication, persistence or restore changes.
 | Module                                                         | Responsibility                                                                          | Integration point                                                                |
 | -------------------------------------------------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
 | `apps/api/src/private_deployment/outbound.rs`                  | Fixed Rivian origins, query-only access, bounded responses, optional-provider denial    | `services/outbound_policy.rs` compatibility exports; external provider admission |
+| `apps/api/src/private_deployment/weather.rs`                   | Fixed free Open-Meteo endpoints, rounded coordinates, persisted request limits          | Existing weather worker and external-connection settings/test route             |
 | `apps/api/src/private_deployment/keys.rs`                      | External RSA/AGE custody, matching keys, encrypted-data binding                         | Existing `keys` API used by startup, configuration and restore                   |
 | `apps/api/src/private_deployment/enrollment.rs`                | Active-account lock, vehicle enrollment serialization, existing owner/manager authority | Enrollment transaction before writes                                             |
 | `apps/api/src/private_deployment/history.rs` and `history.sql` | Preserve history with database permissions and disabled expiry                          | Startup before ingestion; owner vehicle-deletion route                           |
@@ -36,6 +37,48 @@ Moving policy into modules reduces overlap; it does not remove integration
 points or prove that the next upstream merge will be conflict-free. Confidence
 comes from the tested behavior of a specific commit, not a percentage guarantee
 about future updates.
+
+## Optional weather estimates
+
+Weather is disabled on fresh installs. An administrator can enable the existing
+Open-Meteo connection in remote mode. This fork enforces approximate coordinates
+(two decimal places, roughly 1 km latitude); exact precision, custom servers,
+provider credentials and private networks are rejected. Existing incompatible
+settings fail closed. Re-enabling the approved profile clears old weather-provider
+credentials and restores its fixed public endpoints.
+
+The private weather module permits only Open-Meteo's free forecast and archive
+endpoints. Each request contains one rounded location, at most two calendar dates
+covering a trip no longer than 24 hours, and the outside-temperature variable.
+It sends no Rivian token, account details, vehicle identifier, trip identifier or
+raw route. Open-Meteo still receives rounded locations, dates and the server IP;
+rounding is reduced precision, not anonymity against inference.
+
+A database-backed atomic quota admits at most 200 requests per UTC day, with
+admissions at least five seconds apart, shared by enrichment and administrator tests. Failed requests
+consume quota. Work resumes after the daily limit resets; large backlogs can take
+multiple days. One location and one variable per request keep usage below the
+personal non-commercial free service's published limits. The module cannot switch
+to a paid endpoint or send an API key. Provider availability and free-service terms
+are external dependencies, not an uptime guarantee.
+
+Weather jobs refresh their heartbeat after each bounded request. Jobs left running
+by an interrupted deployment return to pending after 15 minutes without progress.
+Pausing weather or waiting for request capacity does not exhaust the job's retry
+allowance.
+
+DNS pinning, public-address validation, disabled redirects/proxies, a 64 KiB
+response limit and validated temperature/time arrays apply to every request.
+Estimated samples populate the existing weather table and trip temperature/source
+fields. Vehicle temperature readings take priority. Distance, energy, raw GPS,
+battery readings and base Wh/mi are unchanged; temperature-based charts gain
+additional context.
+
+No migration, workflow, Cloudflare change or new paid resource is needed.
+Candidate tests and protected-branch CI still gate the existing Northflank
+backup/deployment workflow. New database regressions use the existing
+`authorization_` CI test selection. Other optional backend providers remain denied;
+the separate free map proxy is unchanged.
 
 ## Immutable migration ledger
 

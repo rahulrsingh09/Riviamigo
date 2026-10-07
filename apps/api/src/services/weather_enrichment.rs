@@ -1,5 +1,4 @@
 use std::collections::HashMap;
-use std::fmt;
 use std::time::Duration;
 
 use anyhow::{Context, Result};
@@ -10,49 +9,15 @@ use sqlx::{FromRow, PgPool};
 use uuid::Uuid;
 
 use crate::{
-    ingestion::session_store::decrypt_json,
+    private_deployment::weather::{
+        self, WeatherBudgetError, WeatherBusyError, WeatherFetchError, WeatherPausedError,
+        DAILY_REQUEST_BUDGET,
+    },
     services::external_connections::{self as connections, ConnectionSettingsRow},
 };
 
 const SAMPLE_INTERVAL_SECONDS: i64 = 15 * 60;
-const MAX_LOCATIONS_PER_REQUEST: usize = 50;
-const DAILY_REQUEST_BUDGET: i32 = 8_000;
-
-#[derive(Debug)]
-struct WeatherFetchError {
-    status: reqwest::StatusCode,
-    retry_after_seconds: Option<i64>,
-}
-
-impl fmt::Display for WeatherFetchError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(formatter, "Weather provider returned HTTP {}", self.status)
-    }
-}
-
-impl std::error::Error for WeatherFetchError {}
-
-#[derive(Debug)]
-struct WeatherBudgetError;
-
-impl fmt::Display for WeatherBudgetError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("Daily weather request budget reached")
-    }
-}
-
-impl std::error::Error for WeatherBudgetError {}
-
-#[derive(Debug)]
-struct WeatherPausedError;
-
-impl fmt::Display for WeatherPausedError {
-    fn fmt(&self, formatter: &mut fmt::Formatter<'_>) -> fmt::Result {
-        formatter.write_str("Weather connection disabled")
-    }
-}
-
-impl std::error::Error for WeatherPausedError {}
+const MAX_LOCATIONS_PER_REQUEST: usize = 1;
 
 #[derive(Debug, FromRow)]
 struct TripInfo {
@@ -141,6 +106,7 @@ pub async fn enqueue(pool: &PgPool, trip_id: Uuid) -> Result<()> {
 }
 
 async fn process_next_job(pool: &PgPool, client: &reqwest::Client, age_key: &str) -> Result<bool> {
+    weather::recover_interrupted_jobs(pool).await?;
     let settings = match connections::require_enabled(pool, connections::OPEN_METEO).await {
         Ok(settings) => settings,
         Err(crate::errors::AppError::ExternalConnectionDisabled(_)) => return Ok(false),
@@ -148,7 +114,7 @@ async fn process_next_job(pool: &PgPool, client: &reqwest::Client, age_key: &str
     };
 
     let request_count: i32 = sqlx::query_scalar(
-        r#"SELECT CASE WHEN usage_date = CURRENT_DATE THEN request_count ELSE 0 END
+        r#"SELECT CASE WHEN usage_date = (now() AT TIME ZONE 'UTC')::date THEN request_count ELSE 0 END
            FROM riviamigo.external_connection_activity WHERE connection_id = $1"#,
     )
     .bind(connections::OPEN_METEO)
@@ -194,6 +160,11 @@ async fn process_next_job(pool: &PgPool, client: &reqwest::Client, age_key: &str
                     .bind(trip_id).execute(pool).await?;
                 return Ok(true);
             }
+            if error.downcast_ref::<WeatherBusyError>().is_some() {
+                sqlx::query("UPDATE riviamigo.weather_enrichment_jobs SET status='pending', attempts=GREATEST(attempts-1,0), next_attempt_at=now()+interval '1 minute', last_error=NULL, updated_at=now() WHERE trip_id=$1")
+                    .bind(trip_id).execute(pool).await?;
+                return Ok(true);
+            }
             if error.downcast_ref::<WeatherBudgetError>().is_some() {
                 sqlx::query("UPDATE riviamigo.weather_enrichment_jobs SET status='failed', attempts=GREATEST(attempts-1, 0), next_attempt_at=date_trunc('day', now()) + interval '1 day', last_error='Daily weather request budget reached', updated_at=now() WHERE trip_id=$1")
                     .bind(trip_id).execute(pool).await?;
@@ -225,8 +196,8 @@ async fn process_next_job(pool: &PgPool, client: &reqwest::Client, age_key: &str
 async fn enrich_trip(
     pool: &PgPool,
     client: &reqwest::Client,
-    age_key: &str,
-    settings: &ConnectionSettingsRow,
+    _age_key: &str,
+    _settings: &ConnectionSettingsRow,
     trip_id: Uuid,
 ) -> Result<EnrichTripOutcome> {
     let trip = sqlx::query_as::<_, TripInfo>(
@@ -253,8 +224,12 @@ async fn enrich_trip(
     .fetch_all(pool)
     .await?;
 
-    let exact = settings.weather_precision.as_deref() == Some("exact");
-    let targets = build_targets(&trip, &route, exact);
+    if trip.ended_at < trip.started_at
+        || trip.ended_at - trip.started_at > chrono::Duration::days(1)
+    {
+        anyhow::bail!("trip exceeds weather sample bounds");
+    }
+    let targets = build_targets(&trip, &route, false);
     if targets.is_empty() {
         return Ok(EnrichTripOutcome::Unavailable);
     }
@@ -279,7 +254,6 @@ async fn enrich_trip(
     let provider_called = !cells.is_empty();
     cells.shuffle(&mut rand::thread_rng());
 
-    let api_key = decrypt_secret(age_key, settings.api_key_encrypted.as_deref())?;
     let mut hourly_by_cell = HashMap::<String, Value>::new();
     for chunk in cells.chunks(MAX_LOCATIONS_PER_REQUEST) {
         match connections::require_enabled(pool, connections::OPEN_METEO).await {
@@ -289,26 +263,10 @@ async fn enrich_trip(
             }
             Err(error) => return Err(error.into()),
         }
-        let request_count: i32 = sqlx::query_scalar(
-            "SELECT CASE WHEN usage_date = CURRENT_DATE THEN request_count ELSE 0 END FROM riviamigo.external_connection_activity WHERE connection_id=$1",
-        )
-        .bind(connections::OPEN_METEO)
-        .fetch_optional(pool)
-        .await?
-        .unwrap_or(0);
-        if request_count >= DAILY_REQUEST_BUDGET {
-            return Err(WeatherBudgetError.into());
-        }
-        connections::record_attempt(pool, connections::OPEN_METEO).await;
-        let payloads = fetch_weather_chunk(
-            client,
-            settings,
-            chunk,
-            trip.started_at,
-            trip.ended_at,
-            api_key.as_deref(),
-        )
-        .await?;
+        let payloads =
+            fetch_weather_chunk(pool, client, chunk, trip.started_at, trip.ended_at).await?;
+        sqlx::query("UPDATE riviamigo.weather_enrichment_jobs SET updated_at=now() WHERE trip_id=$1 AND status='running'")
+            .bind(trip_id).execute(pool).await?;
         for (cell, payload) in chunk.iter().zip(payloads) {
             hourly_by_cell.insert(cell.key.clone(), payload);
         }
@@ -356,9 +314,20 @@ async fn enrich_trip(
     };
     let summary = time_weighted_average(&summary_values).context("weather summary unavailable")?;
 
+    store_estimates(pool, trip.id, enriched, summary, source).await?;
+    Ok(EnrichTripOutcome::Complete { provider_called })
+}
+
+async fn store_estimates(
+    pool: &PgPool,
+    trip_id: Uuid,
+    enriched: Vec<(TargetSample, f64)>,
+    summary: f64,
+    source: &str,
+) -> Result<()> {
     let mut tx = pool.begin().await?;
     sqlx::query("DELETE FROM riviamigo.trip_weather_samples WHERE trip_id=$1")
-        .bind(trip.id)
+        .bind(trip_id)
         .execute(&mut *tx)
         .await?;
     for (target, temp) in enriched {
@@ -367,18 +336,18 @@ async fn enrich_trip(
                  (trip_id, sampled_at, elapsed_seconds, provider_latitude, provider_longitude, temperature_c)
                VALUES ($1,$2,$3,$4,$5,$6)"#,
         )
-        .bind(trip.id).bind(target.sampled_at).bind(target.elapsed_seconds)
+        .bind(trip_id).bind(target.sampled_at).bind(target.elapsed_seconds)
         .bind(target.provider_lat).bind(target.provider_lng).bind(temp)
         .execute(&mut *tx).await?;
     }
     sqlx::query("UPDATE riviamigo.trips SET outside_temp_c=$2, outside_temp_source=$3 WHERE id=$1")
-        .bind(trip.id)
+        .bind(trip_id)
         .bind(summary)
         .bind(source)
         .execute(&mut *tx)
         .await?;
     tx.commit().await?;
-    Ok(EnrichTripOutcome::Complete { provider_called })
+    Ok(())
 }
 
 fn nearest_raw_temp(raw: &[RawOutsideTemp], sampled_at: DateTime<Utc>) -> Option<f64> {
@@ -438,76 +407,18 @@ fn unique_weather_cells(targets: &[TargetSample]) -> Vec<WeatherCell> {
 }
 
 async fn fetch_weather_chunk(
+    pool: &PgPool,
     _client: &reqwest::Client,
-    settings: &ConnectionSettingsRow,
     cells: &[WeatherCell],
     started_at: DateTime<Utc>,
     ended_at: DateTime<Utc>,
-    api_key: Option<&str>,
 ) -> Result<Vec<Value>> {
-    crate::services::outbound_policy::require_optional_traffic()?;
-    let endpoint = if (Utc::now() - ended_at).num_days() < 5 {
-        settings.forecast_url.as_deref()
-    } else {
-        settings.archive_url.as_deref()
-    }
-    .context("weather endpoint missing")?;
-    let latitudes = cells
-        .iter()
-        .map(|cell| cell.lat.to_string())
-        .collect::<Vec<_>>()
-        .join(",");
-    let longitudes = cells
-        .iter()
-        .map(|cell| cell.lng.to_string())
-        .collect::<Vec<_>>()
-        .join(",");
-    let start_date = started_at.date_naive().format("%Y-%m-%d").to_string();
-    let end_date = ended_at.date_naive().format("%Y-%m-%d").to_string();
-    let endpoint = url::Url::parse(endpoint)?;
-    let allowlist = crate::services::outbound::configured_private_network_allowlist(settings)?;
-    let client = crate::services::outbound::outbound_client_for_url(&endpoint, &allowlist).await?;
-    let mut request = client.get(endpoint).query(&[
-        ("latitude", latitudes),
-        ("longitude", longitudes),
-        ("hourly", "temperature_2m".to_string()),
-        ("timezone", "UTC".to_string()),
-        ("temperature_unit", "celsius".to_string()),
-        ("start_date", start_date),
-        ("end_date", end_date),
-    ]);
-    if let Some(api_key) = api_key {
-        request = request.query(&[("apikey", api_key)]);
-    }
-    let response = request.send().await.context("weather request failed")?;
-    if !response.status().is_success() {
-        let retry_after_seconds = response
-            .headers()
-            .get(reqwest::header::RETRY_AFTER)
-            .and_then(|value| value.to_str().ok())
-            .and_then(|value| value.trim().parse::<i64>().ok());
-        return Err(WeatherFetchError {
-            status: response.status(),
-            retry_after_seconds,
-        }
-        .into());
-    }
-    let body: Value = crate::services::outbound::read_json(
-        response,
-        crate::services::outbound::operator_security()?.weather_max_response_bytes,
-        "Weather provider",
-    )
-    .await?;
-    if let Some(array) = body.as_array() {
-        if array.len() != cells.len() {
-            anyhow::bail!("weather provider returned an unexpected batch size");
-        }
-        return Ok(array.clone());
-    }
-    if cells.len() != 1 {
-        anyhow::bail!("weather provider returned a single response for a batch");
-    }
-    Ok(vec![body])
+    let [cell] = cells else {
+        anyhow::bail!("Weather requests require one location");
+    };
+    Ok(vec![
+        weather::fetch(pool, cell.lat, cell.lng, started_at, ended_at).await?,
+    ])
 }
 
 fn pick_closest_temp(body: &Value, target: DateTime<Utc>) -> Option<f64> {
@@ -524,6 +435,7 @@ fn pick_closest_temp(body: &Value, target: DateTime<Utc>) -> Option<f64> {
             Some(((parsed - target).num_seconds().abs(), temp.as_f64()?))
         })
         .min_by_key(|(distance, _)| *distance)
+        .filter(|(distance, _)| *distance <= 3600)
         .map(|(_, temp)| temp)
 }
 
@@ -548,16 +460,6 @@ fn time_weighted_average(values: &[(DateTime<Utc>, f64)]) -> Option<f64> {
     }
 }
 
-fn decrypt_secret(age_key: &str, encrypted: Option<&[u8]>) -> Result<Option<String>> {
-    let Some(encrypted) = encrypted else {
-        return Ok(None);
-    };
-    let identity = age_key
-        .parse::<age::x25519::Identity>()
-        .map_err(|_| anyhow::anyhow!("invalid age key"))?;
-    Ok(Some(decrypt_json(encrypted, &identity)?))
-}
-
 #[cfg(test)]
 mod tests {
     use super::{
@@ -566,6 +468,115 @@ mod tests {
     };
     use chrono::{TimeZone, Utc};
     use uuid::Uuid;
+
+    #[tokio::test]
+    #[ignore = "requires disposable TimescaleDB DATABASE_URL and REDIS_URL"]
+    async fn authorization_weather_estimates_preserve_driving_history_and_sensor_priority() {
+        use super::{enrich_trip, store_estimates, EnrichTripOutcome, TargetSample};
+        use crate::services::external_connections as connections;
+        let fixture = crate::authorization_test_support::Fixture::new().await;
+        let pool = &fixture.state.pool;
+        connections::ensure_defaults(pool).await.unwrap();
+        let owner = fixture.user("admin").await;
+        let vehicle = fixture.vehicle(owner, "synthetic-weather-vehicle").await;
+        let start = Utc::now() - chrono::Duration::days(2);
+        let trip: Uuid = sqlx::query_scalar(
+            "INSERT INTO riviamigo.trips (vehicle_id, started_at, ended_at, start_lat, start_lng,
+             distance_miles, energy_wh, efficiency_wh_per_mile, soc_start, soc_end, route_preview)
+             VALUES ($1,$2,$2+interval '5 minutes',30.26721,-97.74311,12.5,5000,400,80,75,'[[1,2],[3,4]]') RETURNING id",
+        ).bind(vehicle).bind(start).fetch_one(pool).await.unwrap();
+        sqlx::query("INSERT INTO timeseries.telemetry
+            (vehicle_id, ts, trip_id, latitude, longitude, outside_temp_c, odometer_miles, battery_level)
+            VALUES ($1,$2,$3,30.26721,-97.74311,18.5,1000,80)")
+            .bind(vehicle).bind(start).bind(trip).execute(pool).await.unwrap();
+        let trip_snapshot = || {
+            sqlx::query_scalar::<_, serde_json::Value>(
+            "SELECT to_jsonb(t)-'outside_temp_c'-'outside_temp_source' FROM riviamigo.trips t WHERE id=$1",
+        ).bind(trip).fetch_one(pool)
+        };
+        let raw_snapshot = || {
+            sqlx::query_scalar::<_, serde_json::Value>(
+            "SELECT jsonb_agg(to_jsonb(t) ORDER BY ts) FROM timeseries.telemetry t WHERE trip_id=$1",
+        ).bind(trip).fetch_one(pool)
+        };
+        let before_trip = trip_snapshot().await.unwrap();
+        let before_raw = raw_snapshot().await.unwrap();
+        store_estimates(
+            pool,
+            trip,
+            vec![(
+                TargetSample {
+                    sampled_at: start,
+                    elapsed_seconds: 0,
+                    cell_key: "30.27,-97.74".into(),
+                    provider_lat: 30.27,
+                    provider_lng: -97.74,
+                },
+                12.5,
+            )],
+            12.5,
+            "open_meteo",
+        )
+        .await
+        .unwrap();
+        assert_eq!(trip_snapshot().await.unwrap(), before_trip);
+        assert_eq!(raw_snapshot().await.unwrap(), before_raw);
+        let settings = connections::load(pool, connections::OPEN_METEO)
+            .await
+            .unwrap();
+        let outcome = enrich_trip(pool, &reqwest::Client::new(), "", &settings, trip)
+            .await
+            .unwrap();
+        assert!(matches!(
+            outcome,
+            EnrichTripOutcome::Complete {
+                provider_called: false
+            }
+        ));
+        let summary: (f64, String) = sqlx::query_as(
+            "SELECT outside_temp_c, outside_temp_source FROM riviamigo.trips WHERE id=$1",
+        )
+        .bind(trip)
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        assert_eq!(summary, (18.5, "vehicle".into()));
+        assert_eq!(trip_snapshot().await.unwrap(), before_trip);
+        assert_eq!(raw_snapshot().await.unwrap(), before_raw);
+        sqlx::query(
+            "INSERT INTO riviamigo.weather_enrichment_jobs (trip_id,status,attempts,updated_at)
+            VALUES ($1,'running',2,now()-interval '20 minutes')",
+        )
+        .bind(trip)
+        .execute(pool)
+        .await
+        .unwrap();
+        crate::private_deployment::weather::recover_interrupted_jobs(pool)
+            .await
+            .unwrap();
+        let recovered: (String, i32) = sqlx::query_as(
+            "SELECT status, attempts FROM riviamigo.weather_enrichment_jobs WHERE trip_id=$1",
+        )
+        .bind(trip)
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        assert_eq!(recovered, ("pending".into(), 1));
+        sqlx::query("UPDATE riviamigo.weather_enrichment_jobs SET status='running',updated_at=now() WHERE trip_id=$1")
+            .bind(trip).execute(pool).await.unwrap();
+        crate::private_deployment::weather::recover_interrupted_jobs(pool)
+            .await
+            .unwrap();
+        let active: String = sqlx::query_scalar(
+            "SELECT status FROM riviamigo.weather_enrichment_jobs WHERE trip_id=$1",
+        )
+        .bind(trip)
+        .fetch_one(pool)
+        .await
+        .unwrap();
+        assert_eq!(active, "running");
+        fixture.cleanup().await;
+    }
 
     #[test]
     fn samples_endpoints_and_fifteen_minute_boundaries_with_rounded_cells() {

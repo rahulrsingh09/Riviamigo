@@ -453,7 +453,7 @@ async fn update_connection(
     State(state): State<AppState>,
     auth: AuthUser,
     Path(id): Path<String>,
-    Json(body): Json<UpdateConnectionBody>,
+    Json(mut body): Json<UpdateConnectionBody>,
 ) -> Result<Json<ExternalConnectionsResponse>, AppError> {
     require_admin_or_super_user(&state.pool, auth.user_id).await?;
     let definition = DEFINITIONS
@@ -465,6 +465,20 @@ async fn update_connection(
     }
     if body.enabled {
         connections::require_connection_allowed(&id)?;
+    }
+    if id == connections::OPEN_METEO {
+        if matches!(body.mode.as_str(), "remote" | "hosted") {
+            body.forecast_url = Some(crate::private_deployment::weather::FORECAST_URL.into());
+            body.archive_url = Some(crate::private_deployment::weather::ARCHIVE_URL.into());
+            body.allow_private_network = Some(false);
+            body.private_network_allowlist = Some(Vec::new());
+        }
+        validate_update(&id, &body).await?;
+        body.weather_precision = Some("approximate".into());
+        body.allow_private_network = Some(false);
+        body.private_network_allowlist = Some(Vec::new());
+        body.clear_api_key = Some(true);
+        body.clear_bearer_token = Some(true);
     }
     let private_network_allowlist = validate_update(&id, &body).await?;
     let existing_basemap = if id == connections::BASEMAP {
@@ -811,42 +825,31 @@ async fn test_connection(
         .map(|allowlist| parse_private_network_allowlist(&allowlist))
         .transpose()?
         .unwrap_or_default();
+    if id == connections::OPEN_METEO {
+        let now = Utc::now();
+        let result =
+            crate::private_deployment::weather::fetch(&state.pool, 39.0, -98.0, now, now).await;
+        let ok = result.is_ok();
+        let message = if ok {
+            "Connection succeeded with synthetic data and the shared weather request budget."
+        } else {
+            "Weather test unavailable. Save the enabled connection and check its daily request budget."
+        };
+        connections::record_test(&state.pool, &id, ok, (!ok).then_some(message)).await;
+        return Ok(Json(TestConnectionResponse {
+            ok,
+            tested_at: Utc::now(),
+            checks: vec![TestConnectionCheck {
+                label: "Synthetic weather request".into(),
+                ok,
+                message: message.into(),
+            }],
+            preview_data_url: None,
+        }));
+    }
     let settings = connections::load(&state.pool, &id).await?;
     connections::record_attempt(&state.pool, &id).await;
     let result = match id.as_str() {
-        connections::OPEN_METEO => {
-            let endpoint = if body.mode == "custom" {
-                body.forecast_url.as_deref()
-            } else {
-                Some("https://api.open-meteo.com/v1/forecast")
-            }
-            .ok_or_else(|| AppError::Validation("forecast URL required".into()))?;
-            let endpoint = Url::parse(endpoint)
-                .map_err(|_| AppError::Validation("forecast URL required".into()))?;
-            let mut request = outbound_client_for_url(&endpoint, &private_network_allowlist)
-                .await?
-                .get(endpoint)
-                .query(&[
-                    ("latitude", "39.0"),
-                    ("longitude", "-98.0"),
-                    ("hourly", "temperature_2m"),
-                    ("forecast_days", "1"),
-                ]);
-            let api_key = body
-                .api_key
-                .as_deref()
-                .map(str::trim)
-                .filter(|value| !value.is_empty())
-                .map(str::to_string)
-                .or(decrypt_secret(
-                    &state.age_key,
-                    settings.api_key_encrypted.as_deref(),
-                )?);
-            if let Some(api_key) = api_key.as_deref() {
-                request = request.query(&[("apikey", api_key)]);
-            }
-            request.send().await
-        }
         connections::NOMINATIM => {
             let base = if body.mode == "custom" {
                 body.base_url.as_deref()
@@ -1642,6 +1645,29 @@ async fn validate_update(
     id: &str,
     body: &UpdateConnectionBody,
 ) -> Result<Option<Vec<String>>, AppError> {
+    if id == connections::OPEN_METEO
+        && body.enabled
+        && !crate::private_deployment::weather::update_allowed(
+            &body.mode,
+            body.weather_precision.as_deref(),
+            body.forecast_url.as_deref(),
+            body.archive_url.as_deref(),
+            body.api_key.as_ref().is_some_and(|value| !value.is_empty())
+                || body
+                    .bearer_token
+                    .as_ref()
+                    .is_some_and(|value| !value.is_empty()),
+            body.allow_private_network == Some(true)
+                || body
+                    .private_network_allowlist
+                    .as_ref()
+                    .is_some_and(|value| !value.is_empty()),
+        )
+    {
+        return Err(AppError::Validation(
+            "This deployment allows only free Open-Meteo endpoints, approximate coordinates, and no provider credentials or private networks.".into(),
+        ));
+    }
     if !matches!(
         body.mode.as_str(),
         "remote" | "hosted" | "custom" | "disabled"
@@ -1950,13 +1976,16 @@ mod tests {
         should_forward_basemap_bearer_token, should_forward_carto_api_key, validate_tile_template,
         UpdateConnectionBody, BASEMAP_RASTER_ROUTE, OPENFREEMAP_PROXY_ROUTE,
     };
-    use super::{connections, outbound_client_for_url, AppError};
+    use super::{
+        connections, outbound_client_for_url, update_connection, validate_update, AppError,
+    };
     use crate::services::external_connections::ConnectionSettingsRow;
     use axum::{
         body::Body,
+        extract::{Path, State},
         http::{Request, StatusCode},
         routing::get,
-        Router,
+        Json, Router,
     };
     use chrono::Utc;
     use std::net::{IpAddr, Ipv4Addr, Ipv6Addr};
@@ -2208,11 +2237,146 @@ mod tests {
             saved.private_network_policy_state = "configured".into();
             saved.bearer_token_encrypted = Some(vec![1, 2, 3]);
             assert!(!saved.is_active());
+            if *id != connections::OPEN_METEO {
+                assert!(matches!(
+                    connections::require_enabled(&pool, id).await,
+                    Err(AppError::ExternalConnectionDisabled(_))
+                ));
+            }
+        }
+    }
+
+    #[tokio::test]
+    async fn weather_settings_reject_precision_credentials_and_arbitrary_destinations() {
+        let valid = || UpdateConnectionBody {
+            enabled: true,
+            mode: "remote".into(),
+            weather_precision: Some("approximate".into()),
+            ..Default::default()
+        };
+        assert!(validate_update(connections::OPEN_METEO, &valid())
+            .await
+            .is_ok());
+        let mut bad = vec![];
+        let mut body = valid();
+        body.weather_precision = Some("exact".into());
+        bad.push(body);
+        let mut body = valid();
+        body.mode = "custom".into();
+        bad.push(body);
+        let mut body = valid();
+        body.api_key = Some("synthetic-paid-key".into());
+        bad.push(body);
+        let mut body = valid();
+        body.bearer_token = Some("synthetic-token".into());
+        bad.push(body);
+        let mut body = valid();
+        body.allow_private_network = Some(true);
+        bad.push(body);
+        let mut body = valid();
+        body.private_network_allowlist = Some(vec!["127.0.0.0/8".into()]);
+        bad.push(body);
+        for destination in [
+            "http://api.open-meteo.com/v1/forecast",
+            "https://api.open-meteo.com.evil.test/v1/forecast",
+            "https://secret@api.open-meteo.com/v1/forecast",
+            "https://api.open-meteo.com:444/v1/forecast",
+            "https://api.open-meteo.com/v1/forecast?apikey=secret",
+            "https://127.0.0.1/v1/forecast",
+        ] {
+            let mut body = valid();
+            body.forecast_url = Some(destination.into());
+            bad.push(body);
+        }
+        for body in bad {
+            assert!(validate_update(connections::OPEN_METEO, &body)
+                .await
+                .is_err());
+        }
+    }
+
+    #[tokio::test]
+    #[ignore = "requires disposable TimescaleDB DATABASE_URL and REDIS_URL"]
+    async fn authorization_weather_configuration_is_admin_only_and_fail_closed() {
+        let fixture = crate::authorization_test_support::Fixture::new().await;
+        let pool = &fixture.state.pool;
+        connections::ensure_defaults(pool).await.unwrap();
+        let admin = fixture.user("admin").await;
+        let user = fixture.user("user").await;
+        let body = || UpdateConnectionBody {
+            enabled: true,
+            mode: "remote".into(),
+            ..Default::default()
+        };
+        let attempt = update_connection(
+            State(fixture.state.clone()),
+            fixture.auth(user),
+            Path(connections::OPEN_METEO.into()),
+            Json(body()),
+        )
+        .await;
+        assert!(matches!(attempt, Err(AppError::Forbidden)));
+        let _ = update_connection(
+            State(fixture.state.clone()),
+            fixture.auth(admin),
+            Path(connections::OPEN_METEO.into()),
+            Json(body()),
+        )
+        .await
+        .unwrap();
+        assert!(connections::require_enabled(pool, connections::OPEN_METEO)
+            .await
+            .is_ok());
+        let mut stale_form = body();
+        stale_form.forecast_url = Some("http://127.0.0.1/old-provider".into());
+        stale_form.archive_url = Some("https://old.example.invalid/archive".into());
+        stale_form.allow_private_network = Some(true);
+        stale_form.private_network_allowlist = Some(vec!["10.0.0.0/8".into()]);
+        let _ = update_connection(
+            State(fixture.state.clone()),
+            fixture.auth(admin),
+            Path(connections::OPEN_METEO.into()),
+            Json(stale_form),
+        )
+        .await
+        .unwrap();
+        let restored = connections::require_enabled(pool, connections::OPEN_METEO)
+            .await
+            .unwrap();
+        assert_eq!(
+            restored.forecast_url.as_deref(),
+            Some(crate::private_deployment::weather::FORECAST_URL)
+        );
+        assert!(restored.private_network_allowlist.is_empty());
+        for id in [
+            connections::NOMINATIM,
+            connections::BASEMAP,
+            connections::ICONIFY,
+        ] {
+            assert!(!connections::load(pool, id).await.unwrap().is_active());
+        }
+        for assignment in [
+            "weather_precision='exact'",
+            "forecast_url='http://127.0.0.1/private'",
+            "api_key_encrypted=decode('00','hex')",
+            "allow_private_network=true",
+        ] {
+            sqlx::query(sqlx::AssertSqlSafe(format!("UPDATE riviamigo.external_connection_settings SET {assignment} WHERE id='open_meteo'")))
+                .execute(pool).await.unwrap();
             assert!(matches!(
-                connections::require_enabled(&pool, id).await,
+                connections::require_enabled(pool, connections::OPEN_METEO).await,
                 Err(AppError::ExternalConnectionDisabled(_))
             ));
+            let _ = update_connection(
+                State(fixture.state.clone()),
+                fixture.auth(admin),
+                Path(connections::OPEN_METEO.into()),
+                Json(body()),
+            )
+            .await
+            .unwrap();
         }
+        fixture.cleanup().await;
     }
 
     fn basemap_settings(

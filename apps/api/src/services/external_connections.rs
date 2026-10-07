@@ -153,7 +153,10 @@ pub use crate::private_deployment::outbound::{connection_allowed, require_connec
 
 impl ConnectionSettingsRow {
     fn apply_outbound_policy(mut self) -> Self {
-        if !connection_allowed(&self.id) {
+        if !connection_allowed(&self.id)
+            || (self.id == OPEN_METEO
+                && !crate::private_deployment::weather::settings_allowed(&self))
+        {
             self.enabled = false;
             self.mode = "disabled".into();
         }
@@ -161,7 +164,10 @@ impl ConnectionSettingsRow {
     }
 
     pub fn is_active(&self) -> bool {
-        self.enabled && self.mode != "disabled" && connection_allowed(&self.id)
+        self.enabled
+            && self.mode != "disabled"
+            && connection_allowed(&self.id)
+            && (self.id != OPEN_METEO || crate::private_deployment::weather::settings_allowed(self))
     }
 }
 
