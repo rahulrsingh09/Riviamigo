@@ -10,7 +10,8 @@ on:
         default: main
         required: true
   schedule:
-    - cron: '23 8 * * *'
+    - cron: '0 12 * * *'
+      timezone: America/Los_Angeles
 
 permissions:
   contents: read

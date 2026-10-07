@@ -21,8 +21,10 @@ locations, database exports or recovery keys in Git.
   prepare an eligible dev candidate for a separate review; it does not replace
   the stable mirror or enter automatic promotion.
 
-`fork-upstream-sync.yml` runs daily at **08:23 UTC** and supports a manual run
-from the trusted default branch. Schedules may be delayed or disabled by GitHub
+`fork-upstream-sync.yml` runs daily at **12:00 PM Pacific time**
+(`America/Los_Angeles`), automatically following PST/PDT, and supports a manual run
+from the trusted default branch. This is 20:00 UTC during PST and 19:00 UTC during
+PDT. Schedules may be delayed or disabled by GitHub
 for inactivity; inspect the Actions run history rather than assuming a daily run.
 
 The preparation job resolves the current hardened base and upstream refs once,

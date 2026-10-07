@@ -296,15 +296,15 @@ writes, subprocess credential isolation and fail-closed HTTP probes.
 
 ## KiRoom coordination in this installation
 
-The daily upstream trigger watches at **08:23 UTC**, alongside the existing
-GitHub Actions schedule. Its fixed source is `scripts/fork-upstream-probe.py`;
-its procedure is [the upstream review runbook](kiroom-upstream-review.md).
-Only a changed main/dev pair starts an agent. Stable changes can be reviewed,
-tested and promoted; unpublished dev changes are assessed without automatic promotion.
+The former daily KiRoom upstream trigger is disabled. GitHub now checks upstream
+daily at **12:00 PM Pacific time**, following PST/PDT automatically. See
+[private fork maintenance](private-fork-maintenance.md) for the active schedule
+and [the optional review runbook](kiroom-upstream-review.md) for exceptions.
 
 The separate 15-minute deployment trigger is retired and must remain disabled.
 GitHub's successful-workflow event starts the native Northflank release workflow.
-KiRoom availability affects upstream review, not deployment or the running app.
+KiRoom is optional for exception review; routine updates, deployment and the
+running app operate independently.
 
 The public `/health` endpoint is intentionally available to Northflank probes.
 The origin denial test targets `/`, while `/v1/vehicles` requires app authentication
