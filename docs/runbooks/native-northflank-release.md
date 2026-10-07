@@ -83,10 +83,15 @@ running controller.
 
 ## Credentials and free allocation
 
-GitHub stores only `NORTHFLANK_RELEASE_WEBHOOK` in the protected production
-environment. Its temporary `GITHUB_TOKEN` is read-only and is sent only to GitHub.
+The release job receives only `NORTHFLANK_RELEASE_WEBHOOK` from the protected
+production environment. Its temporary `GITHUB_TOKEN` is read-only and is sent only to GitHub.
 No Rivian keys, database connection strings, database dumps or Northflank API
 token are stored in GitHub.
+
+The separate `upstream-automation` environment holds a repository-scoped SSH
+deploy key for candidate publication. Only trusted default-branch preparation
+can access it; candidate tests and this release job cannot. See
+[private fork maintenance](private-fork-maintenance.md#candidate-push-credential).
 
 The deployment token is a secret in the isolated Northflank controller job.
 The app does not receive it. The job reads resource metadata and changes only the

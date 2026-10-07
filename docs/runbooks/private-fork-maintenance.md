@@ -28,7 +28,7 @@ for inactivity; inspect the Actions run history rather than assuming a daily run
 The preparation job resolves the current hardened base and upstream refs once,
 merges with Git plumbing in a temporary bare repository, and constructs a
 repeatable candidate with both exact parents. No candidate files are checked
-out or executed by the job holding the write token. Hooks, global Git config,
+out or executed by the job holding the push key. Hooks, global Git config,
 credential helpers and tree-supplied merge drivers are disabled.
 
 ## Automatic update path
@@ -37,11 +37,13 @@ credential helpers and tree-supplied merge drivers are disabled.
    rewritten ancestry or a moved default branch.
 2. Publish the candidate under its full SHA. Recompute the merge using the
    trusted workflow code and verify that the published branch matches.
-3. Explicitly dispatch the existing **Fork validation** workflow on that immutable
-   candidate branch. The candidate workflow file is unchanged from the trusted
-   base because all workflow, script and build-control changes are review-gated.
+3. Push with the dedicated repository deploy key so GitHub starts the existing
+   **Fork validation** push workflow on that immutable candidate branch. Manual
+   candidate dispatch results did not satisfy the live branch protection and are
+   explicitly rejected for promotion. The candidate workflow file is unchanged
+   from the trusted base because workflow, script and build-control changes are review-gated.
    The validation jobs have read-only GitHub permissions, synthetic database
-   fixtures, no cloud credentials and no promotion token.
+   fixtures, no cloud credentials, push key or promotion token.
 4. Wait at most 55 minutes for CI. Require both genuine GitHub Actions jobs on
    the exact candidate, run ID and attempt. Failed, neutral, skipped, incomplete,
    foreign or ambiguous checks do not qualify. A newer failure cannot fall back
@@ -53,7 +55,8 @@ credential helpers and tree-supplied merge drivers are disabled.
 6. Explicitly dispatch the same CI workflow on the new protected branch.
    GitHub's repository token does not create ordinary push-triggered runs for
    bot updates, so this dispatch is required. No personal access token or
-   additional GitHub App secret is needed.
+   additional GitHub App secret is needed. The candidate-publishing SSH key is
+   separate from this short-lived repository token.
 7. Successful protected-branch CI queues **riviamigo-verified-release** in
    Northflank. Northflank verifies CI again, builds the exact commit, takes a
    fresh backup, preserves original keys, deploys and verifies history and
@@ -65,6 +68,30 @@ repository token is used only against fixed GitHub endpoints: read metadata,
 dispatch the one approved CI workflow, and fast-forward the one protected branch.
 It cannot deploy to Northflank or read Rivian credentials. Git subprocesses never
 inherit that token. Network errors are redacted and stop the operation.
+
+## Candidate push credential
+
+`upstream-automation` is a GitHub environment restricted to the exact
+`hardening/private-telemetry` branch. Only the trusted preparation job names this
+environment and receives `UPSTREAM_PUSH_KEY`. The deploy key has write access to
+this fork only; it is still a repository write credential, not a branch-scoped
+credential. It has no Northflank, Cloudflare or Rivian access.
+
+The runner removes the raw key from its environment before invoking Git. A
+private temporary file is created only for the fixed-repository push and removed
+with the isolated bare checkout, including on failure. SSH uses the pinned
+GitHub Ed25519 host key over port 443, ignores SSH agents and local SSH config,
+and refuses unknown hosts and password fallback. Candidate code never executes
+in this job. Do not expose this environment to review branches or pull requests.
+An already-current sync makes an up-to-date mirror push to verify the credential;
+unchanged refs create no new CI run or deployment.
+
+Before enabling this automation, a temporary branch with the same required checks and
+admin enforcement rejected an unchecked key-authenticated push. The probe branch
+was removed. Keep those protections enabled. Deploy keys do not expire by
+themselves: rotate by installing a replacement public key and environment secret,
+verifying a candidate push, then removing the old key. Revoke an unused key in
+repository Settings → Deploy keys; do not replace it with a personal account token.
 
 ## What stops for review
 
@@ -108,9 +135,12 @@ are verified. PR, schedule, reusable-candidate and workflow-run events do not
 qualify as production CI. The latest failed or pending run blocks older successes.
 The native guard independently checks the same contract.
 
-Candidate dispatch runs can qualify for protected-branch promotion after the
+Only candidate **push** runs qualify for protected-branch promotion after the
 promoter's merge/control checks; they never directly qualify for deployment.
 Protected-branch dispatch runs repeat the full checks before the release stage.
+Missing candidate push CI waits for a bounded period and then stops. Failed push
+CI is not automatically rerun on each daily check; inspect and correct the failure
+before explicitly rerunning that push workflow or publishing a corrected candidate.
 
 The public repository uses standard `ubuntu-24.04` GitHub-hosted runners. Jobs
 refuse private repositories. There are no paid AI review services, personal

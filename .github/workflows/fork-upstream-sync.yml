@@ -26,7 +26,8 @@ jobs:
       github.event.repository.private == false &&
       github.ref == 'refs/heads/hardening/private-telemetry'
     permissions:
-      contents: write
+      contents: read
+    environment: upstream-automation
     runs-on: ubuntu-24.04
     timeout-minutes: 10
     outputs:
@@ -45,7 +46,7 @@ jobs:
       - name: Prepare immutable candidate using trusted Git plumbing
         id: sync
         env:
-          FORK_SYNC_TOKEN: ${{ github.token }}
+          FORK_SYNC_SSH_KEY: ${{ secrets.UPSTREAM_PUSH_KEY }}
           FORK_SYNC_SOURCE: ${{ inputs.source || 'main' }}
         run: |
           git remote add upstream https://github.com/bballdavis/Riviamigo.git

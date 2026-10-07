@@ -15,9 +15,11 @@ try {
   }
   const source =
     process.env.GITHUB_EVENT_NAME === 'schedule' ? 'main' : process.env.FORK_SYNC_SOURCE || 'main';
-  const token = process.env.FORK_SYNC_TOKEN;
+  const sshKey = process.env.FORK_SYNC_SSH_KEY;
+  delete process.env.FORK_SYNC_SSH_KEY;
   delete process.env.FORK_SYNC_TOKEN;
-  result = syncFork({ apply: true, source, token, expectedBase: process.env.GITHUB_SHA });
+  if (!sshKey) throw new Error('The protected upstream automation environment needs its deploy key');
+  result = syncFork({ apply: true, source, sshKey, expectedBase: process.env.GITHUB_SHA });
 } catch (error) {
   result = { status: 'error', safeToValidate: false, reason: error.message };
 }

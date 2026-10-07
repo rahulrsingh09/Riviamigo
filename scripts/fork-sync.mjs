@@ -3,6 +3,7 @@ import { mkdtempSync, mkdirSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
+import { sshPushConfiguration } from './fork-push-transport.mjs';
 
 export const FORK_REPOSITORY = 'rahulrsingh09/Riviamigo';
 export const HARDENED_BRANCH = 'hardening/private-telemetry';
@@ -118,10 +119,12 @@ export function syncFork({
   apply = false,
   source = 'main',
   token,
+  sshKey,
   repositories = REPOSITORIES,
   expectedBase,
 } = {}) {
   if (!['main', 'dev'].includes(source)) throw new Error('Source must be main or dev');
+  if (token && sshKey) throw new Error('Choose one push credential');
   validateRemotes(cwd, repositories);
   if (git(cwd, ['status', '--porcelain']).text) {
     throw new Error('Use a clean checkout for upstream synchronization');
@@ -206,8 +209,9 @@ export function syncFork({
       );
     }
     if (ancestor(isolated, upstream, base)) {
-      if (apply && mirror !== stable)
-        publish(isolated, repositories.origin, token, [[stable, 'main']]);
+      // An up-to-date push also verifies the unattended credential without creating a CI event.
+      if (apply)
+        publish(isolated, repositories.origin, token, [[stable, 'main']], sshKey);
       return { ...result, status: 'current', applied: apply };
     }
     // Inspect upstream deltas too: a merge may otherwise hide a changed security control.
@@ -266,7 +270,7 @@ export function syncFork({
       }
       const updates = [[candidate, result.branch]];
       if (mirror !== stable) updates.push([stable, 'main']);
-      publish(isolated, repositories.origin, token, updates);
+      publish(isolated, repositories.origin, token, updates, sshKey);
       result.applied = true;
     }
     return {
@@ -281,8 +285,9 @@ export function syncFork({
   }
 }
 
-function publish(cwd, origin, token, updates) {
-  const env = gitEnvironment(cwd);
+function publish(cwd, origin, token, updates, sshKey) {
+  let env = gitEnvironment(cwd);
+  if (sshKey) ({ origin, env } = sshPushConfiguration(cwd, origin, sshKey, env));
   if (token) {
     env.GIT_CONFIG_COUNT = '1';
     env.GIT_CONFIG_KEY_0 = 'http.https://github.com/.extraheader';

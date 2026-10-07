@@ -12,7 +12,7 @@ import {
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import test from 'node:test';
-import { HARDENED_BRANCH, syncFork as sync, gitEnvironment } from './fork-sync.mjs';
+import { HARDENED_BRANCH, REPOSITORIES, syncFork as sync, gitEnvironment } from './fork-sync.mjs';
 
 function fixture(t) {
   const root = mkdtempSync(join(tmpdir(), 'riviamigo-fork-sync-'));
@@ -350,4 +350,54 @@ process.exit(child.status ?? 1);
     false
   );
   assert.equal(existsSync(sentinel), false);
+});
+
+test('SSH key files exist only for fixed-repository publication and are removed afterward', (t) => {
+  const f = fixture(t);
+  f.advance();
+  f.run(f.cwd, 'remote', 'set-url', 'origin', REPOSITORIES.origin);
+  f.run(f.cwd, 'remote', 'set-url', 'upstream', REPOSITORIES.upstream);
+  const realGit = execFileSync('sh', ['-c', 'command -v git'], { encoding: 'utf8' }).trim();
+  const bin = join(f.root, 'bin');
+  const trace = join(f.root, 'trace.jsonl');
+  mkdirSync(bin);
+  writeFileSync(join(bin, 'git'), `#!${process.execPath}
+const { appendFileSync, existsSync } = require('node:fs');
+const { spawnSync } = require('node:child_process');
+const args = process.argv.slice(2);
+appendFileSync(${JSON.stringify(trace)}, JSON.stringify({
+  args, cwd: process.cwd(), ssh: !!process.env.GIT_SSH_COMMAND,
+  rawKey: Object.values(process.env).some(v => v.includes('BEGIN OPENSSH PRIVATE KEY')),
+  agent: !!process.env.SSH_AUTH_SOCK,
+  keyFile: existsSync(process.cwd() + '/upstream-key')
+}) + '\\n');
+const mapped = args.map(v => v === ${JSON.stringify(REPOSITORIES.origin)} ||
+  v === 'ssh://git@ssh.github.com:443/rahulrsingh09/Riviamigo.git' ? ${JSON.stringify(f.origin)} :
+  v === ${JSON.stringify(REPOSITORIES.upstream)} ? ${JSON.stringify(f.upstream)} : v);
+const child = spawnSync(${JSON.stringify(realGit)}, mapped, { stdio: 'inherit' });
+process.exit(child.status ?? 1);
+`);
+  chmodSync(join(bin, 'git'), 0o755);
+  const previousPath = process.env.PATH;
+  const previousAgent = process.env.SSH_AUTH_SOCK;
+  try {
+    process.env.PATH = `${bin}:${previousPath}`;
+    process.env.SSH_AUTH_SOCK = 'synthetic-agent';
+    assert.equal(f.syncFork({
+      repositories: REPOSITORIES, apply: true,
+      sshKey: '-----BEGIN OPENSSH PRIVATE KEY-----\nc3ludGhldGlj\n-----END OPENSSH PRIVATE KEY-----\n',
+    }).status, 'candidate-ready');
+  } finally {
+    process.env.PATH = previousPath;
+    if (previousAgent === undefined) delete process.env.SSH_AUTH_SOCK;
+    else process.env.SSH_AUTH_SOCK = previousAgent;
+  }
+  const calls = readFileSync(trace, 'utf8').trim().split('\n').map(JSON.parse);
+  assert.ok(calls.every((c) => !c.rawKey && !c.agent));
+  const pushes = calls.filter((c) => c.ssh || c.keyFile);
+  assert.equal(pushes.length, 1);
+  assert.ok(pushes[0].args.includes('push'));
+  assert.ok(pushes[0].ssh && pushes[0].keyFile);
+  assert.ok(pushes[0].args.includes('ssh://git@ssh.github.com:443/rahulrsingh09/Riviamigo.git'));
+  assert.equal(existsSync(pushes[0].cwd), false);
 });

@@ -42,7 +42,7 @@ function fixture() {
     run_number: 10,
     repository: repo,
     head_repository: repo,
-    event: 'workflow_dispatch',
+    event: 'push',
     head_sha: candidate,
     head_branch: branch,
     workflow_id: workflow.id,
@@ -103,8 +103,7 @@ function fixture() {
         protectedBranch.commit.sha = candidate;
       } else {
         assert.equal(path, `/actions/workflows/${POLICY.workflowId}/dispatches`);
-        assert.ok([branch, POLICY.branch].includes(body.ref));
-        if (body.ref === branch) f.candidateRuns = [run];
+        assert.equal(body.ref, POLICY.branch);
       }
       return null;
     }
@@ -167,18 +166,20 @@ test('only a recomputed stable candidate with exact successful CI is fast-forwar
   ]);
 });
 
-test('missing candidate CI is explicitly dispatched on its immutable branch', async () => {
+test('candidate push CI may appear after publishing without any candidate dispatch', async () => {
   const f = fixture();
   f.candidateRuns = [];
+  f.options.sleep = async () => { f.candidateRuns = [f.run]; };
   assert.equal((await advanceUpstream(input, f.options)).promoted, true);
-  assert.deepEqual(f.writes[0], {
-    path: `/actions/workflows/${POLICY.workflowId}/dispatches`,
-    body: { ref: branch },
-    method: 'POST',
-  });
+  assert.equal(f.writes[0].method, 'PATCH');
+  assert.ok(f.writes.every((w) => w.method !== 'POST' || w.body.ref === POLICY.branch));
 });
 
 const blocked = [
+  [
+    'manual candidate CI does not satisfy protected promotion',
+    (f) => { f.run.event = 'workflow_dispatch'; },
+  ],
   [
     'private repository',
     (f) => {
@@ -396,6 +397,13 @@ test('waiting for candidate CI is bounded and never promotes a pending result', 
   assert.deepEqual(f.writes, []);
 });
 
+test('missing push CI stops without manufacturing or dispatching candidate checks', async () => {
+  const f = fixture();
+  f.candidateRuns = [];
+  await assert.rejects(advanceUpstream(input, f.options), /candidate-ci-timeout/);
+  assert.deepEqual(f.writes, []);
+});
+
 test('current upstream does not rerun existing protected CI or deploy anything', async () => {
   const f = fixture();
   f.prepared = { status: 'current', base, source: 'main' };
@@ -439,7 +447,7 @@ test('API token only reaches fixed GitHub repository requests and approved write
       return new Response(null, { status: 204 });
     },
   });
-  await api(`/actions/workflows/${POLICY.workflowId}/dispatches`, { ref: branch });
+  await api(`/actions/workflows/${POLICY.workflowId}/dispatches`, { ref: POLICY.branch });
   await api(`/git/refs/heads/${POLICY.branch}`, { sha: candidate, force: false }, 'PATCH');
   assert.equal(calls.length, 2);
   for (const [path, body, method] of [
@@ -448,6 +456,7 @@ test('API token only reaches fixed GitHub repository requests and approved write
     ['/contents/runtime', { data: 'unsafe' }, 'PUT'],
     [`/git/refs/heads/${POLICY.branch}`, { sha: candidate, force: true }, 'PATCH'],
     [`/actions/workflows/${POLICY.workflowId}/dispatches`, { ref: 'dev' }, 'POST'],
+    [`/actions/workflows/${POLICY.workflowId}/dispatches`, { ref: branch }, 'POST'],
     [`/actions/workflows/${POLICY.workflowId}/dispatches`, { ref: branch, inputs: {} }, 'POST'],
   ])
     await assert.rejects(api(path, body, method));

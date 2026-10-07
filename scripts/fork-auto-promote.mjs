@@ -25,7 +25,7 @@ export function githubApi(token, { fetchImpl = fetch } = {}) {
         path === `${workflowPath}/dispatches` &&
         body &&
         Object.keys(body).length === 1 &&
-        (body.ref === POLICY.branch || /^review\/upstream\/main\/[0-9a-f]{40}$/.test(body.ref));
+        body.ref === POLICY.branch;
       const promote =
         method === 'PATCH' &&
         path === `/git/refs/heads/${POLICY.branch}` &&
@@ -116,7 +116,7 @@ async function candidateRef(api, candidate) {
 export function checkCandidateJobs(run, jobs, candidate) {
   const branch = candidateBranch(candidate);
   require(trustedRun(run, candidate, branch) &&
-    run.event === 'workflow_dispatch', 'candidate-ci-not-successful');
+    run.event === 'push', 'candidate-ci-not-successful');
   require(Array.isArray(jobs?.jobs) && jobs.total_count === jobs.jobs.length, 'incomplete-jobs');
   for (const name of POLICY.requiredChecks) {
     const matches = jobs.jobs.filter((job) => job?.name === name);
@@ -177,7 +177,6 @@ export async function advanceUpstream(
   await candidateRef(api, candidate);
   const branch = candidateBranch(candidate);
   let run = await latestRun(api, branch, candidate);
-  if (!run) await api(`${workflowPath}/dispatches`, { ref: branch });
   const deadline = now() + 55 * 60_000;
   while (!run || run.status !== 'completed') {
     require(now() < deadline, 'candidate-ci-timeout');
@@ -186,7 +185,7 @@ export async function advanceUpstream(
     run = await latestRun(api, branch, candidate);
   }
   require(trustedRun(run, candidate, branch) &&
-    run.event === 'workflow_dispatch', 'candidate-ci-not-successful');
+    run.event === 'push', 'candidate-ci-not-successful');
   const jobs = await api(`/actions/runs/${run.id}/attempts/${run.run_attempt}/jobs?per_page=100`);
   checkCandidateJobs(run, jobs, candidate);
   eligible(await prepare(base), base, candidate);
