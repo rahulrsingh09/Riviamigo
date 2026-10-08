@@ -9,6 +9,7 @@ import {
 } from './maps.mjs';
 
 const keySets = new Map();
+const accessSessionSeconds = 7 * 24 * 60 * 60;
 
 function accessKeys(issuer) {
   if (!keySets.has(issuer)) {
@@ -103,9 +104,11 @@ export function createGateway({
           algorithms: ['RS256'],
           requiredClaims: ['exp', 'iat', 'sub', 'email'],
           clockTolerance: 5,
-          maxTokenAge: '24h',
+          maxTokenAge: accessSessionSeconds,
         });
         if (
+          payload.exp <= payload.iat ||
+          payload.exp - payload.iat > accessSessionSeconds ||
           typeof payload.email !== 'string' ||
           !config.emails.includes(payload.email.toLowerCase())
         ) {

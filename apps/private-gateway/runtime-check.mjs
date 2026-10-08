@@ -111,6 +111,34 @@ try {
   const denied = await runtime.dispatchFetch(bindings.PUBLIC_ORIGIN + '/');
   assert.equal(denied.status, 403);
   assert.equal(originRequests, 0);
+  const now = Math.floor(Date.now() / 1000);
+  const week = 7 * 24 * 60 * 60;
+  async function sessionToken(age, duration, email = bindings.ALLOWED_EMAILS) {
+    return new SignJWT({ email })
+      .setProtectedHeader({ alg: 'RS256', kid: key.kid })
+      .setSubject('runtime-owner')
+      .setIssuer(bindings.ACCESS_ISSUER)
+      .setAudience(bindings.ACCESS_AUDIENCE)
+      .setIssuedAt(now - age)
+      .setExpirationTime(now - age + duration)
+      .sign(privateKey);
+  }
+  const continued = await runtime.dispatchFetch(bindings.PUBLIC_ORIGIN + '/', {
+    headers: { 'Cf-Access-Jwt-Assertion': await sessionToken(6 * 24 * 60 * 60, week) },
+  });
+  assert.equal(continued.status, 200);
+  const beforeInvalidSessions = originRequests;
+  for (const assertion of [
+    await sessionToken(week + 60, week),
+    await sessionToken(0, week + 1),
+    await sessionToken(6 * 24 * 60 * 60, week, 'another@example.test'),
+  ]) {
+    const rejected = await runtime.dispatchFetch(bindings.PUBLIC_ORIGIN + '/', {
+      headers: { 'Cf-Access-Jwt-Assertion': assertion },
+    });
+    assert.equal(rejected.status, 403);
+  }
+  assert.equal(originRequests, beforeInvalidSessions);
   const configPath = bindings.PUBLIC_ORIGIN + '/v1/external/basemap/config';
   const configDenied = await runtime.dispatchFetch(configPath, {
     headers: { 'Cf-Access-Jwt-Assertion': token },
@@ -183,6 +211,8 @@ try {
     runtime: 'workerd via Miniflare',
     unauthorizedDeniedBeforeOrigin: true,
     realJwtValidationWithJwksFetch: true,
+    sevenDaySessionsAcceptSixDayOldToken: true,
+    expiredOverlongAndWrongOwnerSessionsDenied: true,
     httpRequestBodyAndCookiePreserved: true,
     actualWebSocketUpgradeAndEcho: true,
     mapConfigurationRequiresAppAuthentication: true,

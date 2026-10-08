@@ -114,6 +114,36 @@ test('email and edge headers cannot substitute for a verified identity', async (
   assert.equal(requests.length, 0);
 });
 
+test('seven-day sessions remain valid beyond eight hours and one day', async () => {
+  const now = Math.floor(Date.now() / 1000);
+  const week = 7 * 24 * 60 * 60;
+  for (const age of [0, 8 * 60 * 60 + 60, 24 * 60 * 60 + 60, week - 60]) {
+    const { gateway, requests } = harness();
+    const assertion = await token({ iat: now - age, exp: now - age + week });
+    assert.equal((await gateway.fetch(await request(assertion), env)).status, 200);
+    assert.equal(requests.length, 1);
+  }
+});
+
+test('expired, missing-age and overlong sessions never reach the origin', async () => {
+  const now = Math.floor(Date.now() / 1000);
+  const week = 7 * 24 * 60 * 60;
+  for (const claims of [
+    { iat: now - week - 60, exp: now - 60 },
+    { iat: now, exp: now + week + 1 },
+    { iat: now - week - 60, exp: now + 60 },
+    { iat: now, exp: now },
+    { iat: undefined, exp: now + week },
+  ]) {
+    const { gateway, requests } = harness();
+    assert.equal(
+      (await gateway.fetch(await request(await token(claims)), env)).status,
+      403
+    );
+    assert.equal(requests.length, 0);
+  }
+});
+
 test('preview and alternative hostnames are rejected even with a valid identity', async () => {
   const { gateway, requests } = harness();
   const input = new Request('https://preview.private.synthetic.workers.dev/', {

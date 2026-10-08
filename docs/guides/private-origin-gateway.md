@@ -32,6 +32,40 @@ production hostname, with an allow policy limited to your own email. A free
 and Access are on their free plans before deployment; this repository does not
 activate or upgrade a subscription.
 
+### Remembering access for seven days
+
+Cloudflare has a global session on the Access team domain and an application
+session on the dashboard's hostname. A longer global session can renew a shorter
+application session without another email code, but that requires the browser
+to retain and send the global-session cookie.
+
+For seven-day access without an eight-hour renewal, set both the Access
+application **Session Duration** and the global session duration to `168h`.
+Keep the owner allow policy's duration set to **Same as application**. The
+gateway accepts correctly signed application tokens for at most seven days and
+rejects tokens whose declared lifetime exceeds seven days. Signature, issuer,
+audience, expiry, owner allowlist, and separate Riviamigo authentication checks
+remain required.
+
+This extends the lifetime of the application access cookie itself. A copied,
+still-valid cookie is usable for longer, so this is a convenience/security
+tradeoff, not just a display setting. It grants no additional account permissions
+and does not change Rivian credentials or vehicle data. Cloudflare Access session
+revocation remains available.
+
+Deploy this gateway version before increasing the application duration; older
+versions rejected tokens more than 24 hours after issuance. Existing cookies may
+keep their original expiry, so sign in once after the change to obtain a new
+session. Changing browser profiles, using private browsing, clearing cookies,
+signing out, or revoking a session can require an earlier login. Seven days is
+the configured maximum, not an availability or browser-persistence guarantee.
+
+When investigating a prompt, distinguish an Access renewal/Continue page from a
+new email-code challenge. Do not diagnose a browser-cookie problem from server
+configuration alone or solve it by bypassing Access.
+
+### Deployment configuration
+
 Copy `apps/private-gateway/wrangler.example.json` to a private deployment
 configuration and fill in its five required variables. `PUBLIC_ORIGIN` is the address
 you will open, `UPSTREAM_ORIGIN` is the Northflank HTTPS origin,
