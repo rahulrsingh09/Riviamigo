@@ -93,6 +93,17 @@ native release-from-build-service node rejects combined services, so this small
 job performs the supported deployment API operation without introducing another
 always-running service.
 
+For the combined app service, the deployment request contains only
+`internal.buildId`. Its build source must already point to this repository's
+`mainline`, and the selected build must belong to that branch and exact commit.
+Including a different `internal.branch` in the deployment request fails after a
+branch rename: Northflank rejects source changes through this endpoint even when
+the combined service's build source has already been updated. Source changes
+belong to the combined-service configuration, outside ordinary releases.
+HTTP failures report the provider, read/deployment operation and status code;
+response bodies and credentials remain excluded, and writes are never retried
+automatically.
+
 The installed workflow and job are reviewed deployment policy. Ordinary app
 releases do not replace them. Changes to this module require tests and a deliberate
 installation of the rendered definitions; source edits alone do not change the

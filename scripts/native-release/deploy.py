@@ -5,6 +5,7 @@ import os
 import re
 import sys
 import time
+from urllib.error import HTTPError
 from urllib.request import Request, ProxyHandler, HTTPRedirectHandler, build_opener
 
 from northflank_deploy import free_policy, require, Halt
@@ -36,9 +37,9 @@ class Adapter:
                     "unapproved-cloud-request")
             require(body is None or (path == APP + "/deployment"
                     and set(body) == {"internal"}
-                    and set(body["internal"]) == {"id", "branch", "buildId"}
-                    and body["internal"]["id"] == "telemetry-app"
-                    and body["internal"]["branch"] == BRANCH),
+                    and set(body["internal"]) == {"buildId"}
+                    and isinstance(body["internal"]["buildId"], str)
+                    and re.fullmatch("[a-z0-9-]{3,54}", body["internal"]["buildId"])),
                     "unapproved-cloud-write")
             host = "https://api.northflank.com"
             headers = {"Authorization": "Bearer " + self.token, "Content-Type": "application/json"}
@@ -55,6 +56,10 @@ class Adapter:
             return result if github else result.get("data", result)
         except Halt:
             raise
+        except HTTPError as error:
+            service = "github" if github else "northflank"
+            operation = "deployment" if body is not None else "read"
+            raise Halt("{}-{}-http-{}".format(service, operation, error.code)) from None
         except Exception:
             raise Halt("cloud-request-unavailable-or-uncertain") from None
 
@@ -95,17 +100,20 @@ def deploy(adapter, sha, run_id, build_id, attestation, *, now=time.time, sleep=
     require(0 <= now() - int(matches[0][1]) < 120, "backup-not-fresh")
     snapshot = adapter.snapshot()
     app = snapshot["app"]
+    require(app.get("serviceType") == "combined"
+            and app.get("vcsData", {}).get("projectBranch") == BRANCH
+            and app.get("vcsData", {}).get("projectUrl") == "https://github.com/" + REPOSITORY,
+            "unexpected-build-source")
     require(app["status"]["deployment"]["status"] == "COMPLETED", "deployment-active")
     old_image = app["deployment"]["imageUrl"]
     build = adapter.request(APP + "/build/" + build_id)
-    require(build.get("id") == build_id and build.get("sha") == sha and build.get("status") == "SUCCESS"
+    require(build.get("id") == build_id and build.get("sha") == sha
+            and build.get("branch") == BRANCH and build.get("status") == "SUCCESS"
             and build.get("concluded") is True and build.get("success") is True,
             "exact-build-not-ready")
     adapter.ci(sha, run_id)
     require(0 <= now() - int(matches[0][1]) < 120, "backup-expired")
-    adapter.request(APP + "/deployment", {"internal": {
-        "id": "telemetry-app", "branch": BRANCH, "buildId": build_id,
-    }})
+    adapter.request(APP + "/deployment", {"internal": {"buildId": build_id}})
     deadline = now() + 600
     while now() < deadline:
         app = adapter.request(APP)
