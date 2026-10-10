@@ -69,6 +69,23 @@ test('failed CI, stale input, and a foreign webhook cannot queue a deployment', 
   }
 });
 
+test('main and the retired branch cannot queue production even with successful checks', async () => {
+  assert.equal(POLICY.branch, 'mainline');
+  for (const branch of ['main', 'hardening/private-telemetry', 'review/candidate']) {
+    const data = fixture();
+    data.repository.default_branch = branch;
+    data.branch.name = branch;
+    data.run.head_branch = branch;
+    data.jobs.jobs.forEach(job => { job.head_branch = branch; });
+    const calls = [];
+    await assert.rejects(queueRelease(
+      { token: 'synthetic-token', webhook, sha, runId: 101 },
+      { fetchImpl: transport(data, calls) }
+    ));
+    assert(calls.every(({ options }) => options.method === 'GET'));
+  }
+});
+
 test('installed migration approval exactly matches the immutable source catalog', () => {
   const approved = JSON.parse(readFileSync(new URL('../config/native-release-catalog.json', import.meta.url)));
   const actual = readPrivateCatalog(new URL('..', import.meta.url).pathname)
@@ -82,6 +99,7 @@ test('native workflow serializes backup, fixed job and verification without reso
   assert.deepEqual(workflow.options, { autorun: false, concurrencyPolicy: 'queue' });
   assert.deepEqual(workflow.spec.spec.steps.filter(x => x.kind !== 'Action').map(x => x.kind),
     ['Build', 'JobRun', 'Condition']);
+  assert.equal(workflow.spec.spec.steps.find(x => x.kind === 'Build').spec.branch, 'mainline');
   assert.equal(workflow.spec.spec.steps.filter(x => x.kind === 'Action').length, 189);
   for (const node of workflow.spec.spec.steps.filter(x => x.kind === 'Action')) {
     assert(node.spec.spec.data.command.includes('${fn.toBase64(args.sha)}'));

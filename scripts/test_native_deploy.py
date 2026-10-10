@@ -55,6 +55,8 @@ class NativeDeploymentTests(unittest.TestCase):
 
             def request(self, path, body=None, github=False):
                 if "/branches/" in path:
+                    if path != "/repos/rahulrsingh09/Riviamigo/branches/mainline":
+                        raise Halt("wrong-branch-endpoint")
                     return {"commit": {"sha": SHA}, "protected": True}
                 return {"id": 101, "head_sha": SHA, "head_branch": self.branch,
                         "event": self.event, "workflow_id": 375880117,
@@ -67,8 +69,9 @@ class NativeDeploymentTests(unittest.TestCase):
         for event in ["pull_request", "schedule", "workflow_run"]:
             with self.assertRaises(Halt):
                 Metadata(event).ci(SHA, "101")
-        with self.assertRaises(Halt):
-            Metadata("workflow_dispatch", "review/candidate").ci(SHA, "101")
+        for branch in ["main", "hardening/private-telemetry", "review/candidate"]:
+            with self.assertRaises(Halt):
+                Metadata("workflow_dispatch", branch).ci(SHA, "101")
 
     def run_deploy(self, adapter, **overrides):
         args = {"sha": SHA, "run_id": "101", "build_id": "valid-build-1234",

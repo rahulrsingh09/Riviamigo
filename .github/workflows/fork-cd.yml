@@ -4,7 +4,7 @@ on:
   workflow_run:
     workflows: [Fork validation]
     types: [completed]
-    branches: [hardening/private-telemetry]
+    branches: [mainline]
   workflow_dispatch:
     inputs:
       ci_run_id:
@@ -28,7 +28,7 @@ jobs:
       (github.event_name == 'workflow_dispatch' ||
        (github.event.workflow_run.conclusion == 'success' &&
         (github.event.workflow_run.event == 'push' || github.event.workflow_run.event == 'workflow_dispatch') &&
-        github.event.workflow_run.head_branch == 'hardening/private-telemetry' &&
+        github.event.workflow_run.head_branch == 'mainline' &&
         github.event.workflow_run.head_repository.id == 1406366405 &&
         github.event.workflow_run.workflow_id == 375880117))
     name: Queue exact commit after CI

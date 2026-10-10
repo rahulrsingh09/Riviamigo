@@ -8,7 +8,7 @@ import { pathToFileURL } from 'node:url';
 export const POLICY = Object.freeze({
   repository: 'rahulrsingh09/Riviamigo',
   repositoryId: 1406366405,
-  branch: 'hardening/private-telemetry',
+  branch: 'mainline',
   workflowId: 375880117,
   workflowPath: '.github/workflows/fork-ci.yml',
   workflowName: 'Fork validation',

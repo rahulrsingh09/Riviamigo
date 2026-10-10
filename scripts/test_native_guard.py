@@ -31,15 +31,15 @@ class GuardTests(unittest.TestCase):
         (files / "catalog").write_text(json.dumps(cls.catalog))
         repo = {"id": 1406366405, "full_name": "rahulrsingh09/Riviamigo"}
         cls.ci_run = {"id": 101, "workflow_id": 375880117, "path": ".github/workflows/fork-ci.yml",
-                   "name": "Fork validation", "event": "push", "head_branch": "hardening/private-telemetry",
+                   "name": "Fork validation", "event": "push", "head_branch": "mainline",
                    "head_sha": SHA, "status": "completed", "conclusion": "success",
                    "run_number": 20, "run_attempt": 1, "repository": repo, "head_repository": repo}
         names = ["Fork frontend and policy", "Fork backend and security regressions"]
-        branch = {"name": "hardening/private-telemetry", "protected": True, "commit": {"sha": SHA},
+        branch = {"name": "mainline", "protected": True, "commit": {"sha": SHA},
                   "protection": {"required_status_checks": {"enforcement_level": "everyone",
                       "contexts": names, "checks": [{"context": n, "app_id": 15368} for n in names]}}}
         jobs = {"total_count": 2, "jobs": [{"id": i + 201, "name": n, "run_id": 101, "run_attempt": 1,
-                 "head_sha": SHA, "head_branch": "hardening/private-telemetry", "workflow_name": "Fork validation",
+                 "head_sha": SHA, "head_branch": "mainline", "workflow_name": "Fork validation",
                  "status": "completed", "conclusion": "success"} for i, n in enumerate(names)]}
         for name, data in {"branch": branch, "run": cls.ci_run, "runs": {"total_count": 1, "workflow_runs": [cls.ci_run]},
                            "jobs": jobs}.items():
@@ -161,6 +161,7 @@ INSERT INTO riviamigo.vehicle_runtime_state VALUES(1,'authorized','connected',no
     def test_dispatch_on_candidate_branch_and_other_events_are_rejected(self):
         for mutation in [
             {"event": "workflow_dispatch", "head_branch": "review/upstream/main/" + SHA},
+            {"head_branch": "main"}, {"head_branch": "hardening/private-telemetry"},
             {"event": "pull_request"}, {"event": "schedule"}, {"event": "workflow_run"},
         ]:
             run = dict(self.ci_run, **mutation)

@@ -6,7 +6,7 @@ import { pathToFileURL } from 'node:url';
 import { sshPushConfiguration } from './fork-push-transport.mjs';
 
 export const FORK_REPOSITORY = 'rahulrsingh09/Riviamigo';
-export const HARDENED_BRANCH = 'hardening/private-telemetry';
+export const HARDENED_BRANCH = 'mainline';
 export const REPOSITORIES = {
   origin: `https://github.com/${FORK_REPOSITORY}.git`,
   upstream: 'https://github.com/bballdavis/Riviamigo.git',

@@ -7,7 +7,7 @@ For automatic off-provider backups and deletion safeguards, see
 
 The release pipeline is independent of KiRoom. GitHub runs the existing
 **Fork validation** workflow. A successful push or explicit CI dispatch on the protected
-`hardening/private-telemetry` branch starts **Queue verified Northflank release**
+`mainline` branch starts **Queue verified Northflank release**
 from `.github/workflows/fork-cd.yml`. That job rechecks the exact SHA, repository,
 workflow identity, branch protection and both required jobs before calling a
 workflow-specific Northflank webhook.
@@ -35,7 +35,7 @@ The former 15-minute deployment trigger must remain disabled.
 
 - GitHub: **Actions → Fork validation** and **Queue verified Northflank release**.
 - GitHub: **Settings → Environments → northflank-production**. Its deployment
-  branch rule permits only `hardening/private-telemetry`.
+  branch rule permits only `mainline`.
 - Northflank: **riviamigo-private → Workflows → riviamigo-verified-release**.
   This is the authoritative final release result.
 - Northflank: **Jobs → verified-release-controller** for the deployment step.

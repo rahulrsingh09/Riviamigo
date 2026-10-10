@@ -28,6 +28,13 @@ Use these entrypoints in this order:
 
 ## Mandatory Working Rules
 
+### Private fork branch ownership
+
+In `rahulrsingh09/Riviamigo`, `mainline` is the protected default branch for work
+and releases. Branch from it and return reviewed changes to it. `main` mirrors
+upstream stable and must not receive fork-specific changes. Follow
+`docs/runbooks/private-fork-maintenance.md` for automatic updates and promotion.
+
 ### Shared seams first
 
 - Preserve shared page and dashboard behavior by changing the shared seam before patching route-local code.

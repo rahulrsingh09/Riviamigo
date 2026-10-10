@@ -185,7 +185,7 @@ that lock; serialize them with this controller.
    ```text
    update service deployment --projectId riviamigo-private
      --serviceId telemetry-app
-     --input {"internal":{"id":"telemetry-app","branch":"hardening/private-telemetry","buildSHA":"<full-sha>"}}
+     --input {"internal":{"id":"telemetry-app","branch":"mainline","buildSHA":"<full-sha>"}}
      --quiet
    ```
 

@@ -25,7 +25,7 @@ jobs:
     if: >-
       github.repository == 'rahulrsingh09/Riviamigo' &&
       github.event.repository.private == false &&
-      github.ref == 'refs/heads/hardening/private-telemetry'
+      github.ref == 'refs/heads/mainline'
     permissions:
       contents: read
     environment: upstream-automation

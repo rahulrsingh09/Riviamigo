@@ -40,8 +40,8 @@ assert_sql() {
 
 check_ci() {
   api=https://api.github.com/repos/rahulrsingh09/Riviamigo
-  fetch "$api/branches/hardening%2Fprivate-telemetry" "$tmp/branch"
-  fetch "$api/actions/workflows/375880117/runs?branch=hardening%2Fprivate-telemetry&head_sha=$sha&per_page=100" "$tmp/runs"
+  fetch "$api/branches/mainline" "$tmp/branch"
+  fetch "$api/actions/workflows/375880117/runs?branch=mainline&head_sha=$sha&per_page=100" "$tmp/runs"
   fetch "$api/actions/runs/$run_id" "$tmp/run"
   attempt=$(sql --set "data=$(cat "$tmp/run")" <<'SQL'
 SELECT (:'data'::jsonb ->> 'run_attempt')::bigint;
@@ -55,7 +55,7 @@ SQL
 WITH d AS (SELECT :'branch'::jsonb b, :'runs'::jsonb rs, :'run'::jsonb r, :'jobs'::jsonb j),
 required(name) AS (VALUES ('Fork frontend and policy'), ('Fork backend and security regressions'))
 SELECT coalesce(
-  b->>'name' = 'hardening/private-telemetry' AND b->>'protected' = 'true'
+  b->>'name' = 'mainline' AND b->>'protected' = 'true'
   AND b#>>'{commit,sha}' = :'sha'
   AND b#>>'{protection,required_status_checks,enforcement_level}' = 'everyone'
   AND NOT EXISTS (SELECT FROM required WHERE NOT (
@@ -64,7 +64,7 @@ SELECT coalesce(
       jsonb_build_array(jsonb_build_object('context', name, 'app_id', 15368))))
   AND r->>'id' = :'run_id' AND r->>'workflow_id' = '375880117'
   AND r->>'path' = '.github/workflows/fork-ci.yml' AND r->>'name' = 'Fork validation'
-  AND r->>'event' IN ('push', 'workflow_dispatch') AND r->>'head_branch' = 'hardening/private-telemetry'
+  AND r->>'event' IN ('push', 'workflow_dispatch') AND r->>'head_branch' = 'mainline'
   AND r->>'head_sha' = :'sha' AND r->>'status' = 'completed' AND r->>'conclusion' = 'success'
   AND r#>>'{repository,id}' = '1406366405'
   AND r#>>'{repository,full_name}' = 'rahulrsingh09/Riviamigo'
@@ -78,7 +78,7 @@ SELECT coalesce(
     (SELECT count(*) FROM jsonb_array_elements(j->'jobs') x WHERE x->>'name' = name) <> 1
     OR NOT EXISTS (SELECT FROM jsonb_array_elements(j->'jobs') x WHERE x->>'name' = name
       AND x->>'run_id' = :'run_id' AND x->>'run_attempt' = r->>'run_attempt'
-      AND x->>'head_sha' = :'sha' AND x->>'head_branch' = 'hardening/private-telemetry'
+      AND x->>'head_sha' = :'sha' AND x->>'head_branch' = 'mainline'
       AND x->>'workflow_name' = 'Fork validation'
       AND x->>'status' = 'completed' AND x->>'conclusion' = 'success')), false)
 FROM d;

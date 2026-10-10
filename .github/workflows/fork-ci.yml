@@ -2,9 +2,9 @@ name: Fork validation
 
 on:
   pull_request:
-    branches: [hardening/private-telemetry]
+    branches: [mainline]
   push:
-    branches: [hardening/private-telemetry, 'review/**', 'integrate/**', 'automation/**']
+    branches: [mainline, 'review/**', 'integrate/**', 'automation/**']
   workflow_dispatch:
   workflow_call:
     inputs:

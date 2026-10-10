@@ -12,7 +12,7 @@ from northflank_deploy import free_policy, require, Halt
 PROJECT = "/v1/projects/riviamigo-private"
 APP = PROJECT + "/services/telemetry-app"
 REPOSITORY = "rahulrsingh09/Riviamigo"
-BRANCH = "hardening/private-telemetry"
+BRANCH = "mainline"
 
 
 class NoRedirect(HTTPRedirectHandler):
@@ -72,7 +72,7 @@ class Adapter:
 
     def ci(self, sha, run_id):
         base = "/repos/" + REPOSITORY
-        branch = self.request(base + "/branches/hardening%2Fprivate-telemetry", github=True)
+        branch = self.request(base + "/branches/mainline", github=True)
         require(branch["commit"]["sha"] == sha and branch.get("protected") is True,
                 "protected-branch-moved")
         run = self.request(base + "/actions/runs/" + run_id, github=True)

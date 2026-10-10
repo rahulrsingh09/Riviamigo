@@ -14,12 +14,28 @@ locations, database exports or recovery keys in Git.
 
 ## Branches and daily operation
 
-- `hardening/private-telemetry` is the protected default and deployment branch.
+- `mainline` is the protected default and deployment branch.
 - `main` is a fast-forward-only mirror of upstream stable main.
 - `review/upstream/main/<full-candidate-SHA>` contains an immutable proposed merge.
 - Upstream dev is observed but never automatically promoted. A manual sync can
   prepare an eligible dev candidate for a separate review; it does not replace
   the stable mirror or enter automatic promotion.
+
+Start feature and fix branches from `mainline`; merge reviewed changes back into
+`mainline`. R and the private security modules belong there. Do not develop on,
+release from, or merge fork changes into the `main` mirror.
+
+`mainline` replaces the former `hardening/private-telemetry` branch. A branch
+rename must update both GitHub environment branch policies and the installed
+Northflank workflow/controller, as well as these checked-in workflow guards.
+Keep the existing required checks and administrator enforcement. Hold release
+automation during the transition, validate the exact `mainline` commit, and
+restore automation after validation; renaming alone must not roll out an app.
+
+Branches are references, not copies of the database or application. Delete
+merged temporary branches after checking their ancestry and active worktrees.
+Keep test branches and branches with unique work until that work is reconciled.
+Branch cleanup does not erase retained Git history or live telemetry.
 
 `fork-upstream-sync.yml` runs daily at **12:00 PM Pacific time**
 (`America/Los_Angeles`), automatically following PST/PDT, and supports a manual run
@@ -83,7 +99,7 @@ inherit that token. Network errors are redacted and stop the operation.
 ## Candidate push credential
 
 `upstream-automation` is a GitHub environment restricted to the exact
-`hardening/private-telemetry` branch. Only the trusted preparation job names this
+`mainline` branch. Only the trusted preparation job names this
 environment and receives `UPSTREAM_PUSH_KEY`. The deploy key has write access to
 this fork only; it is still a repository write credential, not a branch-scoped
 credential. It has no Northflank, Cloudflare or Rivian access.
