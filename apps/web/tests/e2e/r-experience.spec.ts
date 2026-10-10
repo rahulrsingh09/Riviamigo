@@ -137,8 +137,8 @@ for (const width of [390, 1280]) {
     await expect(mapCard).toContainText('0:00');
     const box = (await canvas.boundingBox())!;
     await page.mouse.click(box.x + box.width * .7, box.y + box.height * .3);
+    await expect(mapCard.locator('p')).not.toHaveText('0:00');
     const selected = await mapCard.locator('p').textContent();
-    expect(selected).not.toBe('0:00');
     await page.mouse.move(box.x + box.width * .7, box.y + box.height * .3);
     await page.mouse.down();
     await page.mouse.move(box.x + box.width * .3, box.y + box.height * .7, { steps: 12 });
