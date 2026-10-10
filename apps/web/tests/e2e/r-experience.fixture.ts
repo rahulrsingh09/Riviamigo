@@ -15,6 +15,7 @@ export async function installRFixture(page: Page, options: {
   unknownConfiguration?: boolean;
   palette?: 'classic' | 'rad';
   populatedAnalytics?: boolean;
+  tripCount?: number;
   odometer?: number;
   vehicleName?: string;
   role?: 'user' | 'super_user';
@@ -67,8 +68,16 @@ export async function installRFixture(page: Page, options: {
   };
   const tags = [{ id: 'tag-1', name: 'Daily commute', color: 'series-02' }, { id: 'tag-2', name: 'Weekend', color: 'series-03' }];
   const assignedTags = new Map<string, string[]>();
-  const trips = Array.from({ length: options.populatedAnalytics ? 3 : 1 }, (_, index) => ({
+  const trips = Array.from({ length: options.tripCount ?? (options.populatedAnalytics ? 3 : 1) }, (_, index) => ({
     ...trip(index), start_place: ['Home', 'Lake Washington', 'Office'][index], end_place: ['Office', 'Home', 'Home'][index],
+    ...(options.tripCount ? {
+      started_at: `2026-10-08T${String(6 + Math.floor(index / 2) % 16).padStart(2, '0')}:${index % 2 ? '30' : '00'}:00Z`,
+      start_place: `Route ${String(index + 1).padStart(2, '0')} · Home`,
+      end_place: ['Office', 'Lake Washington', 'Trailhead', 'Market', 'Waterfront'][index % 5],
+      distance_mi: 15 + index * 3,
+      efficiency_wh_mi: 250 + index * 10,
+      energy_used_kwh: (15 + index * 3) * (250 + index * 10) / 1000,
+    } : {}),
   }));
   const days = Array.from({ length: 7 }, (_, index) => {
     const day = `2026-10-${String(index + 1).padStart(2, '0')}`;
@@ -212,6 +221,14 @@ export async function installRFixture(page: Page, options: {
     }
     if (path === '/v1/trips') {
       const offset = Number(url.searchParams.get('offset') ?? 0);
+      if (options.tripCount) {
+        const page = Number(url.searchParams.get('page') ?? 1);
+        const perPage = Number(url.searchParams.get('per_page') ?? 15);
+        const filtered = trips.filter(item => `${item.start_place} ${item.end_place}`.toLowerCase().includes((url.searchParams.get('search') ?? '').toLowerCase()));
+        return json({ items: filtered.slice((page - 1) * perPage, page * perPage).map(item => ({
+          ...item, tags: tags.filter(tag => assignedTags.get(item.id)?.includes(tag.id)),
+        })), total: filtered.length, page, per_page: perPage });
+      }
       if (options.populatedAnalytics) return json({ items: trips.map(trip => ({
         ...trip, tags: tags.filter(tag => assignedTags.get(trip.id)?.includes(tag.id)),
       })), total: trips.length, page: 1, per_page: 15 });
@@ -228,7 +245,7 @@ export async function installRFixture(page: Page, options: {
       const columns = ['elapsed_s', 'lat', 'lng', 'altitude_m', 'speed_mph', 'power_kw', 'regen_power_kw',
         'battery_level', 'outside_temp_c', 'cabin_temp_c', 'driver_temp_c', 'hvac_active',
         'tire_fl_psi', 'tire_fr_psi', 'tire_rl_psi', 'tire_rr_psi'];
-      return json({ trip: trip(), sample_interval_seconds: 60, samples: Object.fromEntries(columns.map((name) => [name, options.populatedTrip
+      return json({ trip: options.tripCount ? trips.find(item => item.id === path.split('/')[3]) : trip(), sample_interval_seconds: 60, samples: Object.fromEntries(columns.map((name) => [name, options.populatedTrip
           ? Array.from({ length: 31 }, (_, index) => name === 'elapsed_s' ? index * 60
             : name === 'lat' ? 47.6 + index * .001 : name === 'lng' ? -122.34 + index * .001
               : name === 'speed_mph' ? 20 + index : name === 'battery_level' ? 75 - index / 5 : 20)
@@ -283,7 +300,10 @@ export async function installRFixture(page: Page, options: {
       total_trips: options.populatedAnalytics ? trips.length : 0, missing_route_count: 0,
       routes: options.populatedAnalytics ? trips.map((trip, index) => ({
         trip_id: trip.id, tags: tags.filter(tag => assignedTags.get(trip.id)?.includes(tag.id)),
-        coordinates: Array.from({ length: 20 }, (_, point) => [-122.34 + point * .003, 47.6 + point * .002 + index * .008]),
+        coordinates: Array.from({ length: options.tripCount ? 40 : 20 }, (_, point) => options.tripCount
+          ? [-122.34 + point * .0015 + Math.sin(point / 8 + index) * .004,
+            47.6 + point * (.0003 + index * .000055) + Math.sin(point / 12) * .002]
+          : [-122.34 + point * .003, 47.6 + point * .002 + index * .008]),
       })) : [],
     });
     if (path === '/v1/dashboards') return json(dashboards);

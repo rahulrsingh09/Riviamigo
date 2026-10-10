@@ -1,6 +1,7 @@
 import * as React from 'react';
 import type { BasemapStyleDescriptor, MapStylePreference } from '@riviamigo/types';
-import { CHART_COLORS } from './ChartProvider';
+import { CHART_COLORS, resolveChartColor } from './ChartProvider';
+import { tripRouteColor } from './tripRouteColors';
 import { useDocumentPalette } from '../hooks/useDocumentPalette';
 import { useDocumentTheme } from '../hooks/useDocumentTheme';
 import { isAbortError, reportClientError } from '../lib/clientDiagnostics';
@@ -14,6 +15,7 @@ export interface TripMapRoute {
   id: string;
   track: LatLng[];
   color?: string;
+  colorIndex?: number;
 }
 
 export type MapStyleMode = 'dark' | 'light';
@@ -38,6 +40,7 @@ export interface TripMapChartProps {
   track: LatLng[];
   routes?: TripMapRoute[];
   selectedRouteIds?: string[];
+  highlightedRouteId?: string | null;
   onRouteClick?: (routeId: string) => void;
   onPointSelect?: (point: LatLng, trackIndex?: number) => void;
   activePoint?: LatLng | null;
@@ -86,14 +89,6 @@ interface MapApi {
   unproject?: (point: [number, number]) => LatLng;
 }
 
-const FALLBACK_ROUTE_COLORS = [
-  CHART_COLORS.sky,
-  CHART_COLORS.emerald,
-  CHART_COLORS.violet,
-  CHART_COLORS.rose,
-  CHART_COLORS.amber,
-  CHART_COLORS.danger,
-];
 const FALLBACK_ACTIVE_POINT_COLOR = CHART_COLORS.warning;
 const ACTIVE_POINT_SOURCE_ID = 'trip-active-point';
 const ACTIVE_POINT_LAYER_ID = 'trip-active-point-layer';
@@ -167,6 +162,7 @@ export function TripMapChart({
   track,
   routes,
   selectedRouteIds = [],
+  highlightedRouteId = null,
   onRouteClick,
   onPointSelect,
   activePoint,
@@ -197,6 +193,8 @@ export function TripMapChart({
   }, [inspecting]);
   const latestRoutesRef = React.useRef<TripMapRoute[]>([]);
   const latestSelectedRouteIdsRef = React.useRef<string[]>([]);
+  const highlightedRouteIdRef = React.useRef(highlightedRouteId);
+  highlightedRouteIdRef.current = highlightedRouteId;
   const latestActivePointRef = React.useRef<LatLng | null | undefined>(activePoint);
   const latestVisibleRouteSignatureRef = React.useRef<string>('');
   const activePointFrameRef = React.useRef<number | null>(null);
@@ -227,7 +225,9 @@ export function TripMapChart({
   }, [mapStyle, mapStylePreference]);
 
   const routeList = React.useMemo(
-    () => (routes?.length ? routes : [{ id: 'trip', track }]).filter((route) => route.track.length > 1),
+    () => (routes?.length ? routes : [{ id: 'trip', track }])
+      .map((route: TripMapRoute, index) => ({ ...route, colorIndex: route.colorIndex ?? index }))
+      .filter((route) => route.track.length > 1),
     [routes, track],
   );
   const selectedRouteIdSet = React.useMemo(() => new Set(selectedRouteIds), [selectedRouteIds]);
@@ -484,7 +484,7 @@ export function TripMapChart({
     }
     if (routeList.length === 0) return;
     syncRoutes(map, visibleRoutes, selectedRouteIds, onRouteClickRef, visibleRouteSignature);
-  }, [palette, themeRevision, selectedRouteIds, visibleRouteSignature, visibleRoutes]);
+  }, [palette, themeRevision, selectedRouteIds, highlightedRouteId, visibleRouteSignature, visibleRoutes]);
 
   React.useEffect(() => {
     if (!isLoadedRef.current || !mapRef.current) return;
@@ -513,7 +513,8 @@ export function TripMapChart({
     routeClickRef: React.MutableRefObject<TripMapChartProps['onRouteClick']>,
     nextRouteSignature: string,
   ) {
-    const routeColors = getRouteColors();
+    const highlighted = nextRoutes.some(route => route.id === highlightedRouteIdRef.current)
+      ? highlightedRouteIdRef.current : null;
     const geojson = {
       type: 'FeatureCollection' as const,
       features: nextRoutes.map((route, index) => ({
@@ -524,8 +525,10 @@ export function TripMapChart({
         },
         properties: {
           id: route.id,
-          color: route.color?.trim() || routeColors[index % routeColors.length],
+          color: route.color?.trim() || resolveChartColor(tripRouteColor(route.colorIndex ?? index)),
           selected: nextSelectedRouteIds.includes(route.id),
+          emphasized: route.id === highlighted,
+          opacity: highlighted && route.id !== highlighted ? 0.18 : 0.95,
         },
       })),
     };
@@ -544,8 +547,9 @@ export function TripMapChart({
         source: ROUTE_SOURCE_ID,
         paint: {
           'line-color': ['get', 'color'],
-          'line-width': ['case', ['boolean', ['get', 'selected'], false], 5, 3],
-          'line-opacity': 0.9,
+          'line-width': ['case', ['boolean', ['get', 'emphasized'], false], 7,
+            ['boolean', ['get', 'selected'], false], 5, 3],
+          'line-opacity': ['get', 'opacity'],
         },
       });
     }
@@ -742,10 +746,6 @@ function applyPerspective(map: MapApi, basemap: BasemapConfig, preference: MapSt
     map.setBearing?.(0);
     map.dragRotate?.disable();
   }
-}
-
-function getRouteColors(): string[] {
-  return FALLBACK_ROUTE_COLORS.map((fallbackColor, i) => getCssColor(`--rm-map-route-${i}`, fallbackColor));
 }
 
 function getCssColor(variableName: string, fallbackColor: string) {

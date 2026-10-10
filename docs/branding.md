@@ -57,6 +57,12 @@ There is no appearance gallery, Theme Studio entry or interface selector.
   Long option labels wrap. Escape closes the picker before its parent dialog;
   keyboard focus returns to the trigger.
 - Preserve canonical charts, settings operations, permissions and map panning.
+- Multi-trip maps assign colors before filtering selection so a route keeps its
+  color when other routes are added or removed. Use sixteen token-based colors,
+  numbered route keys with dates and destinations, and a tap-to-highlight action
+  that dims other routes without clearing the selection. The key scrolls within
+  its own bounded area on mobile. There is no fixed selection cap; colors repeat
+  after sixteen routes, so labels and highlighting remain necessary.
 
 See [R integration](./architecture/r-experience.md) for module boundaries.
 

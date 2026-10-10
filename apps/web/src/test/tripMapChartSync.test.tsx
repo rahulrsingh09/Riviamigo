@@ -358,9 +358,10 @@ describe('TripMapChart', () => {
   it('assigns consecutive route colors in order before cycling and preserves explicit colors', async () => {
     const mockMap = new MockMap();
     const mapLoader = vi.fn(async () => ({ Map: vi.fn(function Map() { return mockMap; }) }));
-    const routeColors = ['#110000', '#002200', '#000033', '#444400', '#550055', '#006666'];
-    routeColors.forEach((color, index) => document.documentElement.style.setProperty(`--rm-map-route-${index}`, color));
-    const routes = buildRoutes(8);
+    const routeColors = Array.from({ length: 16 }, (_, index) => `#${(index + 1).toString(16).padStart(6, '0')}`);
+    const token = (index: number) => index < 6 ? `--rm-map-route-${index}` : `--rm-series-${String(index + 1).padStart(2, '0')}`;
+    routeColors.forEach((color, index) => document.documentElement.style.setProperty(token(index), color));
+    const routes = buildRoutes(18);
     routes[2] = { ...routes[2]!, color: '#ABCDEF' };
 
     render(<TripMapChart routes={routes} track={[]} height={320} mapLoader={mapLoader as never} />);
@@ -371,9 +372,30 @@ describe('TripMapChart', () => {
       data: { features: Array<{ properties: { color: string } }> };
     };
     expect(sourceCall.data.features.map((feature) => feature.properties.color)).toEqual([
-      routeColors[0], routeColors[1], '#ABCDEF', routeColors[3], routeColors[4], routeColors[5], routeColors[0], routeColors[1],
+      ...routeColors.map((color, index) => index === 2 ? '#ABCDEF' : color), routeColors[0], routeColors[1],
     ]);
-    routeColors.forEach((_, index) => document.documentElement.style.removeProperty(`--rm-map-route-${index}`));
+    routeColors.forEach((_, index) => document.documentElement.style.removeProperty(token(index)));
+  });
+
+  it('keeps route colors stable when selection narrows and highlights without removing routes', async () => {
+    const mockMap = new MockMap();
+    const mapLoader = vi.fn(async () => ({ Map: vi.fn(function Map() { return mockMap; }) }));
+    document.documentElement.style.setProperty('--rm-map-route-1', '#123456');
+    document.documentElement.style.setProperty('--rm-map-route-3', '#654321');
+    const routes = buildRoutes(10);
+    const { rerender } = render(<TripMapChart routes={routes} track={[]} mapLoader={mapLoader as never} />);
+    await waitFor(() => expect(mapLoader).toHaveBeenCalledTimes(1));
+    await act(async () => mockMap.emit('load'));
+    rerender(<TripMapChart routes={routes} track={[]} selectedRouteIds={['trip-2', 'trip-4']} highlightedRouteId="trip-4" mapLoader={mapLoader as never} />);
+    await waitFor(() => {
+      const data = mockMap.sources.get('trip-routes')?.setData.mock.calls.at(-1)?.[0] as { features: Array<{ properties: unknown }> };
+      expect(data.features.map(feature => feature.properties)).toEqual([
+        { id: 'trip-2', color: '#123456', selected: true, emphasized: false, opacity: 0.18 },
+        { id: 'trip-4', color: '#654321', selected: true, emphasized: true, opacity: 0.95 },
+      ]);
+    });
+    document.documentElement.style.removeProperty('--rm-map-route-1');
+    document.documentElement.style.removeProperty('--rm-map-route-3');
   });
 
   it('shows only selected routes and refits to their bounds when selection changes', async () => {

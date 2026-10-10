@@ -16,6 +16,7 @@ import { registerWidget } from '../../registry';
 import type { WidgetInstance, WidgetCtx } from '../../registry';
 import { useMeasuredWidgetHeight } from '../useMeasuredWidgetHeight';
 import { deriveCommonTagIds, TripTagBadges, TripTagPicker } from './TripTagPicker';
+import { TripRouteKey } from './TripRouteKey';
 
 function useIsMobile() {
   const [isMobile, setIsMobile] = React.useState(() =>
@@ -119,7 +120,8 @@ const ROWS_PER_PAGE_OPTIONS = [15, 25, 50, 100] as const;
 
 export function TripsMapWidget({ ctx }: { instance: WidgetInstance; ctx: WidgetCtx }) {
   const navigate = useNavigate();
-  const { selectedIds } = useTripSelection();
+  const { selectedIds, tripRegistry } = useTripSelection();
+  const [highlightedRouteId, setHighlightedRouteId] = React.useState<string | null>(null);
   const { search } = useTripTableState();
   const isDark = useDocumentTheme();
   const accessToken = useAuth((state) => state.accessToken);
@@ -143,6 +145,7 @@ export function TripsMapWidget({ ctx }: { instance: WidgetInstance; ctx: WidgetC
   React.useEffect(() => {
     resetTripSelection(`${ctx.vehicleId}::${ctx.from}::${ctx.to}`, { force: true });
     resetTripTableState(`${ctx.vehicleId}::${ctx.from}::${ctx.to}`, { force: true });
+    setHighlightedRouteId(null);
   }, [ctx.vehicleId, ctx.from, ctx.to]);
 
   const selectedRouteIds = React.useMemo(
@@ -160,6 +163,7 @@ export function TripsMapWidget({ ctx }: { instance: WidgetInstance; ctx: WidgetC
               track={[]}
               routes={routes}
               selectedRouteIds={selectedRouteIds}
+              highlightedRouteId={selectedRouteIds.includes(highlightedRouteId ?? '') ? highlightedRouteId : null}
               onRouteClick={toggleTripSelection}
               height={height}
               mapStyle={effectiveMapStyle}
@@ -185,6 +189,12 @@ export function TripsMapWidget({ ctx }: { instance: WidgetInstance; ctx: WidgetC
         </div>
       </div>
 
+      <TripRouteKey
+        routes={routes.flatMap((route, index) => selectedRouteIds.includes(route.id) ? [{ id: route.id, index }] : [])}
+        trips={tripRegistry}
+        highlightedId={highlightedRouteId}
+        onHighlight={setHighlightedRouteId}
+      />
       {selectedRouteIds.length > 0 ? (
         <div className="flex shrink-0 items-center justify-between gap-3 rounded-lg border border-accent/30 bg-accent/10 px-3 py-2 text-xs text-fg-secondary">
           {selectedRouteIds.length === 1 ? (
