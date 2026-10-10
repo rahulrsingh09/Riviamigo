@@ -605,8 +605,10 @@ function renderStatusValue({
     return presentation.tooltip ? <Tooltip content={presentation.tooltip}>{badge}</Tooltip> : badge;
   }
 
+  const numericValue = presentation ? null : /^([+-]?[\d,.]+)\s+(.+)$/.exec(displayValue);
   const valueNode = (
     <span
+      data-sensor-value
       className={cn(
         'font-mono font-semibold tabular-nums tracking-tight',
         valueToneClass,
@@ -614,7 +616,9 @@ function renderStatusValue({
       )}
       style={{ textShadow: 'var(--rm-value-halo)', ...valueToneStyle }}
     >
-      {displayValue}
+      {numericValue
+        ? <><span>{numericValue[1]}</span>{' '}<span data-sensor-unit>{numericValue[2]}</span></>
+        : displayValue}
     </span>
   );
 

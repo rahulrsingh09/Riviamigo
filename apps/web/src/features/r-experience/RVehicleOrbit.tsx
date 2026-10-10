@@ -16,11 +16,16 @@ export function RVehicleOrbit({ vehicleId }: { vehicleId: string }) {
   const failed = React.useRef(false);
   const draw = React.useRef<(next: number) => void>(() => {});
   const reduced = React.useRef(false);
+  const interacted = React.useRef(false);
   const drag = React.useRef<{ id: number; x: number; y: number; frame: number; time: number; velocity: number; moved: boolean } | null>(null);
 
   React.useEffect(() => {
     const media = window.matchMedia('(prefers-reduced-motion: reduce)');
-    const change = () => { reduced.current = media.matches; cancelAnimationFrame(motion.current); };
+    const change = () => {
+      reduced.current = media.matches;
+      if (media.matches) interacted.current = true;
+      cancelAnimationFrame(motion.current);
+    };
     change();
     media.addEventListener('change', change);
     const frames = createOrbitFrames();
@@ -69,17 +74,54 @@ export function RVehicleOrbit({ vehicleId }: { vehicleId: string }) {
       };
       void render();
     };
-    if (frame.current !== DEFAULT_FRAME) draw.current(frame.current);
+    const restore = rememberedAngles.has(vehicleId);
+    if (restore) draw.current(frame.current);
+    let entered = false;
+    const observer = new IntersectionObserver(entries => {
+      const visible = entries.some(entry => entry.isIntersecting);
+      if (!visible) {
+        if (entered) { interacted.current = true; cancelAnimationFrame(motion.current); }
+        return;
+      }
+      if (entered || restore || reduced.current || interacted.current) return;
+      entered = true;
+      setLoading(true);
+      void frames.get(frame.current).then(() => {
+        if (!active || interacted.current || document.hidden) {
+          if (active) setLoading(false);
+          return;
+        }
+        const start = frame.current;
+        const began = performance.now();
+        const tick = (time: number) => {
+          if (!active || interacted.current || reduced.current) return;
+          const progress = Math.min(1, (time - began) / 3600);
+          draw.current(start + ORBIT_FRAMES * (1 - Math.pow(1 - progress, 3)));
+          if (progress < 1) motion.current = requestAnimationFrame(tick);
+        };
+        motion.current = requestAnimationFrame(tick);
+      }).catch(() => {
+        if (active) { failed.current = true; setError(true); setLoading(false); }
+      });
+    });
+    if (canvas.current) observer.observe(canvas.current.parentElement!);
+    const visibility = () => {
+      if (document.hidden) { interacted.current = true; cancelAnimationFrame(motion.current); }
+    };
+    document.addEventListener('visibilitychange', visibility);
     return () => {
       active = false;
       sequence++;
       cancelAnimationFrame(motion.current);
+      observer.disconnect();
+      document.removeEventListener('visibilitychange', visibility);
       media.removeEventListener('change', change);
       frames.close();
     };
   }, [vehicleId]);
 
   function animate(target: number, duration: number) {
+    interacted.current = true;
     cancelAnimationFrame(motion.current);
     failed.current = false;
     if (reduced.current) { draw.current(target); return; }
@@ -113,10 +155,11 @@ export function RVehicleOrbit({ vehicleId }: { vehicleId: string }) {
             : event.key === 'ArrowLeft' ? frame.current - 2
             : event.key === 'Home' ? FRONT_FRAME : event.key === 'End' ? DEFAULT_FRAME : null;
           if (next === null) return;
-          event.preventDefault(); cancelAnimationFrame(motion.current); failed.current = false; draw.current(next);
+          event.preventDefault(); interacted.current = true; cancelAnimationFrame(motion.current); failed.current = false; draw.current(next);
         }}
         onPointerDown={event => {
           if (!event.isPrimary || event.button !== 0) return;
+          interacted.current = true;
           cancelAnimationFrame(motion.current);
           failed.current = false;
           drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY, frame: frame.current, time: performance.now(), velocity: 0, moved: false };

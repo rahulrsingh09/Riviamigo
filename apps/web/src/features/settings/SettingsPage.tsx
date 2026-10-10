@@ -45,6 +45,7 @@ import { PlacesSection } from '../../components/settings/PlacesSection';
 import { ChargingSection } from '../../components/settings/ChargingSection';
 import { RSettingsNavigation } from '../r-experience/RSettingsNavigation';
 import { RMapPreferences } from '../r-experience/RMapPreferences';
+import { RConfiguredVehicleArtwork } from '../r-experience/RConfiguredVehicleArtwork';
 import { RawTelemetryExplorer } from '../../components/settings/RawTelemetryExplorer';
 import { ChartManagerSection } from './charts/ChartManagerSection';
 import { canManageSystemDashboards } from '../../components/dashboard/DashboardPage';
@@ -389,10 +390,10 @@ function VehicleIngestionCaptureRow({ vehicle }: { vehicle: Vehicle }) {
   } else status = 'No capture yet. Records for up to 1 hour.';
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-3 rounded-xl border border-border bg-bg-elevated/35 px-3 py-3">
-      <div className="min-w-0 flex-1 basis-48">
-        <div className="flex items-center gap-2">
-          <p className="truncate text-sm font-medium text-fg">{vehicle.display_name}</p>
+    <div data-capture-row className="flex flex-col gap-3 rounded-xl border border-border bg-bg-elevated/35 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="min-w-0 sm:flex-1">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
+          <p className="min-w-0 break-words text-sm font-medium text-fg">{vehicle.display_name}</p>
           {state === 'capturing' && <Badge variant="accent">Capturing</Badge>}
         </div>
         <p className="mt-0.5 text-xs text-fg-tertiary">{status}</p>
@@ -404,7 +405,7 @@ function VehicleIngestionCaptureRow({ vehicle }: { vehicle: Vehicle }) {
         {(start.isError || stop.isError) && <p className="mt-1 text-xs text-danger">Could not change the capture. Try again.</p>}
         {download.isError && <p className="mt-1 text-xs text-danger">Could not download the capture. Try again.</p>}
       </div>
-      <div className="flex flex-wrap items-center gap-2">
+      <div className="flex flex-wrap items-center justify-end gap-2 sm:shrink-0">
         {state === 'stopped' && (
           <Button
             size="sm"
@@ -1279,13 +1280,13 @@ export function SettingsContent({ initialSection, oidcFeedback, oidcFeedbackKind
                                   : 'none',
                               }}
                             >
-                              <ThemeVehicleImage
+                              <RConfiguredVehicleArtwork vehicle={v} className="w-full object-contain"><ThemeVehicleImage
                                 images={v.images}
                                 model={v.model}
                                 placement="side"
                                 className="w-full object-contain"
                                 fallback={<Car className="h-6 w-6 text-fg-secondary" />}
-                              />
+                              /></RConfiguredVehicleArtwork>
                               <span className="text-[10px] font-medium leading-none" style={{ color: healthColor }}>
                                 {healthText}
                               </span>

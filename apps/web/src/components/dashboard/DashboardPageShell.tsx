@@ -179,7 +179,8 @@ function DashboardPageShellContent({
     () => storedTimeframe ?? DEFAULT_TIMEFRAME,
   );
   const [chargeSessionDayLocal, setChargeSessionDayLocal] = useState<string | null>(null);
-  const [unitMode, setUnitMode] = useState(() => getUnitPreferences().mode);
+  const [unitPreferences, setUnitPreferences] = useState(getUnitPreferences);
+  const unitMode = unitPreferences.mode;
   const range = useMemo(() => getTimeframeRange(timeframe), [timeframe]);
   const { from, to } = useMemo(() => timeframeToQuery(timeframe), [timeframe]);
 
@@ -255,7 +256,7 @@ function DashboardPageShellContent({
 
   useEffect(() => {
     const handleUnits = () => {
-      setUnitMode(getUnitPreferences().mode);
+      setUnitPreferences(getUnitPreferences());
     };
     window.addEventListener('rm-units-change', handleUnits as EventListener);
     window.addEventListener('storage', handleUnits);
@@ -375,7 +376,7 @@ function DashboardPageShellContent({
     </button>
   ) : null;
   const pageActions = pageLeadingActions || vehicleAction || efficiencyDisplayAction || dateRangeAction || pageExtraActions ? (
-    <div className="flex flex-wrap items-center justify-end gap-2">
+    <div data-dashboard-actions className="flex flex-wrap items-center justify-end gap-2">
       {pageLeadingActions}
       {vehicleAction}
       {efficiencyDisplayAction}

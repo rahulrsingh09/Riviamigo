@@ -40,6 +40,11 @@
 .r-experience [data-page-heading] { gap: 20px; }
 .r-experience [data-metric-tabs] { border: 1px solid var(--rm-border-default); border-radius: 16px; }
 .r-experience [data-metric-tabs] h2 { text-transform: none; letter-spacing: 0; font-size: 17px; color: var(--rm-text-primary); }
+.r-experience [data-testid="sensor-chip"] .truncate { white-space: normal; overflow: visible; text-overflow: clip; text-transform: none; letter-spacing: 0; line-height: 1.45; }
+.r-experience [data-testid="sensor-chip"] .items-baseline { flex-wrap: wrap; min-width: 0; }
+.r-experience [data-testid="sensor-chip"] .font-mono { font-family: inherit; font-weight: 450; line-height: 1.2; }
+.r-experience [data-sensor-value] { display: inline-flex; flex-wrap: wrap; align-items: baseline; column-gap: 4px; max-width: 100%; }
+.r-experience [data-sensor-unit] { font-size: 12px; font-weight: 450; letter-spacing: 0; white-space: nowrap; }
 .r-experience [data-dashboard-grid="view"] [data-widget-type="sensor"] [data-ui-card] { border: 0; border-radius: 12px; background: var(--rm-bg-surface); }
 .r-experience [data-widget-type] > p { text-transform: none; letter-spacing: 0; color: var(--rm-text-primary); font-size: 18px; font-weight: 500; margin-bottom: 12px; }
 .r-health-hero { min-width: 0; display: flex; flex-direction: column; justify-content: space-between; padding: 8px 16px 0 0; }
@@ -75,14 +80,24 @@
 @keyframes r-arrive { from { opacity: .45; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 @media(min-width:901px) { html:has(.r-experience) { scroll-padding-top: 104px; } }
 @media(max-width:900px) {
-  .r-header { position: relative; display: flex; justify-content: space-between; padding: 12px 20px; }
+  .r-header { position: relative; display: flex; justify-content: space-between; padding: 8px 20px; }
   .r-navigation { position: fixed; z-index: 40; bottom: max(16px,env(safe-area-inset-bottom)); left: 50%; transform: translateX(-50%); width: min(390px,calc(100% - 32px)); }
   .r-navigation a { min-height: 46px; padding: 8px; font-size: 11px; gap: 6px; }
   .r-navigation a span { display: none; }
   .r-navigation a[aria-current="page"] { flex: 2; }
   .r-navigation a[aria-current="page"] span { display: inline; }
-  .r-main { padding: 12px 20px 112px; }
+  .r-main { padding: 8px 20px 112px; }
   .r-experience [data-page-heading] { flex-direction: column; align-items: stretch; }
+  .r-experience [data-page-heading] > div { min-width: 0; max-width: 100%; }
+  .r-experience [data-page-heading] > div:last-child { flex-wrap: wrap; justify-content: flex-start; }
+  .r-experience [data-page-heading] [data-dashboard-actions] { justify-content: flex-start; width: 100%; }
+  .r-experience [data-page-heading] h1 { font-size: 30px; line-height: 1.15; }
+  .r-experience [data-testid="sensor-chip"] { padding: 14px; }
+  .r-experience [data-testid="sensor-chip"] .font-mono { font-size: clamp(18px,5.2vw,24px); }
+  .r-experience [data-testid="sensor-chip"] .font-mono.text-sm { font-size: 12px; }
+  .r-experience [data-testid="sensor-chip"] .items-start { gap: 8px; }
+  .r-experience [data-testid="sensor-chip"] .items-start > .min-w-0 > .flex { flex-wrap: wrap; align-items: flex-start; }
+  .r-experience [data-trip-selection-actions] [role="combobox"],.r-experience [data-trip-selection-actions] input { min-height: 44px; }
   .r-header-actions > * { width: 44px; }
   .r-health-summary { grid-template-columns: repeat(2,minmax(0,1fr)); }
   .r-health-hero { padding-right: 0; }
@@ -90,6 +105,7 @@
   .r-editor > header .r-mark { display: none; }
 }
 @media(max-width:639px) {
+  .r-dashboard-surface[data-r-default-layout] [data-dashboard-grid="view"] > [data-widget-type="chart"] { height: 420px !important; }
   .r-experience [data-dashboard-grid="view"] { grid-template-columns: repeat(2,minmax(0,1fr)) !important; }
   .r-experience [data-dashboard-grid="view"] > [data-widget-type="sensor"] { min-height: 96px !important; }
   .r-experience [data-dashboard-grid="view"] > :not([data-widget-type="sensor"]) { grid-column: 1/-1; }

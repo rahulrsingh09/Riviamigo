@@ -14,8 +14,7 @@ export function vehicleReading(status: VehicleStatus | null | undefined, field: 
 export function isConfiguredR2(vehicle: Pick<Vehicle, 'model' | 'trim' | 'color'> | undefined) {
   const normalize = (value: string | null | undefined) => (value ?? '').replace(/[^a-z0-9]/gi, '').toLowerCase();
   return normalize(vehicle?.model) === 'r2'
-    && normalize(vehicle?.trim).includes('performance')
-    && normalize(vehicle?.color) === 'catalinacove';
+    && normalize(vehicle?.trim).includes('performance');
 }
 
 export function vehicleState(status: VehicleStatus | null | undefined) {

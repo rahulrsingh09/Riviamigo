@@ -1,4 +1,5 @@
 import * as React from 'react';
+import { createPortal } from 'react-dom';
 import { Check, ChevronDown } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -43,6 +44,8 @@ export function SelectPicker<TValue extends string = string>({
   const [activeIndex, setActiveIndex] = React.useState(-1);
   const rootRef = React.useRef<HTMLDivElement>(null);
   const triggerRef = React.useRef<HTMLButtonElement>(null);
+  const menuRef = React.useRef<HTMLDivElement>(null);
+  const [position, setPosition] = React.useState<React.CSSProperties | null>(null);
   const optionRefs = React.useRef<Array<HTMLButtonElement | null>>([]);
   const listboxId = React.useId();
   const selectedIndex = options.findIndex((option) => option.value === value);
@@ -53,30 +56,80 @@ export function SelectPicker<TValue extends string = string>({
     [options]
   );
 
+  React.useLayoutEffect(() => {
+    if (!open) { setPosition(null); return; }
+    const naturalWidth = (menuRef.current?.scrollWidth ?? 0) + 2;
+    const place = () => {
+      const trigger = triggerRef.current;
+      const menu = menuRef.current;
+      if (!trigger || !menu) return;
+      const rect = trigger.getBoundingClientRect();
+      const viewport = window.visualViewport;
+      const leftEdge = (viewport?.offsetLeft ?? 0) + 12;
+      const topEdge = (viewport?.offsetTop ?? 0) + 12;
+      const rightEdge = leftEdge + (viewport?.width ?? window.innerWidth) - 24;
+      const bottomEdge = topEdge + (viewport?.height ?? window.innerHeight) - 24;
+      const width = Math.min(Math.max(rect.width, naturalWidth), rightEdge - leftEdge);
+      const gap = size === 'sm' ? 4 : 6;
+      const below = bottomEdge - rect.bottom - gap;
+      const above = rect.top - topEdge - gap;
+      const down = below >= Math.min(288, menu.scrollHeight) || below >= above;
+      const maxHeight = Math.max(32, Math.min(288, down ? below : above));
+      const height = Math.min(menu.scrollHeight, maxHeight);
+      setPosition({
+        left: Math.max(leftEdge, Math.min(align === 'right' ? rect.right - width : rect.left, rightEdge - width)),
+        top: Math.max(topEdge, down ? rect.bottom + gap : rect.top - gap - height),
+        width, maxHeight,
+      });
+    };
+    place();
+    window.addEventListener('resize', place);
+    window.addEventListener('scroll', place, true);
+    window.visualViewport?.addEventListener('resize', place);
+    window.visualViewport?.addEventListener('scroll', place);
+    return () => {
+      window.removeEventListener('resize', place);
+      window.removeEventListener('scroll', place, true);
+      window.visualViewport?.removeEventListener('resize', place);
+      window.visualViewport?.removeEventListener('scroll', place);
+    };
+  }, [open, align, size, options.length]);
+
   React.useEffect(() => {
     if (!open) return;
 
-    function handlePointerDown(event: MouseEvent) {
-      if (!rootRef.current?.contains(event.target as Node)) setOpen(false);
+    function handlePointerDown(event: PointerEvent) {
+      if (!rootRef.current?.contains(event.target as Node) && !menuRef.current?.contains(event.target as Node)) setOpen(false);
     }
 
     function handleEscape(event: KeyboardEvent) {
       if (event.key === 'Escape') {
+        event.preventDefault();
+        event.stopPropagation();
         setOpen(false);
-        triggerRef.current?.focus();
+        triggerRef.current?.focus({ preventScroll: true });
       }
     }
 
-    document.addEventListener('mousedown', handlePointerDown);
-    document.addEventListener('keydown', handleEscape);
+    document.addEventListener('pointerdown', handlePointerDown);
+    document.addEventListener('keydown', handleEscape, true);
     return () => {
-      document.removeEventListener('mousedown', handlePointerDown);
-      document.removeEventListener('keydown', handleEscape);
+      document.removeEventListener('pointerdown', handlePointerDown);
+      document.removeEventListener('keydown', handleEscape, true);
     };
   }, [open]);
 
   React.useEffect(() => {
-    if (open && activeIndex >= 0) optionRefs.current[activeIndex]?.focus();
+    if (!open || activeIndex < 0) return;
+    const option = optionRefs.current[activeIndex];
+    const menu = menuRef.current;
+    option?.focus({ preventScroll: true });
+    if (option && menu) {
+      if (option.offsetTop < menu.scrollTop) menu.scrollTop = option.offsetTop;
+      else if (option.offsetTop + option.offsetHeight > menu.scrollTop + menu.clientHeight) {
+        menu.scrollTop = option.offsetTop + option.offsetHeight - menu.clientHeight;
+      }
+    }
   }, [activeIndex, open]);
 
   function getEnabledIndex(start: number, direction: 1 | -1) {
@@ -100,7 +153,7 @@ export function SelectPicker<TValue extends string = string>({
   function selectOption(nextValue: TValue) {
     onChange(nextValue);
     setOpen(false);
-    triggerRef.current?.focus();
+    triggerRef.current?.focus({ preventScroll: true });
   }
 
   function handleTriggerKeyDown(event: React.KeyboardEvent<HTMLButtonElement>) {
@@ -134,12 +187,12 @@ export function SelectPicker<TValue extends string = string>({
       const option = options[index];
       if (option && !option.disabled) selectOption(option.value);
     } else if (event.key === 'Tab') {
+      triggerRef.current?.focus({ preventScroll: true });
       setOpen(false);
     }
   }
 
   const triggerSize = size === 'sm' ? 'h-8 px-2.5 text-xs' : 'h-9 px-3 text-sm';
-  const menuTop = size === 'sm' ? 'top-[calc(100%+0.25rem)]' : 'top-[calc(100%+0.375rem)]';
 
   return (
     <div ref={rootRef} className={cn('relative inline-block min-w-0', className)}>
@@ -174,17 +227,17 @@ export function SelectPicker<TValue extends string = string>({
         />
       </button>
 
-      {open ? (
+      {open ? createPortal(
         <div
+          ref={menuRef}
           id={listboxId}
           role="listbox"
           aria-label={ariaLabel}
           className={cn(
-            'absolute z-50 max-h-72 min-w-full overflow-y-auto rounded-lg border border-border bg-bg-elevated p-1 shadow-lg',
-            menuTop,
-            align === 'right' ? 'right-0' : 'left-0',
+            'fixed z-[100] w-max overflow-y-auto overscroll-contain rounded-lg border border-border bg-bg-elevated p-1 shadow-lg',
             menuClassName
           )}
+          style={position ?? { visibility: 'hidden', maxWidth: 'calc(100vw - 24px)' }}
         >
           {options.length > 0 ? (
             options.map((option, index) => {
@@ -217,10 +270,10 @@ export function SelectPicker<TValue extends string = string>({
                 >
                   <span className="flex min-w-0 items-center gap-2">
                     {option.leading ? <span className="shrink-0">{option.leading}</span> : null}
-                    <span className="min-w-0 truncate">
-                      <span className="block truncate">{option.label}</span>
+                    <span className="min-w-0 whitespace-normal break-words">
+                      <span className="block">{option.label}</span>
                       {option.description ? (
-                        <span className="mt-0.5 block truncate text-xs text-fg-tertiary">
+                        <span className="mt-0.5 block text-xs text-fg-tertiary">
                           {option.description}
                         </span>
                       ) : null}
@@ -233,7 +286,8 @@ export function SelectPicker<TValue extends string = string>({
           ) : (
             <div className="px-3 py-2 text-sm text-fg-tertiary">No options available</div>
           )}
-        </div>
+        </div>,
+        rootRef.current?.closest('[role="dialog"]') ?? document.body
       ) : null}
     </div>
   );

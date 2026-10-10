@@ -112,9 +112,10 @@ export function VehicleHealthContent() {
 
   const diagnostics = summarizeDiagnostics(status);
   const extended = data?.extended_telemetry;
-  const [unitMode, setUnitMode] = useState(() => getUnitPreferences().mode);
+  const [unitPreferences, setUnitPreferences] = useState(getUnitPreferences);
+  const unitMode = unitPreferences.mode;
   useEffect(() => {
-    const handleUnits = () => setUnitMode(getUnitPreferences().mode);
+    const handleUnits = () => setUnitPreferences(getUnitPreferences());
     window.addEventListener('rm-units-change', handleUnits as EventListener);
     window.addEventListener('storage', handleUnits);
     return () => {

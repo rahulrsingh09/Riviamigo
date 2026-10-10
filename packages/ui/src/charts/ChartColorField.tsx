@@ -5,6 +5,7 @@ import type { ThemeColorPair } from '@riviamigo/themes';
 import { ColorPicker, type ColorPickerSwatch } from '../primitives/ColorPicker';
 import { SelectPicker } from '../primitives/SelectPicker';
 import { useThemeRuntime } from '../lib/themeRuntime';
+import { useChartColorPairs } from '../hooks/useDocumentPalette';
 import { cn } from '../lib/utils';
 import { CHART_SERIES_TOKENS, getChartColor } from './ChartProvider';
 
@@ -69,6 +70,7 @@ export interface ChartColorFieldProps {
 
 export function ChartColorField({ value, onChange, label = 'Color', className, automatic }: ChartColorFieldProps) {
   const runtime = useThemeRuntime();
+  const chartColorPairs = useChartColorPairs();
   const isDark = runtime.effectiveMode === 'dark';
   const [pickerOpen, setPickerOpen] = React.useState(false);
   const automaticActive = automatic?.active === true;
@@ -81,7 +83,7 @@ export function ChartColorField({ value, onChange, label = 'Color', className, a
         : value.light;
   const customPair: ThemeColorPair = value.mode === 'custom'
     ? { light: value.light, dark: value.dark }
-    : runtime.chartColorPairs[value.token] ?? { light: concreteToken(value.token, runtime.chartColors.accent!), dark: concreteToken(value.token, runtime.chartColors.accent!) };
+    : chartColorPairs[value.token] ?? { light: concreteToken(value.token, runtime.chartColors.accent!), dark: concreteToken(value.token, runtime.chartColors.accent!) };
 
   return <div className={cn('grid gap-2', className)}>
     <span className="text-xs font-medium text-fg-secondary">{label}</span>

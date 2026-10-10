@@ -360,9 +360,9 @@ export function TripsTableWidget({ ctx }: { instance: WidgetInstance; ctx: Widge
       </div>
 
       {selectedIds.length > 0 && ctx.canManageTripTags ? (
-        <div className="rounded-xl border border-accent/30 bg-accent/10 p-3">
-          <div className="flex items-center gap-2">
-            <div className="min-w-0 flex-1">
+        <div data-trip-selection-actions className="rounded-xl border border-border bg-bg-surface p-3">
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="min-w-0 basis-full sm:basis-auto sm:flex-1">
               <TripTagPicker
                 vehicleId={ctx.vehicleId}
                 canManage
@@ -384,13 +384,14 @@ export function TripsTableWidget({ ctx }: { instance: WidgetInstance; ctx: Widge
                   type="button"
                   variant={action.key === 'save' ? 'primary' : action.key === 'clear' ? 'danger' : 'secondary'}
                   size="md"
-                  className="h-11 w-11 shrink-0 px-0"
+                  className="h-11 flex-1 gap-2 px-3 sm:w-11 sm:flex-none sm:px-0"
                   aria-label={action.label}
                   disabled={action.disabled || pendingBatchAction !== null || updateAssignments.isPending}
                   loading={pendingBatchAction === action.key}
                   onClick={() => void runBatchTagAction(action.key, action.mode, action.tagIds)}
                 >
                   {action.icon}
+                  <span className="sm:hidden">{action.key === 'clear' ? 'Clear' : action.key === 'add' ? 'Add' : 'Replace'}</span>
                 </Button>
               </Tooltip>
             ))}

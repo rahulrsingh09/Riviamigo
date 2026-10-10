@@ -17,9 +17,15 @@ There is no appearance gallery, Theme Studio entry or interface selector.
 - Use the R mark and approved Option B: an open vehicle stage, readings above
   the car, and a compact activity column on desktop; stack these on mobile.
   Keep the complete vehicle silhouette visible.
-- Use neutral surfaces, restrained borders and `--r-signal`. Canonical status
-  and chart-series colors retain their data meaning. R overrides belong in
-  the existing token owner, `packages/ui/src/tokens/globals.css`.
+- Use neutral surfaces, restrained borders and `--r-signal`. Cove teal, lime,
+  caliper gold and supporting cool series colors form the fixed R data palette.
+  Status colors retain their meaning. R overrides belong in the existing token
+  owner, `packages/ui/src/tokens/globals.css`; saved account themes must not change
+  automatic chart or sensor colors. Explicit chart-color overrides remain valid.
+- The owner's R2 Performance uses the approved Catalina Cove, 21-inch-wheel,
+  black-interior artwork even when live paint metadata is missing. Other vehicle
+  models keep their own artwork. Lead the overview with total mileage and label
+  battery range separately as an estimate.
 - Navigation is at the top on desktop and bottom on mobile. Settings use grouped
   full-width rows, in two desktop columns and one mobile column. Hover covers
   the whole row through its divider.
@@ -28,8 +34,18 @@ There is no appearance gallery, Theme Studio entry or interface selector.
 - Pointer use leaves no colored focus frame. Keyboard focus and skip navigation
   remain visible; retain existing dialog focus management.
 - Page entry takes 220 ms. Rotation uses a deferred, same-origin frame pack with
-  bounded decoding. Reduced motion uses direct changes. Do not animate page
-  backgrounds through white.
+  bounded decoding and one 3.6-second turn on first visible entry. Touch, pointer
+  and keyboard interaction interrupt it. Reduced motion uses direct changes
+  and defers loading until interaction. Do not animate page backgrounds through white.
+- On phones, headings and actions form intentional separate rows. Sensor titles,
+  notes and units remain readable without uppercase truncation or numeric halos.
+  Charging chart layout uses actual content width, retaining at least 11px labels
+  and space for its toolbar. Selected-trip tagging places a full-width picker
+  above labeled touch actions.
+- Select pickers render above surrounding content, keep a 12px viewport inset,
+  flip above the trigger when space below is limited and scroll their options.
+  Long option labels wrap. Escape closes the picker before its parent dialog;
+  keyboard focus returns to the trigger.
 - Preserve canonical charts, settings operations, permissions and map panning.
 
 See [R integration](./architecture/r-experience.md) for module boundaries.

@@ -512,8 +512,8 @@ describe('dashboard sensor chips', () => {
       />
     );
 
-    expect(screen.getByText('5.0 mi/kWh')).toBeInTheDocument();
-    expect(screen.queryByText('1.0 mi/kWh')).not.toBeInTheDocument();
+    expect(screen.getByTestId('sensor-chip')).toHaveTextContent('5.0 mi/kWh');
+    expect(screen.getByTestId('sensor-chip')).not.toHaveTextContent('1.0 mi/kWh');
   });
 
   it('uses the server-calculated range value instead of the latest gross-efficiency bucket', () => {
@@ -539,8 +539,8 @@ describe('dashboard sensor chips', () => {
       />
     );
 
-    expect(screen.getByText('3.0 mi/kWh')).toBeInTheDocument();
-    expect(screen.queryByText('32.3 mi/kWh')).not.toBeInTheDocument();
+    expect(screen.getByTestId('sensor-chip')).toHaveTextContent('3.0 mi/kWh');
+    expect(screen.getByTestId('sensor-chip')).not.toHaveTextContent('32.3 mi/kWh');
   });
 
   it('uses the server-calculated range value instead of the latest temperature bucket', () => {
@@ -566,7 +566,7 @@ describe('dashboard sensor chips', () => {
       />
     );
 
-    expect(screen.getByText('68 F')).toBeInTheDocument();
+    expect(screen.getByTestId('sensor-chip')).toHaveTextContent('68 F');
     expect(screen.queryByText('62')).not.toBeInTheDocument();
   });
 
@@ -691,7 +691,8 @@ describe('dashboard sensor chips', () => {
 
     expect(screen.getByText('Usable Capacity')).toBeInTheDocument();
     expect(screen.getByText('(now/new)')).toBeInTheDocument();
-    expect(screen.getByText('111.6 kWh')).toHaveClass('text-fg');
+    expect(screen.getByTestId('sensor-chip').querySelector('[data-sensor-value]')).toHaveTextContent('111.6 kWh');
+    expect(screen.getByTestId('sensor-chip').querySelector('[data-sensor-value]')).toHaveClass('text-fg');
     expect(screen.getByText('/109.0 kWh')).toHaveClass('text-fg-tertiary');
   });
 

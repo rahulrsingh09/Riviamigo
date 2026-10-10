@@ -20,8 +20,8 @@ export function RVehicleStage({ vehicle, status, actions, efficiency }: {
   const rearLock = vehicle.model === 'R1T' ? status?.closure_tailgate_locked : status?.closure_liftgate_locked ?? status?.closure_tailgate_locked;
   const lockLabel = status?.doors_locked == null ? 'Locks pending' : status.doors_locked ? 'Locked' : 'Unlocked';
   const readings = tab === 'Energy' ? [
+    ['Total mileage', formatMiles(vehicleReading(status, 'odometer_miles')), 'odometer_miles'],
     ['Battery', battery == null ? '—' : formatPercent(battery), 'battery_level'],
-    ['Range', formatMiles(vehicleReading(status, 'range_miles')), 'range_miles'],
   ] : tab === 'Cabin' ? [
     ['Inside', formatTemp(vehicleReading(status, 'cabin_temp_c')), 'cabin_temp_c'],
     ['Outside', formatTemp(vehicleReading(status, 'outside_temp_c')), 'outside_temp_c'],
@@ -31,7 +31,7 @@ export function RVehicleStage({ vehicle, status, actions, efficiency }: {
   return (
     <section className="r-vehicle-stage" aria-label="Vehicle snapshot">
       <header className="r-scene-heading">
-        <div><h1>{vehicle.display_name || vehicle.model}</h1><p>{[vehicle.trim, vehicle.color].filter(Boolean).join(' · ') || vehicle.model}</p>
+        <div><h1>{vehicle.display_name || vehicle.model}</h1><p>{configured ? 'R2 Performance · Catalina Cove' : [vehicle.trim, vehicle.color].filter(Boolean).join(' · ') || vehicle.model}</p>
           {vehicle.is_demo && <small>Demo vehicle · Illustrative data</small>}</div>
         <div className="r-car-status"><span>{vehicleState(status)}</span>
           <span>{status?.doors_locked ? <Lock /> : <Unlock />}{lockLabel}</span></div>
@@ -41,11 +41,14 @@ export function RVehicleStage({ vehicle, status, actions, efficiency }: {
         <span aria-hidden="true" className="r-car-tab-marker" style={{ transform: `translateX(${['Energy', 'Cabin', 'Tires'].indexOf(tab) * 100}%)` }} />
         {(['Energy', 'Cabin', 'Tires'] as const).map(label => <button type="button" key={label} aria-pressed={tab === label} onClick={() => setTab(label)}>{label}</button>)}
       </div>
-      {actions}
+      <div className="r-scene-actions">{actions}</div>
       </div>
       <div className="r-instrument-strip">
       <dl className={`r-car-readings ${tab === 'Tires' ? 'r-tires' : ''}`} key={tab}>
-        {readings.map(([label, value, field]) => <div key={label}><dt>{label}</dt><dd>{value}</dd>
+        {readings.map(([label, value, field]) => <div key={label}><dt>{label}</dt><dd>
+          <span>{value!.split(' ')[0]}</span>{value!.includes(' ') && <span className="r-reading-unit">{value!.split(' ').slice(1).join(' ')}</span>}
+        </dd>
+          {field === 'battery_level' && <small>Estimated range {formatMiles(vehicleReading(status, 'range_miles'))}</small>}
           {status?.field_availability?.[field!]?.availability === 'historical' && <small>Last known</small>}
         </div>)}
       </dl>
@@ -64,7 +67,7 @@ export function RVehicleStage({ vehicle, status, actions, efficiency }: {
         <Link to="/vehicle-health">All readings <ArrowUpRight /></Link>
       </div>
       <p className="r-reading-note">{status?.last_updated ? `Snapshot ${formatAppDateTime(status.last_updated)}` : 'Waiting for a vehicle snapshot.'}
-        {configured && <span> · Configured artwork: 21-inch wheels, black interior.</span>}
+        {configured && <span> · Catalina Cove artwork · 21-inch wheels · Black interior.</span>}
       </p>
     </section>
   );

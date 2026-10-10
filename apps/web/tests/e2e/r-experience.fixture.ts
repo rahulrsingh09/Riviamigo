@@ -13,6 +13,10 @@ export async function installRFixture(page: Page, options: {
   populatedTrip?: boolean;
   statusDelay?: number;
   unknownConfiguration?: boolean;
+  palette?: 'classic' | 'rad';
+  populatedAnalytics?: boolean;
+  odometer?: number;
+  vehicleName?: string;
   role?: 'user' | 'super_user';
 } = {}) {
   const writes: string[] = [];
@@ -41,7 +45,7 @@ export async function installRFixture(page: Page, options: {
     color: options.unknownConfiguration ? null : 'Catalina Cove',
     wheel_option: options.unknownConfiguration ? null : '21" Liquid Tungsten All-Season',
     interior_color: options.unknownConfiguration ? null : 'Black Crater Signature',
-    battery_capacity_kwh: 88, is_demo: false, display_name: 'Your Rivian',
+    battery_capacity_kwh: 88, is_demo: false, display_name: options.vehicleName ?? 'Your Rivian',
     created_at: '2026-01-01T00:00:00Z', images: null, membership_role: 'owner',
   };
   const adminFixture = options.populatedAdmin ? createAdminFixture(vehicle.id) : null;
@@ -61,6 +65,15 @@ export async function installRFixture(page: Page, options: {
     ended_at: '2026-10-08T06:00:00Z', energy_added_kwh: 20, duration_min: 120, cost_usd: null,
     charger_type: 'ac', soc_start: 40, soc_end: 65, peak_power_kw: 11,
   };
+  const tags = [{ id: 'tag-1', name: 'Daily commute', color: 'series-02' }, { id: 'tag-2', name: 'Weekend', color: 'series-03' }];
+  const assignedTags = new Map<string, string[]>();
+  const trips = Array.from({ length: options.populatedAnalytics ? 3 : 1 }, (_, index) => ({
+    ...trip(index), start_place: ['Home', 'Lake Washington', 'Office'][index], end_place: ['Office', 'Home', 'Home'][index],
+  }));
+  const days = Array.from({ length: 7 }, (_, index) => {
+    const day = `2026-10-${String(index + 1).padStart(2, '0')}`;
+    return { day_local: day, day_start: `${day}T00:00:00Z`, total_energy_kwh: [24, 37, 18, 53, 42, 31, 22][index]!, session_count: 1 };
+  });
   await page.routeWebSocket('**/v1/vehicles/live**', (socket) => socket.onMessage(() => socket.send(JSON.stringify({ type: 'heartbeat' }))));
   await page.route('**/*', async (route) => {
     const url = new URL(route.request().url());
@@ -93,7 +106,7 @@ export async function installRFixture(page: Page, options: {
         const next = request.postDataJSON().mode;
         if (next === 'light' || next === 'dark' || next === 'system') mode = next;
       }
-      return json({ schemaVersion: 2, mode, selection: { kind: 'builtin', themeId: 'classic' } }, 200, { etag: '"fixture-1"' });
+      return json({ schemaVersion: 2, mode, selection: { kind: 'builtin', themeId: options.palette ?? 'classic' } }, 200, { etag: '"fixture-1"' });
     }
     if (path === '/v2/themes/catalog') return json({ schemaVersion: 2, registryHash: 'preview', builtins: [], customThemes: [theme] });
     if (path === '/v2/themes/theme-1') return json(theme);
@@ -179,7 +192,7 @@ export async function installRFixture(page: Page, options: {
       return json({
         vehicle_id: path.includes('other-vehicle') ? 'other-vehicle' : vehicle.id,
         battery_level: path.includes('other-vehicle') ? 20 : 68, battery_limit: 80,
-        range_miles: 218, odometer_miles: 12486, power_state: 'ready', is_online: true,
+        range_miles: 218, odometer_miles: options.odometer ?? 12486, power_state: 'ready', is_online: true,
         last_updated: new Date().toISOString(), doors_locked: true,
         cabin_temp_c: 20, outside_temp_c: 15, tire_fl_psi: 45, tire_fr_psi: 45, tire_rl_psi: 45,
         tire_rr_psi: options.missingSensors ? null : 44, tire_rr_valid: options.missingSensors ? false : true,
@@ -187,13 +200,30 @@ export async function installRFixture(page: Page, options: {
     }
     if (path === '/v1/metrics/batch') {
       const requestBody = request.postDataJSON();
-      const valueByName: Record<string, number> = { trip_miles: 1234, total_trips: 123, energy_charged: 401, avg_efficiency: 320 };
-      return json({ values: requestBody.metrics.map(({ metric }: { metric: string }) => ({ metric, value: valueByName[metric] ?? null, label: metric, ts: null, unit: null })), series: [], density: 'full', bucket: 'raw' });
+      const valueByName: Record<string, number> = { trip_miles: 1234, total_trips: 123, energy_charged: 401, avg_efficiency: 320, avg_trip_duration: 30 };
+      const unitByName: Record<string, string> = { trip_miles: 'mi', energy_charged: 'kWh', avg_efficiency: 'Wh/mi', avg_trip_duration: 'min' };
+      return json({
+        values: requestBody.metrics.map(({ metric }: { metric: string }) => ({ metric, value: valueByName[metric] ?? null, label: metric, ts: null, unit: unitByName[metric] ?? null })),
+        series: options.populatedAnalytics ? requestBody.metrics.map(({ metric }: { metric: string }) => ({
+          metric, points: days.map(day => ({ ts: day.day_start, value: valueByName[metric] ?? null })),
+        })) : [],
+        density: 'full', bucket: 'raw',
+      });
     }
     if (path === '/v1/trips') {
       const offset = Number(url.searchParams.get('offset') ?? 0);
+      if (options.populatedAnalytics) return json({ items: trips.map(trip => ({
+        ...trip, tags: tags.filter(tag => assignedTags.get(trip.id)?.includes(tag.id)),
+      })), total: trips.length, page: 1, per_page: 15 });
       return json({ items: [trip(offset)], total: 123, page: Math.floor(offset / 10) + 1, per_page: 10 });
     }
+    if (options.populatedAnalytics && path.endsWith('/trip-tags/assignments')) {
+      const body = request.postDataJSON();
+      for (const id of body.trip_ids) assignedTags.set(id, body.mode === 'replace'
+        ? body.tag_ids : [...new Set([...(assignedTags.get(id) ?? []), ...body.tag_ids])] as string[]);
+      return json({ updated_trip_count: body.trip_ids.length });
+    }
+    if (options.populatedAnalytics && path.endsWith('/trip-tags')) return json(tags);
     if (/^\/v1\/trips\/trip-\d+\/detail$/.test(path)) {
       const columns = ['elapsed_s', 'lat', 'lng', 'altitude_m', 'speed_mph', 'power_kw', 'regen_power_kw',
         'battery_level', 'outside_temp_c', 'cabin_temp_c', 'driver_temp_c', 'hvac_active',
@@ -210,9 +240,29 @@ export async function installRFixture(page: Page, options: {
     if (path === '/v1/charging') return json({ items: [charge], total: 1, page: 1, per_page: 10 });
     if (path === '/v1/charging/charge-1') return json(charge);
     if (path === '/v1/charging/sessions/charge-1/curve') return json([]);
-    if (path === '/v1/charging/chart-series') return json({ series: [], sessions: [] });
+    if (path === '/v1/charging/chart-series') return json(options.populatedAnalytics ? {
+      daily: days, daily_sessions: days.map((day, index) => ({
+        ...day, session_id: `charge-${index + 1}`, started_at: day.day_start,
+        energy_added_kwh: day.total_energy_kwh, cost_usd: index % 2 ? 12.4 : 4.2,
+        charger_type: index % 2 ? 'dc' : 'ac', location_name: index % 2 ? 'Rivian charging' : 'Home',
+      })),
+    } : { daily: [], daily_sessions: [] });
     if (path === '/v1/charging/summary') return json({ total_energy_kwh: 401, total_cost_usd: null, session_count: 25, unknown_cost_session_count: 25, weekly: [] });
     if (path === '/v1/efficiency/summary') return json({ avg_wh_per_mi: 320, p10_wh_per_mi: 250, p90_wh_per_mi: 450, total_miles: 1234, efficiency_miles: 1100, coverage_percent: 89 });
+    if (options.populatedAnalytics && path === '/v1/efficiency/by-mode') return json([
+      { drive_mode: 'all_purpose', avg_efficiency: 320, trip_count: 18 },
+      { drive_mode: 'conserve', avg_efficiency: 280, trip_count: 12 },
+      { drive_mode: 'sport', avg_efficiency: 380, trip_count: 5 },
+    ]);
+    if (options.populatedAnalytics && path === '/v1/efficiency/trend') return json(days.map((day, index) => ({
+      ts: day.day_start, trip_efficiency_wh_mi: 290 + index * 18, rolling_avg_wh_mi: 315, distance_mi: 20,
+    })));
+    if (options.populatedAnalytics && path === '/v1/efficiency/vs-temp') return json(days.map((_, index) => ({
+      temp_bucket_c: 8 + index * 4, avg_efficiency_wh_mi: 380 - index * 15, trip_count: 5,
+    })));
+    if (options.populatedAnalytics && ['/v1/battery/soc', '/v1/battery/range'].includes(path)) return json(days.map((day, index) => ({
+      ts: day.day_start, value: path.endsWith('/soc') ? 78 - index * 3 : 280 - index * 8,
+    })));
     if (path.startsWith('/v1/dashboards/by-slug/')) {
       const slug = path.split('/').pop();
       const dashboard = dashboards.find((item) => item.slug === slug);
@@ -222,7 +272,14 @@ export async function installRFixture(page: Page, options: {
       const dashboard = dashboards.find((item) => item.id === path.split('/').pop());
       if (dashboard) return json(dashboard);
     }
-    if (path === '/v1/trips/map') return json({ routes: [] });
+    if (path === '/v1/trips/map') return json({
+      vehicle_id: vehicle.id, from: days[0]!.day_start, to: days[6]!.day_start,
+      total_trips: options.populatedAnalytics ? trips.length : 0, missing_route_count: 0,
+      routes: options.populatedAnalytics ? trips.map((trip, index) => ({
+        trip_id: trip.id, tags: tags.filter(tag => assignedTags.get(trip.id)?.includes(tag.id)),
+        coordinates: Array.from({ length: 20 }, (_, point) => [-122.34 + point * .003, 47.6 + point * .002 + index * .008]),
+      })) : [],
+    });
     if (path === '/v1/dashboards') return json(dashboards);
     if (path === '/v1/charts/effective') return json([]);
     if (path === '/v1/chart-sources') return json([]);

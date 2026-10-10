@@ -115,7 +115,7 @@ describe('Trips weighted efficiency sensor', () => {
       </QueryClientProvider>
     );
 
-    await waitFor(() => expect(screen.getByText('5.0 mi/kWh')).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByTestId('sensor-chip')).toHaveTextContent('5.0 mi/kWh'));
 
     registerTripsInStore([
       { id: 'trip-short', distance_mi: 1, duration_min: 5, efficiency_wh_mi: 1000 },
@@ -128,7 +128,7 @@ describe('Trips weighted efficiency sensor', () => {
       toggleTripSelection('trip-long');
     });
 
-    await waitFor(() => expect(screen.getByText('3.0 mi/kWh')).toBeInTheDocument());
-    expect(screen.queryByText('5.0 mi/kWh')).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByTestId('sensor-chip')).toHaveTextContent('3.0 mi/kWh'));
+    expect(screen.getByTestId('sensor-chip')).not.toHaveTextContent('5.0 mi/kWh');
   });
 });

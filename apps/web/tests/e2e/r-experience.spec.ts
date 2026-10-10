@@ -37,6 +37,7 @@ for (const width of [390, 1280]) {
 
 test('vehicle rotation loads once on interaction and works with light mode and reduced motion', async ({ page }) => {
   await installRFixture(page, { mode: 'dark' });
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   const packs: string[] = [];
   page.on('request', request => { if (request.resourceType() === 'fetch' && request.url().includes('r2-orbit.bin')) packs.push(request.url()); });
   await page.goto('/');
@@ -153,6 +154,7 @@ for (const width of [390, 1280]) {
 }
 
 test('failed rotation pauses until an explicit retry', async ({ page }) => {
+  await page.emulateMedia({ reducedMotion: 'reduce' });
   await installRFixture(page);
   let failedLoads = 0;
   await page.route('**/r2-orbit.bin*', async route => {

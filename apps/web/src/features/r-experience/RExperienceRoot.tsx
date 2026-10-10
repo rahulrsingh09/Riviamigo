@@ -1,11 +1,15 @@
 import React from 'react';
+import { DataPaletteProvider, type DataPaletteOverride } from '@riviamigo/ui/hooks';
+import { readRDataPalette } from './dataPalette';
 import './r-experience.css';
 
 export function RExperienceRoot({ children }: { children: React.ReactNode }) {
+  const [dataPalette, setDataPalette] = React.useState<DataPaletteOverride>({ palette: 'rad' });
   React.useLayoutEffect(() => {
     const body = document.body;
     body.classList.add('r-experience');
     document.documentElement.classList.add('r-interface');
+    setDataPalette(readRDataPalette());
     const pointer = () => { body.dataset.inputMode = 'pointer'; };
     const keyboard = (event: KeyboardEvent) => {
       const target = event.target;
@@ -24,5 +28,5 @@ export function RExperienceRoot({ children }: { children: React.ReactNode }) {
       document.removeEventListener('keydown', keyboard, true);
     };
   }, []);
-  return <>{children}</>;
+  return <DataPaletteProvider value={dataPalette}>{children}</DataPaletteProvider>;
 }

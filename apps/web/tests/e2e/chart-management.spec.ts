@@ -78,7 +78,7 @@ test('bundled editor preview survives save and reload and matches the Overview p
   await page.getByRole('button', { name: 'Emerald', exact: true }).first().click();
   await expect(
     page.getByRole('button', { name: 'Usable Capacity', exact: true }).locator('span').first()
-  ).toHaveCSS('background-color', 'rgb(16, 185, 129)');
+  ).toHaveCSS('background-color', 'rgb(121, 181, 170)');
   await page.getByRole('button', { name: 'Save' }).click();
   await expect(page).toHaveURL(/\/settings\?section=charts/);
   await expect.poll(() => apiState.createdCharts.length).toBe(1);
@@ -99,7 +99,7 @@ test('bundled editor preview survives save and reload and matches the Overview p
   await expect(page.getByRole('button', { name: 'Mileage', exact: true })).toBeVisible();
   await expect(
     page.getByRole('button', { name: 'Usable Capacity', exact: true }).locator('span').first()
-  ).toHaveCSS('background-color', 'rgb(16, 185, 129)');
+  ).toHaveCSS('background-color', 'rgb(121, 181, 170)');
 
   await page.goto('/d/dashboard');
   await page.getByRole('button', { name: 'Chart', exact: true }).click();
@@ -108,7 +108,7 @@ test('bundled editor preview survives save and reload and matches the Overview p
   await expect(page.getByRole('button', { name: 'Mileage', exact: true })).toBeVisible();
   await expect(
     page.getByRole('button', { name: 'Usable Capacity', exact: true }).locator('span').first()
-  ).toHaveCSS('background-color', 'rgb(16, 185, 129)');
+  ).toHaveCSS('background-color', 'rgb(121, 181, 170)');
   await expect(page.locator('.uplot')).toHaveCount(1);
 });
 

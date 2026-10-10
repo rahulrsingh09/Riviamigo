@@ -6,7 +6,7 @@ import { formatCurrency, formatDuration, formatEfficiency, formatEfficiencyValue
 import { formatAppDateTime } from '@riviamigo/ui/lib/dateTime';
 import type { DashboardPageShellRenderState } from '../../components/dashboard/dashboardShellTypes';
 import { getTimeframeLabel } from '../../lib/dates';
-import { finiteReading, vehicleReading } from './readings';
+import { finiteReading } from './readings';
 import { RVehicleStage } from './RVehicleStage';
 import './r-overview.css';
 
@@ -32,13 +32,12 @@ export function ROverview({ state, actions }: { state: DashboardPageShellRenderS
           <Link className="r-efficiency-card" to="/efficiency">
             <span className="r-card-top">Efficiency <ArrowUpRight /></span>
             <div><strong>{formatEfficiencyValue(metric('avg_efficiency'))}</strong><span className="r-metric-unit">{getEfficiencyUnitLabel()}</span></div>
-            <small>{getTimeframeLabel(state.timeframe)}</small>
           </Link>
         } />
         <aside className="r-activity-rail" aria-label="Mileage and recent activity">
           <section className="r-distance-card" aria-label="Distance summary">
-            <div><span>Total mileage</span><strong>{formatMiles(vehicleReading(status, 'odometer_miles'))}</strong><small>Odometer · Last recorded</small></div>
-            <div className="r-period-distance"><strong>{formatMiles(metric('trip_miles'))}</strong><small>{getTimeframeLabel(state.timeframe)}<br />{formatNumber(metric('total_trips'), 0)} trips recorded</small></div>
+            <div><span>Distance this period</span><strong>{formatMiles(metric('trip_miles'))}</strong><small>{getTimeframeLabel(state.timeframe)}</small></div>
+            <div className="r-period-distance"><strong>{formatNumber(metric('total_trips'), 0)}</strong><small>Trips recorded</small></div>
           </section>
       {batch.isError && <p className="r-reading-note" role="alert">Period totals could not be loaded. <button type="button" onClick={() => void batch.refetch()}>Retry</button></p>}
       <section className="r-recent">

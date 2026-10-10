@@ -17,6 +17,10 @@
 .r-car-readings > div,.r-efficiency-card { min-width: 0; background: var(--rm-bg-surface); border-radius: 12px; padding: 16px; min-height: 116px; display: flex; flex-direction: column; justify-content: space-between; gap: 10px; }
 .r-car-readings dt,.r-card-top { font-size: 12px; color: var(--rm-text-secondary); }
 .r-car-readings dd,.r-efficiency-card strong { margin: auto 0 0; font-size: 30px; font-weight: 450; line-height: 1.1; letter-spacing: -1px; white-space: nowrap; }
+.r-car-readings dd { display: flex; flex-direction: column; gap: 5px; font-variant-numeric: tabular-nums; }
+.r-car-readings .r-reading-unit { font-size: 11px; font-weight: 400; letter-spacing: 0; color: var(--rm-text-secondary); }
+.r-efficiency-card > div { margin-top: auto; }
+.r-scene-actions { min-width: 0; }
 .r-car-readings small { font-size: 10px; color: var(--rm-text-secondary); }
 .r-tires > div { min-height: 78px; padding: 12px; }
 .r-tires dd { font-size: 21px; }
@@ -74,21 +78,33 @@
 @media(max-width:1100px) and (min-width:901px) { .r-overview { gap: 28px; grid-template-columns: minmax(0,1fr) 300px; } .r-car-readings > div,.r-efficiency-card { padding: 12px; } .r-car-readings dd { font-size: 27px; } }
 @media(max-width:900px) {
   .r-overview { grid-template-columns: minmax(0,1fr); gap: 32px; }
-  .r-scene-heading h1 { font-size: 42px; }
+  .r-scene-heading { align-items: flex-start; gap: 12px; }
+  .r-scene-heading > div:first-child { min-width: 0; }
+  .r-scene-heading h1 { font-size: clamp(28px,8vw,36px); line-height: 1.1; letter-spacing: -1px; }
   .r-scene-heading p { margin-top: 10px; }
-  .r-car-status { font-size: 10px; gap: 8px; }
-  .r-scene-controls { margin-top: 22px; gap: 8px; flex-wrap: wrap; }
-  .r-car-tabs { width: min(240px,65%); }
-  .r-car-tabs button { font-size: 11px; min-height: 36px; }
-  .r-instrument-strip { gap: 8px; margin-top: 14px; max-width: none; }
+  .r-car-status { font-size: 11px; gap: 8px; padding-top: 5px; max-width: 108px; text-align: right; }
+  .r-scene-controls { margin-top: 14px; gap: 10px; flex-wrap: wrap; }
+  .r-scene-actions { order: -1; width: 100%; }
+  .r-scene-actions [data-dashboard-actions] { display: flex; flex-wrap: nowrap; justify-content: flex-start; width: 100%; gap: 8px; }
+  .r-scene-actions [aria-label="Select vehicle"] { min-width: 0; width: 100%; }
+  .r-scene-actions [data-dashboard-actions] > :has([aria-label="Select vehicle"]) { min-width: 0; flex: 1; }
+  .r-scene-actions [data-dashboard-actions] > :last-child { margin-left: auto; }
+  .r-scene-actions [data-dashboard-actions] button { min-height: 44px; }
+  .r-scene-actions [aria-label^="Toggle efficiency units"] { width: 44px; }
+  .r-car-tabs { width: 100%; }
+  .r-car-tabs button { font-size: 12px; min-height: 40px; }
+  .r-instrument-strip { gap: 8px; margin-top: 12px; max-width: none; }
   .r-car-readings { gap: 8px; }
-  .r-car-readings > div,.r-efficiency-card { min-height: 120px; padding: 12px; border-radius: 10px; }
-  .r-car-readings dt,.r-card-top { font-size: 10px; }
-  .r-car-readings dd,.r-efficiency-card strong { font-size: clamp(21px,6.2vw,28px); }
+  .r-car-readings > div,.r-efficiency-card { min-height: 112px; padding: 12px 10px; border-radius: 12px; gap: 6px; justify-content: flex-start; }
+  .r-car-readings dd,.r-efficiency-card > div { margin-top: 6px; }
+  .r-car-readings dt,.r-card-top { font-size: 11px; }
+  .r-car-readings dd,.r-efficiency-card strong { font-size: clamp(21px,6.2vw,26px); }
+  .r-car-readings > div:first-child dd { font-size: clamp(17px,5vw,24px); }
+  .r-car-readings small,.r-efficiency-card small,.r-metric-unit { font-size: 11px; }
   .r-tires > div { min-height: 78px; }
   .r-tires dd { font-size: 19px; }
   .r-orbit { margin-inline: -20px; }
-  .r-orbit-stage,.r-static-car { height: clamp(230px,35svh,330px); }
+  .r-orbit-stage,.r-static-car { height: clamp(170px,28svh,280px); }
   .r-orbit-controls { margin-inline: 20px; font-size: 10px; }
   .r-car-foot { font-size: 11px; }
   .r-distance-card { flex-direction: row; align-items: center; justify-content: space-between; gap: 16px; padding: 24px 0; border-block: 1px solid var(--rm-border-default); }

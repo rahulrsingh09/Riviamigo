@@ -14,9 +14,10 @@ describe('R reading contracts', () => {
     expect(vehicleReading(status, 'battery_level')).toBe(0);
     expect(vehicleReading(status, 'tire_fl_psi')).toBeNull();
   });
-  it('uses configured artwork only for the matching vehicle configuration', () => {
+  it('uses the owner-configured Catalina Cove artwork even when Rivian omits paint metadata', () => {
     expect(isConfiguredR2({ model: 'R2', trim: 'Performance', color: 'Catalina Cove' })).toBe(true);
-    expect(isConfiguredR2({ model: 'R2', trim: 'Performance', color: null })).toBe(false);
+    expect(isConfiguredR2({ model: 'R2', trim: 'R2 Performance', color: null })).toBe(true);
+    expect(isConfiguredR2({ model: 'R2', trim: 'Performance', color: 'Other paint' })).toBe(true);
     expect(isConfiguredR2({ model: 'R1T', trim: 'Performance', color: 'Catalina Cove' })).toBe(false);
     expect(isConfiguredR2({ model: 'R2', trim: 'Standard', color: 'Catalina Cove' })).toBe(false);
   });

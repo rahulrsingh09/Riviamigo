@@ -27,12 +27,29 @@ edits to system layouts, and editing mode retain saved positions and sizes.
 | `routes/settings.themes.$themeId.tsx` | Redirect retired appearance URLs |
 | Card, PageLayout, MetricTabs and WidgetHost attributes | Stable styling hooks |
 | `packages/ui/src/tokens/globals.css` | R overrides in the canonical token owner |
+| `DataPaletteProvider` and `useChartColorPairs` | Fixed R data colors without changing stored account themes or explicit chart colors |
 | TripMapChart and trip-detail composition | Optional point inspection; proxy policy unchanged |
+| SelectPicker | Shared viewport placement and keyboard dismissal across settings and dashboard menus |
 
 The overview uses actual existing metrics, trips, charging and vehicle status.
 Selected-vehicle identity and placeholder checks prevent displaying another
 vehicle's cached readings. Missing readings remain unknown, not zero. The full
 editable dashboard remains at `/d/dashboard`, as a data workspace within R.
+The first overview reading is total odometer mileage; estimated range stays with
+battery charge. Unit subscriptions retain the full preference object so changing
+efficiency display updates cards, charts and tables without a reload.
+
+R fixes all series, status, map and drive-mode tokens in both appearance modes.
+Its data palette provider selects categorical sensor slots consistently and reads
+custom-picker defaults from those same CSS tokens. Stored Classic, RAD and custom
+account themes remain compatible but do not select ordinary R chart colors.
+Explicit colors saved on individual charts remain intentional overrides.
+
+The daily charging SVG renderer measures its content width before laying out
+labels. Phone chart cards reserve space for controls and axes without shrinking
+desktop typography. Selected-trip tag controls wrap into a full-width picker and
+a separate labeled action row; their existing mutations and permissions are
+unchanged.
 
 ## Routes and settings
 
@@ -55,18 +72,25 @@ editing, map inspection and authentication separately.
 
 ## Artwork and motion
 
-Matching R2 Performance/Catalina Cove metadata uses the approved artwork with
-21-inch wheels and black interior. Other vehicles use the existing authenticated
+The owner's R2 Performance presentation is fixed to Catalina Cove, 21-inch wheels
+and black interior, including when live paint or wheel metadata is missing.
+This is an explicit owner configuration, not inferred telemetry. Other vehicles use the existing authenticated
 artwork resolver and fallback. Artwork is presentation, not a live sensor reading.
+Health and Settings → Vehicles share `RConfiguredVehicleArtwork`; Overview uses
+the same image while its rotation frames load.
 
 The poster is approximately 153 KB. The 72-frame rotation pack is 3,460,102 bytes,
-fetched once per document on interaction (or restoration of an angle already
-selected in that document). Six decoded frames are retained per mounted viewer.
+fetched once per document when the visible car begins its first automatic turn,
+on interaction, or on restoration of an angle already selected in that document.
+The entrance turn runs once for 3.6 seconds and yields immediately to interaction.
+Six decoded frames are retained per mounted viewer.
 Images and animation frames are released on exit; fast drags draw the latest
 requested frame. Failed loads stop motion until another explicit attempt.
 
 There is no CDN, remote model request or new animation dependency. Assets use
-the existing app origin/security policy. Reduced motion removes inertia.
+the existing app origin/security policy. Reduced motion removes the automatic
+turn and inertia, deferring the frame pack until direct interaction. Leaving the
+viewport, hiding the tab or unmounting stops motion.
 
 ## Security and cost boundaries
 

@@ -4,6 +4,7 @@ import { ChartSkeleton } from '../primitives/Skeleton';
 import { CHART_BAR_STYLE, CHART_COLORS, CHART_FONT } from './ChartProvider';
 import { formatCurrency, formatSmartNumber } from '../lib/utils';
 import { formatAppCalendarDate } from '../lib/dateTime';
+import { useChartWidth } from './useChartWidth';
 import {
   measureChartText,
   selectAdaptiveAxisLabelIndices,
@@ -153,6 +154,11 @@ export function DailyChargingBarChart({
   seriesColor,
 }: DailyChargingBarChartProps) {
   const chartRef = React.useRef<HTMLDivElement | null>(null);
+  const { width, ref: measureWidth } = useChartWidth();
+  const setChartRef = React.useCallback((element: HTMLDivElement | null) => {
+    chartRef.current = element;
+    measureWidth(element);
+  }, [measureWidth]);
   const selectionRef = React.useRef<{ pointerId: number; start: number; current: number } | null>(
     null
   );
@@ -307,9 +313,10 @@ export function DailyChargingBarChart({
     );
   }
 
-  const width = 960;
-  const chartHeight = Math.max(220, height);
-  const margin = { top: 20, right: 24, bottom: 64, left: 70 };
+  const chartHeight = Math.max(160, height - 26);
+  const margin = width < 480
+    ? { top: 36, right: 12, bottom: 48, left: 64 }
+    : { top: 20, right: 24, bottom: 64, left: 70 };
   const innerWidth = width - margin.left - margin.right;
   const innerHeight = chartHeight - margin.top - margin.bottom;
   const maxEnergy = Math.max(1, ...visibleDays.map((day) => day.totalEnergyKwh));
@@ -407,7 +414,7 @@ export function DailyChargingBarChart({
 
   return (
     <div
-      ref={chartRef}
+      ref={setChartRef}
       data-chart-renderer={variant === 'total' ? 'daily-energy-bars' : 'daily-charge-sessions'}
       className="relative rounded-lg border border-border bg-bg-surface p-3 shadow-[inset_0_-1px_0_var(--rm-border)]"
     >

@@ -95,7 +95,7 @@ describe('DailyChargeSessionsChart', () => {
     const hitAreaHeight = Number(hitArea?.getAttribute('height'));
     expect(hitAreaY).toBeGreaterThan(0);
     expect(hitAreaHeight).toBeGreaterThan(0);
-    expect(hitAreaY + hitAreaHeight).toBeCloseTo(216, 3);
+    expect(hitAreaY + hitAreaHeight).toBeCloseTo(190, 3);
 
     const clipRect = container.querySelector('clipPath rect');
     expect(clipRect?.getAttribute('rx')).toBe('8');
