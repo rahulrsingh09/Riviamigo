@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs';
 
 export async function installRFixture(page: Page, options: {
   mode?: 'light' | 'dark';
+  timezone?: string;
   populatedAdmin?: boolean;
   authenticated?: boolean;
   secondVehicle?: boolean;
@@ -24,7 +25,7 @@ export async function installRFixture(page: Page, options: {
   const metricRequests: Record<string, unknown>[] = [];
   const unsupportedRequests: string[] = [];
   let mode: 'light' | 'dark' | 'system' = options.mode ?? 'light';
-  let timezone = 'UTC';
+  let timezone = options.timezone ?? 'UTC';
   const readJson = (path: string) => JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8'));
   const dashboards = ['dashboard', 'trips', 'charging', 'efficiency', 'battery'].map((slug) =>
     readJson(`../../../../packages/dashboards/src/defaults/${slug}.json`));

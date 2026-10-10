@@ -4,7 +4,7 @@ import { installRFixture } from './r-experience.fixture';
 for (const width of [393, 1440]) for (const mode of ['dark', 'light'] as const) {
   test(`multi-trip colors, emphasis and units at ${width}px in ${mode}`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
-    await installRFixture(page, { mode, populatedAnalytics: true, populatedAdmin: true, tripCount: 20 });
+    await installRFixture(page, { mode, populatedAnalytics: true, populatedAdmin: true, tripCount: 20, timezone: 'America/Los_Angeles' });
     await page.addInitScript(() => localStorage.setItem('rm-app-timezone', 'America/Los_Angeles'));
     await page.goto('/trips');
     const table = page.locator('[data-widget-id="d5000005-0000-0000-0000-000000000006"]');
@@ -19,6 +19,7 @@ for (const width of [393, 1440]) for (const mode of ['dark', 'light'] as const) 
       element.getAttribute('data-route-id')!, getComputedStyle(element.querySelector('path')!).stroke,
     ])));
     const firstDate = await key.getByRole('button').first().locator('span.block').last().textContent();
+    expect(firstDate).toBe('Oct 7, 2026, 11:00 PM');
     const firstTrip = (width === 393 ? table.getByRole('button') : table.getByRole('row')).filter({ hasText: 'Route 01 · Home' });
     await expect(firstTrip).toContainText(firstDate!.trim());
     if (width === 1440) {

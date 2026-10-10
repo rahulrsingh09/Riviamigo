@@ -154,8 +154,12 @@ test('settings pickers stay inside the phone viewport and restore focus', async 
   await expect(menu).toHaveCount(0);
   await trigger.press('ArrowDown');
   await expect(menu.getByRole('option', { selected: true })).toBeFocused();
+  const enabled = menu.locator('[role="option"]:not(:disabled)');
+  const currentIndex = await enabled.evaluateAll(elements => elements.findIndex(element => element.getAttribute('aria-selected') === 'true'));
+  const nextOption = enabled.nth((currentIndex + 1) % await enabled.count());
+  const nextLabel = await nextOption.textContent();
   await page.keyboard.press('ArrowDown');
-  const nextLabel = await page.locator('[role="option"]:focus').textContent();
+  await expect(nextOption).toBeFocused();
   await page.keyboard.press('Enter');
   await expect(menu).toHaveCount(0);
   await expect(trigger).toContainText(nextLabel!.trim());
