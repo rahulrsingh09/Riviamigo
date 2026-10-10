@@ -1,13 +1,14 @@
 # Private deployment integration
 
-This fork keeps the dashboard layout and upstream services while isolating deployment
-policy. Modularity reduces the code that must be reconciled; it cannot eliminate
+This fork keeps upstream services and canonical dashboard behavior while isolating
+deployment policy and the R interface. Modularity reduces the code that must be reconciled; it cannot eliminate
 review of authentication, persistence or restore changes.
 
 ## Stable boundaries
 
 | Module                                                         | Responsibility                                                                          | Integration point                                                                |
 | -------------------------------------------------------------- | --------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| `apps/web/src/features/r-experience` | R interface, navigation, vehicle stage and settings discovery | Root/layout and shared composition; see [R integration](./r-experience.md) |
 | `apps/api/src/private_deployment/outbound.rs`                  | Fixed Rivian origins, query-only access, bounded responses, optional-provider denial    | `services/outbound_policy.rs` compatibility exports; external provider admission |
 | `apps/api/src/private_deployment/weather.rs`                   | Fixed free Open-Meteo endpoints, rounded coordinates, persisted request limits          | Existing weather worker and external-connection settings/test route             |
 | `apps/api/src/private_deployment/keys.rs`                      | External RSA/AGE custody, matching keys, encrypted-data binding                         | Existing `keys` API used by startup, configuration and restore                   |

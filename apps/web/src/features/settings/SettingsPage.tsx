@@ -43,7 +43,8 @@ import { ExternalConnectionsSection } from '../../components/settings/ExternalCo
 import { JobsSection } from '../../components/settings/JobsSection';
 import { PlacesSection } from '../../components/settings/PlacesSection';
 import { ChargingSection } from '../../components/settings/ChargingSection';
-import { AppearanceSection } from './AppearanceSection';
+import { RSettingsNavigation } from '../r-experience/RSettingsNavigation';
+import { RMapPreferences } from '../r-experience/RMapPreferences';
 import { RawTelemetryExplorer } from '../../components/settings/RawTelemetryExplorer';
 import { ChartManagerSection } from './charts/ChartManagerSection';
 import { canManageSystemDashboards } from '../../components/dashboard/DashboardPage';
@@ -54,7 +55,7 @@ import {
   getRivianCredentialRenewalNotice,
 } from '../../lib/rivianCredentialRenewal';
 import {
-  Car, ChartLine, Clipboard, Database, DatabaseBackup, Download, ExternalLink, Globe2, KeyRound, ListChecks, Lock, LogOut, MapPin, Pencil, Plus, RefreshCw, RotateCcw, Ruler, Save, Search, ShieldCheck, Star, Trash2, Unlock, Users, X, Zap,
+  Car, ChartLine, Clipboard, Database, DatabaseBackup, Download, ExternalLink, Globe2, KeyRound, ListChecks, Lock, LogOut, MapPin, Pencil, Plus, RefreshCw, RotateCcw, Ruler, Save, Search, Star, Trash2, Unlock, Users, X, Zap,
 } from 'lucide-react';
 
 function dashboardActionId(dashboard: DashboardConfig) {
@@ -95,7 +96,6 @@ const baseSections: Array<{ id: SettingsSection; label: string; icon: React.Elem
   { id: 'api', label: 'API Access', icon: KeyRound },
   { id: 'jobs', label: 'Jobs', icon: ListChecks },
   { id: 'raw', label: 'Raw Data', icon: Database },
-  { id: 'appearance', label: 'Appearance', icon: ShieldCheck },
   { id: 'account', label: 'Account', icon: LogOut },
 ];
 
@@ -615,7 +615,7 @@ export function SettingsContent({ initialSection, oidcFeedback, oidcFeedbackKind
   const { data: vehicles } = useVehicles();
   const me = useMe();
   const [showEditButton, setShowEditButton] = useDashboardEditButtonPreference(me.data?.user_id);
-  const [activeSection, setActiveSection] = React.useState<SettingsSection>(initialSection ?? 'vehicles');
+  const [activeSection, setActiveSection] = React.useState<SettingsSection | 'directory'>(initialSection === 'appearance' ? 'units' : initialSection ?? 'directory');
   const [apiKeyName, setApiKeyName] = React.useState('Local troubleshooting');
   const [apiKeyVehicleId, setApiKeyVehicleId] = React.useState('');
   const [createdKey, setCreatedKey] = React.useState<string | null>(null);
@@ -660,12 +660,12 @@ export function SettingsContent({ initialSection, oidcFeedback, oidcFeedbackKind
   );
 
   React.useEffect(() => {
-    if (initialSection && initialSection !== activeSection) setActiveSection(initialSection);
-  }, [activeSection, initialSection]);
+    setActiveSection(initialSection === 'appearance' ? 'units' : initialSection ?? 'directory');
+  }, [initialSection]);
 
-  function selectSettingsSection(next: SettingsSection) {
+  function selectSettingsSection(next: SettingsSection | 'directory') {
     setActiveSection(next);
-    navigate({ to: '/settings', search: next === 'vehicles' ? {} : { section: next } });
+    navigate({ to: '/settings', search: next === 'directory' ? {} : { section: next } });
   }
 
   const appVersion = useQuery({
@@ -1075,7 +1075,7 @@ export function SettingsContent({ initialSection, oidcFeedback, oidcFeedbackKind
     <AppLayout activeKey="settings">
       <PageLayout
         title="Settings"
-        subtitle="Account, vehicle, and API controls for local troubleshooting."
+        subtitle="Your vehicle, workspace and account."
         actions={(
           <a
             href={RELEASES_URL}
@@ -1102,52 +1102,9 @@ export function SettingsContent({ initialSection, oidcFeedback, oidcFeedbackKind
             {oidcFeedback}
           </p>
         )}
-        <div className="grid gap-5 lg:grid-cols-[13rem_minmax(0,1fr)]">
-          <div className="rounded-xl border border-accent/30 bg-accent/10 p-3 shadow-sm lg:hidden">
-            <label
-              className="mb-2 block text-xs font-semibold uppercase tracking-wider text-fg-secondary"
-              htmlFor="settings-section-picker"
-            >
-              Settings section
-            </label>
-            <SelectPicker<SettingsSection>
-              id="settings-section-picker"
-              value={activeSection}
-              onChange={selectSettingsSection}
-              aria-label="Settings section"
-              className="w-full"
-              triggerClassName="min-h-11 border-accent bg-bg-surface text-fg shadow-sm focus-visible:ring-2 focus-visible:ring-accent"
-              menuClassName="w-full border-accent bg-bg-surface shadow-lg"
-              options={sections.map((section) => ({ value: section.id, label: section.label }))}
-            />
-          </div>
-
-          <nav className="hidden gap-2 lg:flex lg:flex-col" aria-label="Settings sections">
-            {sections.map((section) => {
-              const Icon = section.icon;
-              const active = activeSection === section.id;
-              return (
-                <button
-                  key={section.id}
-                  type="button"
-                  onClick={() => selectSettingsSection(section.id)}
-                  aria-current={active ? 'page' : undefined}
-                  className={[
-                    'flex h-9 shrink-0 items-center gap-2 rounded-lg px-3 text-sm transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent',
-                    active
-                      ? 'bg-accent-muted text-accent'
-                      : 'text-fg-secondary hover:bg-bg-elevated/70 hover:text-fg',
-                  ].join(' ')}
-                >
-                  <Icon className="h-4 w-4" />
-                  <span>{section.label}</span>
-                  {active && <span className="ml-auto h-4 w-1 rounded-full bg-accent" aria-hidden="true" />}
-                </button>
-              );
-            })}
-          </nav>
-
-          <div className="min-w-0">
+        <div>
+          <RSettingsNavigation sections={sections} active={activeSection} onSelect={selectSettingsSection} />
+          <div className="r-settings-content min-w-0" key={activeSection}>
             {activeSection === 'vehicles' && (
               <Card>
                 <CardHeader>
@@ -2053,6 +2010,8 @@ export function SettingsContent({ initialSection, oidcFeedback, oidcFeedbackKind
               </Card>
             )}
 
+            {activeSection === 'units' && <RMapPreferences preferences={unitPreferencesQuery.data} />}
+
             {activeSection === 'places' && <PlacesSection unitSystem={placesUnitSystem} />}
 
             {activeSection === 'charging' && <ChargingSection />}
@@ -2069,8 +2028,6 @@ export function SettingsContent({ initialSection, oidcFeedback, oidcFeedbackKind
                 <RawTelemetryExplorer vehicles={vehicles ?? []} isAdmin={isAdmin} />
               </div>
             )}
-
-            {activeSection === 'appearance' && <AppearanceSection preferencesQuery={unitPreferencesQuery} />}
 
             {activeSection === 'account' && (
               <Card>

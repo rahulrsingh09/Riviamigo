@@ -1,3 +1,5 @@
+// The canonical dashboard controller is exercised independently of the R presentation.
+vi.mock('../../features/r-experience/RDashboardSurface', () => ({ RDashboardSurface: ({ children }: { children: React.ReactNode }) => children }));
 import React from 'react';
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';

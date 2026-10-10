@@ -19,6 +19,7 @@ import { activateRoute } from './routes/activate';
 import { userDashboardRoute } from './routes/d.$slug';
 import { adminDashboardsRoute } from './routes/admin.dashboards';
 import { usersRoute } from './routes/users';
+import { exploreRoute } from './routes/explore';
 
 export const routeTree = rootRoute.addChildren([
   indexRoute,
@@ -41,4 +42,5 @@ export const routeTree = rootRoute.addChildren([
   userDashboardRoute,
   adminDashboardsRoute,
   usersRoute,
+  exploreRoute,
 ]);

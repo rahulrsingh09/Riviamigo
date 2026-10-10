@@ -26,32 +26,13 @@ import {
   loadDashboardTimeframe,
   saveDashboardTimeframe,
   timeframeToQuery,
-  type DateRange,
   type DashboardTimeframe,
 } from '../../lib/dates';
 import { useDashboardEditDraft } from './useDashboardEditDraft';
 import { useDashboardEditButtonPreference } from './useDashboardEditButtonPreference';
-
-export interface DashboardPageShellRenderState {
-  activeConfig: DashboardConfig | undefined;
-  savedConfig: DashboardConfig | undefined;
-  localConfig: DashboardConfig | null;
-  setLocalConfig: React.Dispatch<React.SetStateAction<DashboardConfig | null>>;
-  isEditMode: boolean;
-  isDirty: boolean;
-  isLoading: boolean;
-  saveError: string | null;
-  setSaveError: React.Dispatch<React.SetStateAction<string | null>>;
-  vehicleId: string | null;
-  ctx: WidgetCtx;
-  timeframe: DashboardTimeframe;
-  range: DateRange | null;
-  chargeSessionDayLocal?: string | null;
-  setChargeSessionDayLocal?: (dayLocal: string | null) => void;
-  setTimeframe: React.Dispatch<React.SetStateAction<DashboardTimeframe>>;
-  enterEdit: () => void;
-  exitEdit: () => void;
-}
+import type { DashboardPageShellRenderState } from './dashboardShellTypes';
+export type { DashboardPageShellRenderState } from './dashboardShellTypes';
+import { RDashboardSurface } from '../../features/r-experience/RDashboardSurface';
 
 export interface DashboardPageShellProps {
   navKey: string;
@@ -405,6 +386,7 @@ function DashboardPageShellContent({
 
   return (
     <AppLayout activeKey={navKey}>
+      <RDashboardSurface state={shellState} actions={<>{renderTitleAction?.(shellState) ?? defaultTitleAction}{pageActions}</>} ready={authReady && vehicleSelectionReady && Boolean(effectiveVehicleId)}>
       <PageLayout
         title={title ?? activeConfig?.name ?? slug}
         titleAction={renderTitleAction?.(shellState) ?? defaultTitleAction}
@@ -450,6 +432,7 @@ function DashboardPageShellContent({
           </>
         ) : null}
       </PageLayout>
+      </RDashboardSurface>
     </AppLayout>
   );
 }

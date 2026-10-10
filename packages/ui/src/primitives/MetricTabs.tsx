@@ -34,7 +34,7 @@ export function MetricTabs({
 }: MetricTabsProps) {
   const useDropdown = tabs.length > dropdownThreshold;
   return (
-    <div className={cn('bg-bg-surface border border-border rounded-xl', className)}>
+    <div data-metric-tabs className={cn('bg-bg-surface border border-border rounded-xl', className)}>
       {/* Header row */}
       <div className="flex items-center justify-between px-5 pt-4 pb-0 gap-3 flex-wrap">
         <div className="flex-1 min-w-0">

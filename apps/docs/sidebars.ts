@@ -45,6 +45,7 @@ const sidebars: SidebarsConfig = {
   ],
   usingRiviamigoSidebar: [
     'using-riviamigo',
+    'guides/r-experience',
     {
       type: 'category',
       label: 'Personalize your dashboard',
@@ -106,6 +107,7 @@ const sidebars: SidebarsConfig = {
       items: [
         'architecture/backend-data-flow',
         'architecture/private-deployment',
+        'architecture/r-experience',
         'architecture/unification-baseline',
         'architecture/theming',
         'architecture/frontend-error-observability',

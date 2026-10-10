@@ -4,10 +4,8 @@ import { useQuery } from '@tanstack/react-query';
 import { z } from 'zod';
 import { rootRoute } from './__root';
 import { api, consumeExplicitLogoutIntent, useAuth } from '@riviamigo/hooks';
-import { useDocumentTheme } from '@riviamigo/ui/hooks';
 import { Button, Input } from '@riviamigo/ui/primitives';
-import { getBrandAsset } from '@riviamigo/ui/lib/brandAssets';
-import { useDocumentPalette } from '@riviamigo/ui/hooks';
+import { RAuthBrand } from '../features/r-experience/RAuthBrand';
 import { Zap, Route, Battery } from 'lucide-react';
 import { normalizeLoginRedirectTarget } from '../components/layout/AuthGuard';
 import { PASSWORD_MIN_LENGTH, PasswordRequirements } from '../components/auth/PasswordRequirements';
@@ -39,8 +37,6 @@ export function LoginPage() {
   const [setupToken, setSetupToken] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
-  const isDark = useDocumentTheme();
-  const palette = useDocumentPalette();
   const redirectTarget = normalizeLoginRedirectTarget(search.redirect);
   const shouldResumeSession = search.password_changed !== '1';
   const resumeAttempted = useRef(false);
@@ -186,46 +182,13 @@ export function LoginPage() {
 
   return (
     <div className="min-h-screen bg-bg-page flex items-center justify-center px-4 relative overflow-hidden">
-      {/* Deep amber glow behind everything */}
-      <div
-        aria-hidden="true"
-        className="pointer-events-none fixed inset-0 flex items-center justify-center"
-      >
-        <div className="w-[700px] h-[700px] rounded-full bg-accent/[0.07] blur-[140px]" />
-      </div>
-      {/* Corner orbs */}
-      <div aria-hidden="true" className="pointer-events-none fixed inset-0 overflow-hidden">
-        <div className="absolute -top-64 -left-64 w-[500px] h-[500px] rounded-full bg-accent/[0.04] blur-3xl" />
-        <div className="absolute -bottom-80 -right-64 w-[700px] h-[700px] rounded-full bg-accent/[0.03] blur-3xl" />
-      </div>
-
       <div className="w-full max-w-sm relative z-10">
-        {/* Brand mark */}
-        <div className="flex flex-col items-center mb-10">
-          <div className="relative mb-5">
-            <div className="w-24 h-24 rounded-2xl bg-accent/10 border border-accent/25 grid place-items-center shadow-glow-md overflow-hidden">
-              <img
-                src={getBrandAsset('logo', { dark: isDark, palette })}
-                alt="Riviamigo logo"
-                className="block h-20 w-20 object-contain"
-                style={{ transform: 'translateX(-6px)' }}
-              />
-            </div>
-            {/* Subtle ring */}
-            <div className="absolute inset-0 rounded-2xl ring-1 ring-inset ring-accent/10" />
-          </div>
-          <img
-            src={getBrandAsset('wordmark', { dark: isDark, palette })}
-            alt="Riviamigo"
-            className="block h-14 w-auto max-w-full object-contain"
-          />
-          <p className="mt-1.5 text-sm text-fg-tertiary">Your Rivian's data companion.</p>
-        </div>
+        <RAuthBrand />
 
         {/* Auth card */}
         <div className="bg-bg-glass backdrop-blur-md border border-border rounded-2xl p-6 shadow-xl">
           <p className="text-[11px] font-semibold text-fg-tertiary uppercase tracking-widest mb-5">
-            {setupRequired ? 'Set up Riviamigo' : 'Sign in'}
+            {setupRequired ? 'Set up R' : 'Sign in'}
           </p>
           {search.password_changed === '1' && (
             <p role="status" className="mb-4 rounded-lg border border-status-positive/30 bg-status-positive/10 px-3 py-2 text-xs text-status-positive">

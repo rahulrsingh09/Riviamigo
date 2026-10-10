@@ -24,6 +24,7 @@ export function Card({
 }: CardProps) {
   return (
     <div
+      data-ui-card
       className={cn(
         'rounded-xl border border-border',
         glass
@@ -58,7 +59,7 @@ export function CardTitle({
   ...props
 }: React.HTMLAttributes<HTMLHeadingElement>) {
   return (
-    <h3 className={cn('text-sm font-medium text-fg-secondary uppercase tracking-wider', className)} {...props}>
+    <h3 data-ui-card-title className={cn('text-sm font-medium text-fg-secondary uppercase tracking-wider', className)} {...props}>
       {children}
     </h3>
   );

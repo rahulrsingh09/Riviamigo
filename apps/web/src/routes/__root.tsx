@@ -5,6 +5,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import { api, queryKeys, themeClient, useAuth, useAuthReady } from '@riviamigo/hooks';
 import { resolveThemeRuntimeResponse, ThemeRuntimeProvider } from '@riviamigo/ui/lib/theme';
 import { APP_TIMEZONE_CHANGE_EVENT, setAppTimezone } from '@riviamigo/ui/lib/dateTime';
+import { RExperienceRoot } from '../features/r-experience/RExperienceRoot';
 
 interface RouterContext {
   queryClient: QueryClient;
@@ -54,7 +55,7 @@ function Root() {
 
   return (
     <ThemeRuntimeProvider preferences={themeBelongsToCurrentAccount ? runtimePreferences ?? null : null} resolvedTheme={resolvedTheme}>
-      <Outlet />
+      <RExperienceRoot><Outlet /></RExperienceRoot>
     </ThemeRuntimeProvider>
   );
 }

@@ -28,6 +28,7 @@ import { resolveTripLocation, TRIP_LOCATION_UNAVAILABLE_COPY } from '@riviamigo/
 import { formatAppDateTime } from '@riviamigo/ui/lib/dateTime';
 import { parseISO } from 'date-fns';
 import { ArrowLeft, Eraser, Save, Tag } from 'lucide-react';
+import { nearestPointIndex } from '@riviamigo/ui/charts';
 
 const TRIP_PRIMARY_CHART_HEIGHT = 360;
 
@@ -113,7 +114,7 @@ export function TripDetailContent() {
   const mapTrack = React.useMemo(
     () => (samples?.lat ?? []).flatMap((lat, index) => {
       const lng = samples?.lng[index] ?? null;
-      return lat != null && lng != null ? [{ lat, lng }] : [];
+      return lat != null && lng != null ? [{ lat, lng, sampleIndex: index }] : [];
     }),
     [samples],
   );
@@ -354,6 +355,9 @@ export function TripDetailContent() {
                     <TripMapChart
                       track={mapTrack}
                       activePoint={activeMapPoint}
+                      activePointIndex={mapTrack.findIndex(point => point.sampleIndex === activeIndex)}
+                      onPointSelect={(point, index) => setActiveIndexThrottled(index == null
+                        ? nearestPointIndex(timeline, point) : mapTrack[index]?.sampleIndex ?? null)}
                       height={TRIP_PRIMARY_CHART_HEIGHT}
                       mapStyle={mapStyle}
                       mapStylePreference={userPreferences.data?.map_style ?? 'follow-theme'}

@@ -57,7 +57,7 @@ beforeEach(() => {
 describe('LoginPage', () => {
   it('renders the normal sign-in state after initial setup', () => {
     render(<LoginPage />);
-    expect(screen.getByAltText('Riviamigo')).toBeInTheDocument();
+    expect(screen.getByText('R', { exact: true })).toBeInTheDocument();
     expect(screen.getByRole('button', { name: 'Sign in' })).toBeInTheDocument();
     expect(screen.getByText(/ask an administrator for an activation link/i)).toBeInTheDocument();
     expect(screen.queryByRole('button', { name: /create one/i })).not.toBeInTheDocument();

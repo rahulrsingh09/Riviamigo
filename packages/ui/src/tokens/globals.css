@@ -468,3 +468,46 @@ textarea:-webkit-autofill:focus {
   background: var(--rm-bg-surface);
   box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.18);
 }
+
+html.r-interface, body.r-experience {
+  --rm-bg-page: #050606 !important;
+  --rm-bg-surface: #101212 !important;
+  --rm-bg-elevated: #1b1e1d !important;
+  --rm-bg-glass: var(--rm-bg-elevated) !important;
+  --rm-text-primary: #eaece8 !important;
+  --rm-text-secondary: #969e97 !important;
+  --rm-text-tertiary: var(--rm-text-secondary) !important;
+  --rm-text-on-accent: var(--rm-bg-page) !important;
+  --rm-border-default: #2b2f2e !important;
+  --rm-border-strong: #5b6260 !important;
+  --rm-border-accent: var(--rm-border-strong) !important;
+  --rm-accent: var(--rm-text-primary) !important;
+  --rm-accent-hover: #c6ccc7 !important;
+  --rm-accent-active: #adb3ae !important;
+  --rm-accent-muted: var(--rm-bg-elevated) !important;
+  --rm-control-accent: var(--rm-text-primary) !important;
+  --rm-control-on-accent: var(--rm-bg-page) !important;
+  --rm-control-focus-ring: var(--rm-text-primary) !important;
+  --rm-glow-sm: none !important;
+  --rm-glow-md: none !important;
+  --rm-glow-lg: none !important;
+  --rm-glow-button: none !important;
+  --r-signal: #bce177 !important;
+  --r-signal-ink: #131b0a !important;
+  --rm-chart-accent: var(--r-signal) !important;
+  --r-stage: #0c1917 !important;
+}
+html.r-interface.light, .light body.r-experience {
+  --rm-bg-page: #f3f6f2 !important;
+  --rm-bg-surface: #e0ebe7 !important;
+  --rm-bg-elevated: #d7e1dd !important;
+  --rm-text-primary: #0f1815 !important;
+  --rm-text-secondary: #48534d !important;
+  --rm-border-default: #b7c0bc !important;
+  --rm-border-strong: #7e8985 !important;
+  --rm-accent-hover: #273129 !important;
+  --rm-accent-active: #3b463d !important;
+  --r-signal: #2b4c24 !important;
+  --r-signal-ink: #eff3ee !important;
+  --r-stage: #e4eeea !important;
+}

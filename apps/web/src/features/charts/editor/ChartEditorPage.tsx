@@ -1,4 +1,5 @@
 import React from 'react';
+import { RMark } from '../../r-experience/RMark';
 import { useNavigate } from '@tanstack/react-router';
 import {
   CHART_SOURCE_MANIFESTS,
@@ -314,9 +315,10 @@ export function ChartEditorPage({ mode, chartId }: { mode: 'new' | 'edit'; chart
   }
 
   return (
-    <div className="min-h-screen bg-bg-page text-fg">
+    <div className="r-editor min-h-screen bg-bg-page text-fg">
       <header className="sticky top-0 z-30 border-b border-border bg-bg-page/95 px-4 py-3 backdrop-blur md:px-6">
         <div className="mx-auto flex max-w-[1500px] items-center gap-3">
+          <RMark />
           <button
             type="button"
             aria-label="Back to charts"

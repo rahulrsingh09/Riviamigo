@@ -6,6 +6,7 @@ import { useDocumentTheme } from '../hooks/useDocumentTheme';
 import { isAbortError, reportClientError } from '../lib/clientDiagnostics';
 import { useThemeRevision } from '../lib/themeRuntime';
 import mapLibreWorkerUrl from 'maplibre-gl/dist/maplibre-gl-worker.mjs?worker&url';
+import { installMapInspection } from './mapInspection';
 
 export interface LatLng { lat: number; lng: number; }
 
@@ -38,7 +39,9 @@ export interface TripMapChartProps {
   routes?: TripMapRoute[];
   selectedRouteIds?: string[];
   onRouteClick?: (routeId: string) => void;
+  onPointSelect?: (point: LatLng, trackIndex?: number) => void;
   activePoint?: LatLng | null;
+  activePointIndex?: number | null;
   startPoint?: LatLng;
   endPoint?: LatLng;
   height?: number;
@@ -79,6 +82,8 @@ interface MapApi {
   setPitch?(pitch: number): void;
   setBearing?(bearing: number): void;
   dragRotate?: { enable(): void; disable(): void };
+  dragPan?: { enable(): void; disable(): void };
+  unproject?: (point: [number, number]) => LatLng;
 }
 
 const FALLBACK_ROUTE_COLORS = [
@@ -163,7 +168,9 @@ export function TripMapChart({
   routes,
   selectedRouteIds = [],
   onRouteClick,
+  onPointSelect,
   activePoint,
+  activePointIndex,
   height = 320,
   className,
   mapStyle = 'dark',
@@ -179,6 +186,15 @@ export function TripMapChart({
   const isLoadedRef = React.useRef(false);
   const lastRouteSignatureRef = React.useRef<string>('');
   const onRouteClickRef = React.useRef(onRouteClick);
+  const inspectionRef = React.useRef({ track, activePoint, activePointIndex, onPointSelect });
+  React.useEffect(() => { inspectionRef.current = { track, activePoint, activePointIndex, onPointSelect }; }, [track, activePoint, activePointIndex, onPointSelect]);
+  const inspectionController = React.useRef<ReturnType<typeof installMapInspection> | null>(null);
+  const [inspecting, setInspecting] = React.useState(true);
+  const inspectingRef = React.useRef(inspecting);
+  React.useEffect(() => {
+    inspectingRef.current = inspecting;
+    inspectionController.current?.setEnabled(inspecting);
+  }, [inspecting]);
   const latestRoutesRef = React.useRef<TripMapRoute[]>([]);
   const latestSelectedRouteIdsRef = React.useRef<string[]>([]);
   const latestActivePointRef = React.useRef<LatLng | null | undefined>(activePoint);
@@ -258,6 +274,7 @@ export function TripMapChart({
     if (!containerRef.current || routeList.length === 0 || mapRef.current) return;
 
     let cancelled = false;
+    let removeInspection = () => {};
 
     (async () => {
       try {
@@ -302,6 +319,10 @@ export function TripMapChart({
         }) as MapApi;
 
         mapRef.current = map;
+        const inspection = installMapInspection(map, () => inspectionRef.current);
+        removeInspection = inspection;
+        inspectionController.current = inspection;
+        if (!inspectingRef.current) inspectionController.current.setEnabled(false);
 
         map.on('error', (event) => {
           const details = mapLibreErrorDetails(event);
@@ -390,6 +411,8 @@ export function TripMapChart({
 
     return () => {
       cancelled = true;
+      removeInspection();
+      inspectionController.current = null;
       isLoadedRef.current = false;
       lastRouteSignatureRef.current = '';
       if (mapRef.current) {
@@ -576,6 +599,10 @@ export function TripMapChart({
       </div>
     ) : (
       <div className="relative">
+        {onPointSelect && <button type="button" onClick={() => setInspecting(value => !value)}
+          className="absolute left-2 top-2 z-10 min-h-10 rounded-lg border border-border bg-bg-surface px-3 text-xs text-fg">
+          {inspecting ? 'Pan map' : 'Inspect route'}
+        </button>}
         <div
           ref={containerRef}
           style={{ height }}

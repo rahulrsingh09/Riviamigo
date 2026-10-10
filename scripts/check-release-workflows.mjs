@@ -150,7 +150,7 @@ if (dockerfile.indexOf(themesSourceCopy) > webBuildIndex) {
   fail('production Dockerfile must copy the themes workspace source before the web build');
 }
 const compose = read('compose/docker-compose.yml');
-requireText(compose, /image: \$\{RIVIAMIGO_IMAGE:-/, 'production Compose must accept an exact image reference');
+requireText(compose, /image: \$\{RIVIAMIGO_IMAGE:(?:-|\?)/, 'production Compose must accept an exact image reference');
 const freshInstall = read('scripts/verify-fresh-install.mjs');
 requireText(freshInstall, /const imageRef = value\('--image-ref'\)/, 'fresh-install verification must accept --image-ref');
 requireText(freshInstall, /RIVIAMIGO_IMAGE: imageRef/, 'fresh-install verification must pass the exact image reference to Compose');

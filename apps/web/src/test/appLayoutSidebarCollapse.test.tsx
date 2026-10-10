@@ -1,6 +1,6 @@
 import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { AppLayout } from '../components/layout/AppLayout';
+import { UpstreamAppLayout as AppLayout } from '../components/layout/AppLayout';
 
 const navigate = vi.fn();
 const logout = vi.fn();

@@ -1,15 +1,8 @@
-import { createRoute } from '@tanstack/react-router';
-import { ProtectedRoute } from '../components/layout/ProtectedRoute';
-import { ThemeStudioPage } from '../features/settings/ThemeStudioPage';
+import { createRoute, redirect } from '@tanstack/react-router';
 import { rootRoute } from './__root';
 
 export const settingsThemeStudioRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/settings/themes/$themeId',
-  component: ThemeStudioRoute,
+  beforeLoad: () => { throw redirect({ to: '/settings', replace: true }); },
 });
-
-function ThemeStudioRoute() {
-  const { themeId } = settingsThemeStudioRoute.useParams();
-  return <ProtectedRoute><ThemeStudioPage themeId={themeId} /></ProtectedRoute>;
-}

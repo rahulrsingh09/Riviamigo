@@ -89,7 +89,7 @@ test.describe('dashboard editability in a browser', () => {
         side_bin_right_closed: false,
       },
     });
-    await page.goto('/');
+    await page.goto('/d/dashboard');
 
     const fallbackArtwork = page.locator('img[src="/vehicle-images/fallbacks/r1t/overview.webp"]').first();
     await expect(fallbackArtwork).toBeVisible();
@@ -241,41 +241,33 @@ test.describe('dashboard editability on coarse pointers', () => {
 test.describe('mobile app navigation', () => {
   test.use({ viewport: { width: 390, height: 844 }, hasTouch: true });
 
-  test('uses a full-screen, touch-safe navigation sheet', async ({ page }) => {
+  test('uses a bottom, touch-safe navigation bar with Explore access', async ({ page }) => {
     await installApiMocks(page);
     await page.goto('/');
 
-    const menuTrigger = page.getByRole('button', { name: 'Toggle navigation' });
-    await expect(menuTrigger).toBeVisible();
-    await menuTrigger.click();
-
-    const sheet = page.getByRole('dialog', { name: 'Navigation' });
-    await expect(sheet).toBeVisible();
-    const sheetBox = await sheet.boundingBox();
-    expect(sheetBox).not.toBeNull();
-    expect(sheetBox!.x).toBe(0);
-    expect(sheetBox!.y).toBe(0);
-    expect(sheetBox!.width).toBeGreaterThanOrEqual(390);
-    expect(sheetBox!.height).toBeGreaterThanOrEqual(844);
-
-    const overview = sheet.getByRole('button', { name: 'Overview' });
-    const battery = sheet.getByRole('button', { name: 'Battery' });
-    const settings = sheet.getByRole('button', { name: 'Open settings' });
-    const signOut = sheet.getByRole('button', { name: 'Sign out' });
-    const navigation = sheet.getByRole('navigation', { name: 'Primary navigation' });
+    const navigation = page.getByRole('navigation', { name: 'Primary navigation' });
+    await expect(navigation).toBeVisible();
+    await expect(navigation).toHaveCSS('position', 'fixed');
+    const box = (await navigation.boundingBox())!;
+    expect(box.y).toBeGreaterThan(740);
+    expect(box.x).toBeGreaterThanOrEqual(0);
+    expect(box.x + box.width).toBeLessThanOrEqual(390);
+    const overview = navigation.getByRole('link', { name: 'Overview' });
+    const explore = navigation.getByRole('link', { name: 'Explore' });
+    const settings = page.getByRole('link', { name: 'Settings', exact: true });
+    const signOut = page.getByRole('button', { name: 'Sign out' });
 
     await expect(overview).toHaveAttribute('aria-current', 'page');
-    await expect(navigation).toHaveCSS('overflow-y', 'auto');
-
-    for (const control of [overview, battery, settings, signOut]) {
+    for (const control of [overview, explore, settings, signOut]) {
       const box = await control.boundingBox();
       expect(box).not.toBeNull();
       expect(box!.height).toBeGreaterThanOrEqual(44);
     }
 
-    await battery.click();
+    await explore.click();
+    await page.getByRole('link', { name: /Battery/ }).click();
     await expect(page).toHaveURL(/\/battery$/);
-    await expect(sheet).toHaveCount(0);
+    await expect(navigation).toBeVisible();
   });
 });
 
@@ -383,6 +375,12 @@ async function installApiMocks(page: Page, options: { vehicleStatus?: Record<str
   await page.addInitScript(() => {
     window.localStorage.setItem('rm-show-dashboard-edit-button:e2e-user', 'true');
   });
+  await page.route('**/v2/**', route => {
+    const path = new URL(route.request().url()).pathname;
+    return json(route, path.endsWith('/preferences/theme')
+      ? { schemaVersion: 2, mode: 'dark', selection: { kind: 'builtin', themeId: 'classic' } }
+      : { schemaVersion: 2, registryHash: 'test', builtins: [], customThemes: [] });
+  });
   await page.routeWebSocket('**/v1/vehicles/live**', (socket) => socket.close());
   await page.route('**/v1/**', async (route) => {
     const request = route.request();
@@ -485,13 +483,15 @@ async function controlHitTest(button: ReturnType<Page['locator']>) {
         Math.abs(controlRect.top - frameRect.top - 8) <= 1 &&
         Math.abs(frameRect.right - controlRect.right - 8) <= 1,
       hit: topmost === buttonElement || buttonElement.contains(topmost),
+      obstruction: topmost === buttonElement || buttonElement.contains(topmost) ? null : topmost?.outerHTML.slice(0, 400),
+      buttonTop: buttonRect.top,
     };
   });
 }
 
 async function expectEditControl(button: ReturnType<Page['locator']>, minimumOpacity = 0.72) {
   const state = await controlHitTest(button);
-  expect(state).toMatchObject(EDIT_CONTROL_GEOMETRY);
+  expect(state, JSON.stringify(state)).toMatchObject(EDIT_CONTROL_GEOMETRY);
   expect(state.opacity).toBeGreaterThanOrEqual(minimumOpacity);
 }
 

@@ -20,7 +20,7 @@ export function WidgetHost({ instance, ctx }: WidgetHostProps) {
 
   const Component = def.component;
   return (
-    <div className="flex h-full min-h-0 flex-col">
+    <div className="flex h-full min-h-0 flex-col" data-widget-type={instance.componentType} data-widget-definition={instance.definitionId}>
       {instance.title && shouldShowWidgetTitle(instance) ? (
         <p className="mb-2 shrink-0 text-xs font-medium uppercase tracking-wider text-fg-tertiary">
           {instance.title}

@@ -14,6 +14,7 @@ export {
 } from './ChartProvider';
 export type { ChartColorKey, ChartPaletteKey } from './ChartProvider';
 export { ChartColorField } from './ChartColorField';
+export { nearestPointIndex } from './mapInspection';
 export type { ChartColorFieldProps } from './ChartColorField';
 export { ChartTooltip } from './ChartTooltip';
 export type { ChartTooltipProps } from './ChartTooltip';

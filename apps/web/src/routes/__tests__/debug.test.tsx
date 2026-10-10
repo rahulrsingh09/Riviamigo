@@ -1,3 +1,5 @@
+// The canonical dashboard controller is exercised independently of the R presentation.
+vi.mock('../../features/r-experience/RDashboardSurface', () => ({ RDashboardSurface: ({ children }: { children: React.ReactNode }) => children }));
 /**
  * Smoke test — verifies the DashboardPage renders without crashing.
  */

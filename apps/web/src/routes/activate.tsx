@@ -2,10 +2,8 @@ import React, { useEffect, useState } from 'react';
 import { createRoute, useNavigate } from '@tanstack/react-router';
 import { useQuery } from '@tanstack/react-query';
 import { api, useAuth } from '@riviamigo/hooks';
-import { useDocumentTheme } from '@riviamigo/ui/hooks';
 import { Button, Input } from '@riviamigo/ui/primitives';
-import { getBrandAsset } from '@riviamigo/ui/lib/brandAssets';
-import { useDocumentPalette } from '@riviamigo/ui/hooks';
+import { RAuthBrand } from '../features/r-experience/RAuthBrand';
 import { rootRoute } from './__root';
 import { PASSWORD_MIN_LENGTH, PasswordRequirements } from '../components/auth/PasswordRequirements';
 
@@ -17,8 +15,6 @@ export const activateRoute = createRoute({
 
 export function ActivatePage() {
   const navigate = useNavigate();
-  const isDark = useDocumentTheme();
-  const palette = useDocumentPalette();
   const accept = useAuth((state) => state.acceptAccountInvitation);
   const [token] = useState(() => window.location.hash.replace(/^#/, ''));
   const [password, setPassword] = useState('');
@@ -62,9 +58,7 @@ export function ActivatePage() {
 
   return <div className="min-h-screen bg-bg-page flex items-center justify-center px-4">
     <div className="w-full max-w-sm">
-      <div className="flex flex-col items-center mb-8">
-        <img src={getBrandAsset('wordmark', { dark: isDark, palette })} alt="Riviamigo" className="block h-14 w-auto" />
-      </div>
+      <RAuthBrand />
       <div className="bg-bg-glass backdrop-blur-md border border-border rounded-2xl p-6 shadow-xl">
         <p className="text-[11px] font-semibold text-fg-tertiary uppercase tracking-widest mb-4">Activate account</p>
         {!token || invitation.isError ? <p className="text-sm text-status-danger">This activation link is invalid, expired, or has already been used.</p> : invitation.isLoading ? <p className="text-sm text-fg-tertiary">Checking invitation…</p> : <div className="grid gap-4">

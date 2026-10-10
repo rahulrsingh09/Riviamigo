@@ -19,8 +19,8 @@ export interface PageLayoutProps {
 
 export function PageLayout({ title, titleAction, titleActionPosition = 'right', titleActionAfter, subtitle, actions, children, className }: PageLayoutProps) {
   return (
-    <div className={cn('flex flex-col gap-6', className)}>
-      <div className="flex flex-wrap items-start justify-between gap-y-2">
+    <div data-page-layout className={cn('flex flex-col gap-6', className)}>
+      <div data-page-heading className="flex flex-wrap items-start justify-between gap-y-2">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
             {titleActionPosition === 'left' && titleAction}

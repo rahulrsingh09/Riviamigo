@@ -516,7 +516,8 @@ vi.mock('../../components/layout/AppLayout', () => ({
 vi.mock('../../components/layout/AuthGuard', () => ({
   AuthGuard: ({ children }: { children: React.ReactNode }) => <>{children}</>,
 }));
-vi.mock('lucide-react', () => ({
+vi.mock('lucide-react', async (importOriginal) => ({
+  ...await importOriginal<typeof import('lucide-react')>(),
   Activity: () => <svg data-testid="icon-activity" />,
   AlertCircle: () => <svg data-testid="icon-alert-circle" />,
   Braces: () => <svg data-testid="icon-braces" />,
@@ -572,9 +573,10 @@ vi.mock('lucide-react', () => ({
 }));
 
 import { SettingsContent } from '../settings';
+import { AppearanceSection } from '../../features/settings/AppearanceSection';
 import { writeReleaseCheckSnapshot } from '../../lib/releaseCheck';
 
-function renderSettings() {
+function renderSettings(initialSection: NonNullable<React.ComponentProps<typeof SettingsContent>>['initialSection'] | 'directory' = 'vehicles', appearanceContract = false) {
   const queryClient = new QueryClient({
     defaultOptions: {
       queries: { retry: false },
@@ -583,14 +585,19 @@ function renderSettings() {
   });
   const view = render(
     <QueryClientProvider client={queryClient}>
-      <SettingsContent />
+      {appearanceContract ? <AppearanceSection preferencesQuery={{ data: settingsMocks.preferences as never, isLoading: false }} /> : <SettingsContent {...(initialSection && initialSection !== 'directory' ? { initialSection } : {})} />}
     </QueryClientProvider>
   );
   return { ...view, queryClient };
 }
 
 function clickSettingsSection(label: string) {
-  fireEvent.click(screen.getByRole('button', { name: label }));
+  const picker = screen.queryByLabelText('Settings section');
+  if (picker) {
+    const option = Array.from((picker as HTMLSelectElement).options).find(option => option.text === (label === 'Units' ? 'Units & time' : label));
+    if (!option) throw new Error(`Missing settings section: ${label}`);
+    fireEvent.change(picker, { target: { value: option.value } });
+  } else fireEvent.click(screen.getByRole('button', { name: new RegExp(`^${label}`) }));
 }
 
 describe('Settings page', () => {
@@ -783,7 +790,7 @@ describe('Settings page', () => {
   });
 
   it('uses a chart icon for the Charts settings section', () => {
-    renderSettings();
+    renderSettings('directory');
     expect(screen.getByTestId('icon-chart-line')).toBeInTheDocument();
   });
 
@@ -791,12 +798,11 @@ describe('Settings page', () => {
     renderSettings();
 
     const picker = screen.getByLabelText('Settings section');
-    expect(picker).toHaveClass('w-full');
+    expect(picker).toBeVisible();
     expect(picker).toHaveValue('vehicles');
     expect(Array.from((picker as HTMLSelectElement).options).map((option) => option.value)).toEqual([
       'account',
       'api',
-      'appearance',
       'charging',
       'charts',
       'dashboards',
@@ -808,13 +814,13 @@ describe('Settings page', () => {
       'vehicles',
     ]);
 
-    fireEvent.change(picker, { target: { value: 'appearance' } });
+    fireEvent.change(picker, { target: { value: 'units' } });
 
-    expect(picker).toHaveValue('appearance');
-    expect(screen.getByText('Appearance mode')).toBeInTheDocument();
+    expect(picker).toHaveValue('units');
+    expect(screen.getByLabelText('Application time zone')).toBeInTheDocument();
     expect(mockNavigate).toHaveBeenCalledWith({
       to: '/settings',
-      search: { section: 'appearance' },
+      search: { section: 'units' },
     });
   });
 
@@ -1194,8 +1200,7 @@ describe('Settings page', () => {
   });
 
   it('renders the Appearance section', () => {
-    renderSettings();
-    clickSettingsSection('Appearance');
+    renderSettings('vehicles', true);
     expect(screen.getAllByText('Appearance').length).toBeGreaterThan(0);
     expect(screen.getByText('Appearance mode')).toBeInTheDocument();
   });
@@ -1203,7 +1208,7 @@ describe('Settings page', () => {
   it('offers every OpenFreeMap style and saves the user selection', async () => {
     settingsMocks.basemapConfig = { resolved_provider: 'openfreemap' };
     renderSettings();
-    clickSettingsSection('Appearance');
+    clickSettingsSection('Units');
 
     const style = screen.getByLabelText('Map style');
     for (const value of ['follow-theme', 'positron', 'bright', 'liberty', 'dark', 'fiord', '3d']) {
@@ -1217,7 +1222,7 @@ describe('Settings page', () => {
   it('hides OpenFreeMap-only style controls for CARTO', () => {
     settingsMocks.basemapConfig = { resolved_provider: 'carto' };
     renderSettings();
-    clickSettingsSection('Appearance');
+    clickSettingsSection('Units');
     expect(screen.queryByLabelText('Map style')).not.toBeInTheDocument();
   });
 
@@ -1363,8 +1368,7 @@ describe('Settings page', () => {
   });
 
   it('renders the theme chooser', async () => {
-    renderSettings();
-    clickSettingsSection('Appearance');
+    renderSettings('vehicles', true);
     expect(screen.getByText('Appearance mode')).toBeInTheDocument();
     expect(screen.getByLabelText('Appearance mode')).toBeInTheDocument();
     expect(await screen.findByRole('radiogroup', { name: 'Themes' })).toBeInTheDocument();
@@ -1375,8 +1379,7 @@ describe('Settings page', () => {
   it('persists account-backed appearance and palette changes', async () => {
     const hooks = await import('@riviamigo/hooks');
     settingsMocks.auth.accessToken = 'test-access-token';
-    renderSettings();
-    clickSettingsSection('Appearance');
+    renderSettings('vehicles', true);
 
     await waitFor(() => expect(screen.getByLabelText('Appearance mode')).toHaveValue('dark'));
     fireEvent.click(await screen.findByRole('radio', { name: /^RAD/ }));
@@ -1394,8 +1397,7 @@ describe('Settings page', () => {
     const hooks = await import('@riviamigo/hooks');
     settingsMocks.auth.accessToken = 'test-access-token';
     vi.mocked(hooks.api.updateThemePreferences).mockRejectedValueOnce(new Error('save failed'));
-    renderSettings();
-    clickSettingsSection('Appearance');
+    renderSettings('vehicles', true);
 
     await waitFor(() => expect(screen.getByLabelText('Appearance mode')).toHaveValue('dark'));
     fireEvent.change(screen.getByLabelText('Appearance mode'), { target: { value: 'light' } });
@@ -1502,7 +1504,7 @@ describe('Settings page', () => {
     };
     renderSettings();
 
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Backups' })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('option', { name: 'Backups' })).toBeInTheDocument());
     clickSettingsSection('Backups');
 
     await waitFor(() => {
@@ -1664,7 +1666,7 @@ describe('Settings page', () => {
     };
     renderSettings();
 
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Backups' })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('option', { name: 'Backups' })).toBeInTheDocument());
     clickSettingsSection('Backups');
     const restorePicker = await screen.findByRole('combobox', {
       name: 'Choose a recovery package',
@@ -1697,7 +1699,7 @@ describe('Settings page', () => {
     };
     renderSettings();
 
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Backups' })).toBeInTheDocument());
+    await waitFor(() => expect(screen.getByRole('option', { name: 'Backups' })).toBeInTheDocument());
     clickSettingsSection('Backups');
 
     await waitFor(() => {
@@ -1715,8 +1717,8 @@ describe('Settings page', () => {
       default_vehicle_id: 'v1',
     };
     const admin = renderSettings();
-    await waitFor(() => expect(screen.getByRole('button', { name: 'Backups' })).toBeInTheDocument());
-    expect(screen.queryByRole('button', { name: 'Authentication' })).not.toBeInTheDocument();
+    await waitFor(() => expect(screen.getByRole('option', { name: 'Backups' })).toBeInTheDocument());
+    expect(screen.queryByRole('option', { name: 'Authentication' })).not.toBeInTheDocument();
     admin.unmount();
 
     settingsMocks.me = {
@@ -1727,7 +1729,7 @@ describe('Settings page', () => {
     };
     renderSettings();
     await waitFor(() =>
-      expect(screen.getByRole('button', { name: 'Authentication' })).toBeInTheDocument()
+      expect(screen.getByRole('option', { name: 'Authentication' })).toBeInTheDocument()
     );
   });
 

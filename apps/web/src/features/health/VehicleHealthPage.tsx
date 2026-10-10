@@ -22,7 +22,6 @@ import {
   Cpu,
   Droplets,
   Gauge,
-  HeartPulse,
   Info,
   Link2Off,
   LockKeyhole,
@@ -35,7 +34,6 @@ import {
 } from 'lucide-react';
 import {
   api,
-  AuthenticatedVehicleArtwork,
   queryKeys,
   resolveVehicleArtwork,
   useAuth,
@@ -81,6 +79,7 @@ import {
 } from '@riviamigo/ui/lib/vehicleStatus';
 import { AppLayout } from '../../components/layout/AppLayout';
 import { NoVehicleState } from '../../components/layout/NoVehicleState';
+import { RHealthHero } from '../r-experience/RHealthHero';
 
 type BadgeVariant = NonNullable<BadgeProps['variant']>;
 type HealthState = { label: string; variant: BadgeVariant };
@@ -222,57 +221,12 @@ export function VehicleHealthContent() {
         ) : (
           <>
             <section className="grid gap-4 xl:items-stretch xl:grid-cols-[minmax(0,1.35fr)_minmax(22rem,0.65fr)]">
-              <Card
-                className="overflow-hidden border-accent/20 p-3"
-                style={{
-                  background:
-                    'radial-gradient(circle at 18% 0%, color-mix(in oklab, var(--rm-accent) 18%, transparent) 32%, transparent), var(--rm-bg-surface)',
-                }}
-              >
-                <div className="flex flex-col gap-4">
-                  <div className="grid min-w-0 gap-4 min-[1200px]:grid-cols-[minmax(0,1fr)_minmax(20rem,0.9fr)] min-[1200px]:items-end">
-                    <div className="flex min-w-0 flex-col gap-3 pb-1">
-                      <div className="inline-flex w-fit items-center gap-2 rounded-lg border border-accent/20 bg-accent-muted px-2 py-0.5 text-xs font-medium text-accent">
-                        <HeartPulse className="h-3.5 w-3.5" />
-                        Health Overview
-                      </div>
-                      <div className="min-w-0">
-                        <h2 className="font-display text-4xl font-semibold tracking-tight text-fg">
-                          {vehicleName}
-                        </h2>
-                        <p className="mt-1 text-lg text-fg-secondary">
-                          {displayModel || 'Vehicle identity pending telemetry'}
-                        </p>
-                        {data?.vehicle?.vin ? (
-                          <p className="mt-1 font-mono text-sm text-fg-tertiary">
-                            VIN {data.vehicle?.vin}
-                          </p>
-                        ) : null}
-                      </div>
-                    </div>
-                    {heroImageUrl || fallbackHeroImageUrl ? (
-                      <div className="relative aspect-[16/9] w-full min-w-0 max-w-[42rem] justify-self-center overflow-hidden min-[1200px]:aspect-auto min-[1200px]:h-64 min-[1200px]:max-w-none">
-                        <AuthenticatedVehicleArtwork
-                          source={heroImageUrl}
-                          fallbackSource={fallbackHeroImageUrl}
-                          fallbackProps={{
-                            className:
-                              'absolute inset-0 h-full w-full object-contain object-center min-[1200px]:object-right-bottom',
-                          }}
-                          alt="Vehicle three-quarter view"
-                          className="absolute inset-0 h-full w-full object-contain object-center min-[1200px]:object-right-bottom"
-                        />
-                      </div>
-                    ) : null}
-                  </div>
-                  <div className="grid w-full grid-cols-1 gap-3 sm:grid-cols-2 min-[1200px]:grid-cols-4">
+              <RHealthHero vehicle={activeVehicle} name={vehicleName} model={displayModel} vin={data?.vehicle?.vin} source={heroImageUrl} fallback={fallbackHeroImageUrl}>
                     <HeroMetric label="Collector" state={collector} kind="collector" />
                     <HeroMetric label="12V" state={twelveVolt} kind="battery" />
                     <HeroMetric label="Thermal" state={thermal} kind="thermal" />
                     <HeroMetric label="Tires" state={tireSummary} kind="tires" />
-                  </div>
-                </div>
-              </Card>
+              </RHealthHero>
 
               <div className="grid min-w-0 gap-2 xl:h-full xl:grid-rows-[auto_minmax(0,1fr)]">
                 <Card data-testid="vehicle-telemetry-summary" padding="none" className="px-3 py-2">

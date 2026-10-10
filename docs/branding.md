@@ -8,6 +8,32 @@ Frontend contributors and reviewers making shared UI decisions.
 
 This document is the canonical visual system reference for Riviamigo. Update it when reusable patterns, tokens, icon usage, spacing, page composition, or copy conventions change.
 
+## Private fork: R experience
+
+This fork presents **R** as its only interface. The upstream reference below is
+retained for synchronization; these R rules take precedence for the running fork.
+There is no appearance gallery, Theme Studio entry or interface selector.
+
+- Use the R mark and approved Option B: an open vehicle stage, readings above
+  the car, and a compact activity column on desktop; stack these on mobile.
+  Keep the complete vehicle silhouette visible.
+- Use neutral surfaces, restrained borders and `--r-signal`. Canonical status
+  and chart-series colors retain their data meaning. R overrides belong in
+  the existing token owner, `packages/ui/src/tokens/globals.css`.
+- Navigation is at the top on desktop and bottom on mobile. Settings use grouped
+  full-width rows, in two desktop columns and one mobile column. Hover covers
+  the whole row through its divider.
+- Light/dark uses the existing account preference and applies to the car stage,
+  menus, dialogs, charts and authentication pages.
+- Pointer use leaves no colored focus frame. Keyboard focus and skip navigation
+  remain visible; retain existing dialog focus management.
+- Page entry takes 220 ms. Rotation uses a deferred, same-origin frame pack with
+  bounded decoding. Reduced motion uses direct changes. Do not animate page
+  backgrounds through white.
+- Preserve canonical charts, settings operations, permissions and map panning.
+
+See [R integration](./architecture/r-experience.md) for module boundaries.
+
 ## Adjacent Docs
 
 - [`./index.md`](./index.md)

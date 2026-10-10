@@ -16,7 +16,7 @@ test('chart manager and editor remain usable at desktop and phone widths', async
   const desktopDialog = page.getByRole('dialog', { name: 'Assigned dashboards' });
   await expect(desktopDialog).toBeVisible();
   expect((await desktopDialog.boundingBox())?.width).toBeLessThan(1280);
-  await expect(desktopDialog).toHaveCSS('background-color', /rgb/);
+  await expect(desktopDialog).not.toHaveCSS('background-color', 'rgba(0, 0, 0, 0)');
   await page.keyboard.press('Escape');
   await expect(assignmentTrigger).toBeFocused();
 
@@ -75,7 +75,7 @@ test('bundled editor preview survives save and reload and matches the Overview p
   await expect(page.getByRole('button', { name: 'Mileage', exact: true })).toBeVisible();
 
   await page.getByRole('button', { name: 'curves' }).click();
-  await page.getByLabel('Color').first().selectOption('emerald');
+  await page.getByRole('button', { name: 'Emerald', exact: true }).first().click();
   await expect(
     page.getByRole('button', { name: 'Usable Capacity', exact: true }).locator('span').first()
   ).toHaveCSS('background-color', 'rgb(16, 185, 129)');
@@ -94,14 +94,14 @@ test('bundled editor preview survives save and reload and matches the Overview p
 
   await page.getByRole('button', { name: 'Edit Battery Capacity by Mileage' }).click();
   await page.getByRole('button', { name: 'curves' }).click();
-  await expect(page.getByLabel('Color').first()).toHaveValue('emerald');
+  await expect(page.getByRole('button', { name: 'Emerald', exact: true }).first()).toHaveClass(/border-accent/);
   await expect(page.getByRole('button', { name: 'Usable Capacity', exact: true })).toBeVisible();
   await expect(page.getByRole('button', { name: 'Mileage', exact: true })).toBeVisible();
   await expect(
     page.getByRole('button', { name: 'Usable Capacity', exact: true }).locator('span').first()
   ).toHaveCSS('background-color', 'rgb(16, 185, 129)');
 
-  await page.goto('/');
+  await page.goto('/d/dashboard');
   await page.getByRole('button', { name: 'Chart', exact: true }).click();
   await page.getByRole('option', { name: /Battery Capacity by Mileage/ }).click();
   await expect(page.getByRole('button', { name: 'Usable Capacity', exact: true })).toBeVisible();
@@ -129,6 +129,12 @@ async function installMocks(page: Page, options: { persistMutations?: boolean } 
     permissions: { read: true, edit: true, duplicate: true, reset: false, restore: false, delete: false, lock: false },
   }));
 
+  await page.route('**/v2/**', route => {
+    const path = new URL(route.request().url()).pathname;
+    return json(route, path.endsWith('/preferences/theme')
+      ? { schemaVersion: 2, mode: 'dark', selection: { kind: 'builtin', themeId: 'classic' } }
+      : { schemaVersion: 2, registryHash: 'test', builtins: [], customThemes: [] });
+  });
   await page.routeWebSocket('**/v1/vehicles/live**', (socket) => socket.close());
   await page.route('**/v1/**', async (route) => {
     const path = new URL(route.request().url()).pathname;
