@@ -352,3 +352,15 @@ External Connections reflects an enabled deployment-managed map provider without
 offering ineffective edit or disable controls. Its request-count field directs
 the owner to Cloudflare usage, rather than presenting API counters as map usage.
 Other optional services retain their disabled status.
+
+### Overlay ownership and capture confirmation
+
+`ResponsiveDialog` and `SelectPicker` share `OverlayPortal`; selectors inside a
+modal keep their menu in that dialog so keyboard focus stays within the active
+surface. Replacing an ingestion capture uses the same responsive dialog, with
+Cancel focused first and an explicit Start new capture action. Cancelling keeps
+the existing capture and restores focus to its trigger.
+
+Trip inspection selects a sample on a tap or horizontal scrub; a vertical touch
+scroll preserves the existing shared selection. Comparison keys use the app time
+zone and scroll within compact saved widgets without covering the map.

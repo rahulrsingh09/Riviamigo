@@ -4,6 +4,8 @@ export function attachChartScrubbing(chart: uPlot, onSelect: (index: number) => 
   const target = chart.over;
   const previousTouchAction = target.style.touchAction;
   let pointerId: number | null = null;
+  let origin = { x: 0, y: 0 };
+  let gesture: 'pending' | 'scrub' | 'scroll' = 'pending';
   target.style.touchAction = 'pan-y';
 
   const select = (event: PointerEvent) => {
@@ -17,14 +19,25 @@ export function attachChartScrubbing(chart: uPlot, onSelect: (index: number) => 
   const start = (event: PointerEvent) => {
     if (event.button !== 0 || !event.isPrimary) return;
     pointerId = event.pointerId;
+    origin = { x: event.clientX, y: event.clientY };
+    gesture = event.pointerType === 'mouse' ? 'scrub' : 'pending';
     target.setPointerCapture(pointerId);
-    select(event);
+    if (gesture === 'scrub') select(event);
   };
   const move = (event: PointerEvent) => {
-    if (event.pointerId === pointerId || event.pointerType === 'mouse') select(event);
+    if (event.pointerType === 'mouse') { select(event); return; }
+    if (event.pointerId !== pointerId) return;
+    if (gesture === 'pending') {
+      const dx = Math.abs(event.clientX - origin.x);
+      const dy = Math.abs(event.clientY - origin.y);
+      if (Math.max(dx, dy) < 8) return;
+      gesture = dx > dy ? 'scrub' : 'scroll';
+    }
+    if (gesture === 'scrub') select(event);
   };
   const end = (event: PointerEvent) => {
     if (event.pointerId !== pointerId) return;
+    if (event.type === 'pointerup' && gesture !== 'scroll') select(event);
     pointerId = null;
   };
 

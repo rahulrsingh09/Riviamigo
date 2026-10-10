@@ -3,9 +3,10 @@ import { act, render, screen, fireEvent, waitFor } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('@riviamigo/ui/primitives', async () => {
+vi.mock('@riviamigo/ui/primitives', async (importOriginal) => {
   const m = await import('../../test/mockPrimitives');
-  return m;
+  const { ResponsiveDialog } = await importOriginal<typeof import('@riviamigo/ui/primitives')>();
+  return { ...m, ResponsiveDialog };
 });
 
 const settingsMocks = vi.hoisted(() => ({
@@ -1481,7 +1482,6 @@ describe('Settings page', () => {
       last_event_at: null,
       truncated: false,
     });
-    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(false);
     renderSettings();
     clickSettingsSection('Raw Data');
     const newCapture = await screen.findByRole('button', { name: 'Start capture for Adventure Truck' });
@@ -1489,9 +1489,14 @@ describe('Settings page', () => {
     expect(screen.getByRole('button', { name: 'Download capture for Adventure Truck' })).toBeDisabled();
     await waitFor(() => expect(newCapture).not.toBeDisabled());
     fireEvent.click(newCapture);
-    expect(confirm).toHaveBeenCalled();
+    expect(screen.getByRole('dialog', { name: 'Replace the previous capture?' })).toBeInTheDocument();
     expect(hooks.api.startVehicleIngestionCapture).not.toHaveBeenCalled();
-    confirm.mockRestore();
+    fireEvent.click(screen.getByRole('button', { name: 'Cancel' }));
+    expect(screen.queryByRole('dialog')).not.toBeInTheDocument();
+    expect(hooks.api.startVehicleIngestionCapture).not.toHaveBeenCalled();
+    fireEvent.click(newCapture);
+    fireEvent.click(screen.getByRole('button', { name: 'Start new capture' }));
+    await waitFor(() => expect(hooks.api.startVehicleIngestionCapture).toHaveBeenCalledWith('v1'));
   });
 
   it('renders and operates the admin Backups section', async () => {

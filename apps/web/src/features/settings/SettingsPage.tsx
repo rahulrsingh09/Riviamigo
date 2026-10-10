@@ -1,8 +1,11 @@
+import { ALL_PRESETS, R2_PRESET, RIVIAN_BATTERY_PRESETS, type BatteryGen } from './batteryPresets';
+import { IngestionDiagnosticsSection } from '../../components/settings/IngestionDiagnosticsSection';
+import { ThemeVehicleImage } from '../../components/settings/ThemeVehicleImage';
 import React from 'react';
 import { useNavigate } from '@tanstack/react-router';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import { api, OPTIONAL_EXTERNAL_TRAFFIC_ENABLED, AuthenticatedVehicleArtwork, queryKeys, resolveVehicleArtwork, useAuth, useAuthReady, useMe, useVehicles } from '@riviamigo/hooks';
-import { type UnitPreferences, type Vehicle, type VehicleImages, type VehicleMember } from '@riviamigo/types';
+import { api, OPTIONAL_EXTERNAL_TRAFFIC_ENABLED, queryKeys, useAuth, useAuthReady, useMe, useVehicles } from '@riviamigo/hooks';
+import { type UnitPreferences, type VehicleMember } from '@riviamigo/types';
 import {
   downloadDashboardYaml,
   materializeUserDashboardDraft,
@@ -64,26 +67,6 @@ function dashboardActionId(dashboard: DashboardConfig) {
   return getDefaultBySlug(dashboard.slug)?.id ?? dashboard.id;
 }
 
-type BatteryGen = 'gen1' | 'gen2';
-
-const RIVIAN_BATTERY_PRESETS: Record<BatteryGen, Array<{ key: string; label: string; kwh: number | null }>> = {
-  gen1: [
-    { key: 'r1_standard_g1', label: 'R1T / R1S Standard (Gen 1)', kwh: 105 },
-    { key: 'r1_large_g1',    label: 'R1T / R1S Large (Gen 1)',    kwh: 135 },
-    { key: 'r1_max_g1',      label: 'R1T / R1S Max (Gen 1)',      kwh: 180 },
-    { key: 'custom',         label: 'Custom',                     kwh: null },
-  ],
-  gen2: [
-    { key: 'r1_standard_g2', label: 'R1T / R1S Standard (Gen 2)', kwh: 92.5 },
-    { key: 'r1_large_g2',    label: 'R1T / R1S Large (Gen 2)',    kwh: 109 },
-    { key: 'r1_max_g2',      label: 'R1T / R1S Max (Gen 2)',      kwh: 140 },
-    { key: 'custom',         label: 'Custom',                     kwh: null },
-  ],
-};
-
-const ALL_PRESETS = [...RIVIAN_BATTERY_PRESETS.gen1, ...RIVIAN_BATTERY_PRESETS.gen2];
-const R2_PRESET = { key: 'r2', label: 'R2', kwh: 82 };
-
 type SettingsSection = 'vehicles' | 'dashboards' | 'charts' | 'units' | 'places' | 'charging' | 'external' | 'api' | 'jobs' | 'raw' | 'backup' | 'appearance' | 'account' | 'authentication';
 
 const baseSections: Array<{ id: SettingsSection; label: string; icon: React.ElementType }> = [
@@ -132,33 +115,6 @@ function membershipBadgeVariant(role: VehicleMember['role'] | undefined): 'succe
   if (role === 'owner') return 'success';
   if (role === 'manager') return 'warning';
   return 'default';
-}
-
-function ThemeVehicleImage({
-  images,
-  model,
-  placement,
-  className,
-  fallback,
-}: {
-  images?: VehicleImages | null | undefined;
-  model?: string | null | undefined;
-  placement: 'side' | 'overhead' | 'front' | 'rear';
-  className?: string;
-  fallback: React.ReactNode;
-}) {
-  const resolved = resolveVehicleArtwork(images, model, placement === 'side' ? 'vehicle-card' : 'health');
-  const light = resolved.light;
-  const dark = resolved.dark ?? light;
-
-  if (!light && !dark && !resolved.fallback) return <>{fallback}</>;
-
-  return (
-    <>
-      <AuthenticatedVehicleArtwork source={light} fallbackSource={resolved.fallback} fallbackProps={{ className: `${className ?? ''} dark:hidden` }} alt="" className={`${className ?? ''} dark:hidden`} loading="lazy" />
-      <AuthenticatedVehicleArtwork source={dark} fallbackSource={resolved.fallback} fallbackProps={{ className: `${className ?? ''} hidden dark:block` }} alt="" className={`${className ?? ''} hidden dark:block`} loading="lazy" />
-    </>
-  );
 }
 
 function DashboardSettingsSection({
@@ -299,146 +255,6 @@ function DashboardEditButtonPreference({
           ].join(' ')}
         />
       </button>
-    </div>
-  );
-}
-
-function IngestionDiagnosticsSection({ vehicles }: { vehicles: Vehicle[] }) {
-  const manageableVehicles = vehicles.filter((vehicle) => (
-    (vehicle.membership_role === 'owner' || vehicle.membership_role === 'manager')
-    && !(vehicle.is_demo ?? vehicle.rivian_vehicle_id?.startsWith('demo-') ?? false)
-  ));
-  if (manageableVehicles.length === 0) return null;
-
-  return (
-    <Card>
-      <CardHeader><CardTitle>Ingestion capture</CardTitle></CardHeader>
-      <CardContent className="grid gap-3">
-        <p className="text-sm text-fg-secondary">
-          Record what Riviamigo receives from Rivian while you reproduce a problem, then download one file to share.
-          A capture keeps Parallax and legacy frames, decoded values, and ingestion decisions for up to an hour.
-          It never includes coordinates, credentials, the VIN, or vehicle names, and it is deleted 24 hours after it stops.
-        </p>
-        {manageableVehicles.map((vehicle) => (
-          <VehicleIngestionCaptureRow key={vehicle.id} vehicle={vehicle} />
-        ))}
-      </CardContent>
-    </Card>
-  );
-}
-
-function formatCaptureTime(value: string | null | undefined): string {
-  return value ? new Date(value).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' }) : '—';
-}
-
-function minutesLeft(endsAt: string | null | undefined, now: number): number {
-  if (!endsAt) return 0;
-  return Math.max(0, Math.ceil((new Date(endsAt).getTime() - now) / 60_000));
-}
-
-function VehicleIngestionCaptureRow({ vehicle }: { vehicle: Vehicle }) {
-  const queryClient = useQueryClient();
-  const queryKey = ['vehicle-ingestion-capture', vehicle.id];
-  const query = useQuery({
-    queryKey,
-    queryFn: () => api.getVehicleIngestionCapture(vehicle.id),
-    refetchInterval: (current) => (current.state.data?.state === 'capturing' ? 5_000 : false),
-  });
-  const onChanged = (data: Awaited<ReturnType<typeof api.getVehicleIngestionCapture>>) => {
-    queryClient.setQueryData(queryKey, data);
-  };
-  const start = useMutation({
-    mutationFn: () => api.startVehicleIngestionCapture(vehicle.id),
-    onSuccess: onChanged,
-  });
-  const stop = useMutation({
-    mutationFn: () => api.stopVehicleIngestionCapture(vehicle.id),
-    onSuccess: onChanged,
-  });
-  const download = useMutation({
-    mutationFn: async () => {
-      const { blob, fileName } = await api.downloadVehicleIngestionCapture(vehicle.id);
-      const url = URL.createObjectURL(blob);
-      const anchor = document.createElement('a');
-      anchor.href = url;
-      anchor.download = fileName;
-      anchor.rel = 'noopener';
-      document.body.appendChild(anchor);
-      anchor.click();
-      anchor.remove();
-      window.setTimeout(() => URL.revokeObjectURL(url), 1000);
-    },
-  });
-
-  const capture = query.data;
-  const state = capture?.state ?? 'idle';
-  const busy = query.isPending || query.isError || start.isPending || stop.isPending;
-  const events = `${(capture?.event_count ?? 0).toLocaleString()} event${capture?.event_count === 1 ? '' : 's'}`;
-  const startCapture = () => {
-    if (state === 'stopped' && !window.confirm('Start a new capture? This replaces the previous capture and its file.')) return;
-    start.mutate();
-  };
-
-  let status: string;
-  if (query.isPending) status = 'Checking capture status…';
-  else if (query.isError) status = 'Could not check capture status.';
-  else if (state === 'capturing') status = `${events} · ${minutesLeft(capture?.ends_at, Date.now())} min left`;
-  else if (state === 'stopped') {
-    status = `Last capture ${formatCaptureTime(capture?.started_at)}–${formatCaptureTime(capture?.stopped_at)} · ${events}`
-      + (capture?.stop_reason === 'expired' ? ' · stopped after 1 hour' : '')
-      + (capture?.truncated ? ' · event limit reached' : '');
-  } else status = 'No capture yet. Records for up to 1 hour.';
-
-  return (
-    <div data-capture-row className="flex flex-col gap-3 rounded-xl border border-border bg-bg-elevated/35 px-3 py-3 sm:flex-row sm:items-center sm:justify-between">
-      <div className="min-w-0 sm:flex-1">
-        <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <p className="min-w-0 break-words text-sm font-medium text-fg">{vehicle.display_name}</p>
-          {state === 'capturing' && <Badge variant="accent">Capturing</Badge>}
-        </div>
-        <p className="mt-0.5 text-xs text-fg-tertiary">{status}</p>
-        {query.isError && (
-          <button type="button" className="mt-1 text-xs text-accent underline" onClick={() => void query.refetch()}>
-            Retry status check
-          </button>
-        )}
-        {(start.isError || stop.isError) && <p className="mt-1 text-xs text-danger">Could not change the capture. Try again.</p>}
-        {download.isError && <p className="mt-1 text-xs text-danger">Could not download the capture. Try again.</p>}
-      </div>
-      <div className="flex flex-wrap items-center justify-end gap-2 sm:shrink-0">
-        {state === 'stopped' && (
-          <Button
-            size="sm"
-            variant="secondary"
-            disabled={download.isPending || (capture?.event_count ?? 0) === 0}
-            onClick={() => download.mutate()}
-            aria-label={`Download capture for ${vehicle.display_name}`}
-          >
-            {download.isPending ? 'Preparing…' : 'Download'}
-          </Button>
-        )}
-        {state === 'capturing' ? (
-          <Button
-            size="sm"
-            variant="danger"
-            disabled={busy}
-            onClick={() => stop.mutate()}
-            aria-label={`Stop capture for ${vehicle.display_name}`}
-          >
-            Stop
-          </Button>
-        ) : (
-          <Button
-            size="sm"
-            variant={state === 'stopped' ? 'ghost' : 'primary'}
-            disabled={busy}
-            onClick={startCapture}
-            aria-label={`Start capture for ${vehicle.display_name}`}
-          >
-            {state === 'stopped' ? 'New capture' : 'Start capture'}
-          </Button>
-        )}
-      </div>
     </div>
   );
 }

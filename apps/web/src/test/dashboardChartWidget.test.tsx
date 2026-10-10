@@ -2066,7 +2066,7 @@ describe('DashboardChartWidget — efficiency_temperature', () => {
     ]);
   });
 
-  it('drops buckets without efficiency values and preserves rounded distance and speed metadata', () => {
+  it('drops buckets without efficiency values and preserves unrounded distance and speed metadata for unit conversion', () => {
     mockEfficiencyVsTemp.mockReturnValueOnce({
       data: [
         {
@@ -2101,9 +2101,9 @@ describe('DashboardChartWidget — efficiency_temperature', () => {
 
     const rows = screen.getAllByTestId('efficiency-pill-label');
     expect(rows.map((node) => node.textContent)).toEqual([formatTemp(20), formatTemp(10)]);
-    expect(rows[0]?.getAttribute('data-distance')).toBe('8');
+    expect(rows[0]?.getAttribute('data-distance')).toBe('7.6');
     expect(rows[0]?.getAttribute('data-speed')).toBe('31.2');
-    expect(rows[1]?.getAttribute('data-distance')).toBe('12');
+    expect(rows[1]?.getAttribute('data-distance')).toBe('12.2');
     expect(rows[1]?.getAttribute('data-speed')).toBe('');
   });
 

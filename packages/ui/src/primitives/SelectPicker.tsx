@@ -1,5 +1,5 @@
 import * as React from 'react';
-import { createPortal } from 'react-dom';
+import { OverlayPortal } from './ResponsiveDialog';
 import { Check, ChevronDown } from 'lucide-react';
 import { cn } from '../lib/utils';
 
@@ -119,8 +119,9 @@ export function SelectPicker<TValue extends string = string>({
     };
   }, [open]);
 
+  const positioned = position !== null;
   React.useEffect(() => {
-    if (!open || activeIndex < 0) return;
+    if (!open || !positioned || activeIndex < 0) return;
     const option = optionRefs.current[activeIndex];
     const menu = menuRef.current;
     option?.focus({ preventScroll: true });
@@ -130,7 +131,7 @@ export function SelectPicker<TValue extends string = string>({
         menu.scrollTop = option.offsetTop + option.offsetHeight - menu.clientHeight;
       }
     }
-  }, [activeIndex, open]);
+  }, [activeIndex, open, positioned]);
 
   function getEnabledIndex(start: number, direction: 1 | -1) {
     if (options.length === 0) return -1;
@@ -227,7 +228,8 @@ export function SelectPicker<TValue extends string = string>({
         />
       </button>
 
-      {open ? createPortal(
+      {open ? (
+        <OverlayPortal container={rootRef.current?.closest('[role="dialog"]') ?? null}>
         <div
           ref={menuRef}
           id={listboxId}
@@ -286,8 +288,8 @@ export function SelectPicker<TValue extends string = string>({
           ) : (
             <div className="px-3 py-2 text-sm text-fg-tertiary">No options available</div>
           )}
-        </div>,
-        rootRef.current?.closest('[role="dialog"]') ?? document.body
+        </div>
+        </OverlayPortal>
       ) : null}
     </div>
   );

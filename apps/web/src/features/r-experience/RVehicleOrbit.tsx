@@ -25,6 +25,7 @@ export function RVehicleOrbit({ vehicleId }: { vehicleId: string }) {
       reduced.current = media.matches;
       if (media.matches) interacted.current = true;
       cancelAnimationFrame(motion.current);
+      setLoading(false);
     };
     change();
     media.addEventListener('change', change);
@@ -80,7 +81,7 @@ export function RVehicleOrbit({ vehicleId }: { vehicleId: string }) {
     const observer = new IntersectionObserver(entries => {
       const visible = entries.some(entry => entry.isIntersecting);
       if (!visible) {
-        if (entered) { interacted.current = true; cancelAnimationFrame(motion.current); }
+        if (entered) { interacted.current = true; cancelAnimationFrame(motion.current); setLoading(false); }
         return;
       }
       if (entered || restore || reduced.current || interacted.current) return;
@@ -106,7 +107,7 @@ export function RVehicleOrbit({ vehicleId }: { vehicleId: string }) {
     });
     if (canvas.current) observer.observe(canvas.current.parentElement!);
     const visibility = () => {
-      if (document.hidden) { interacted.current = true; cancelAnimationFrame(motion.current); }
+      if (document.hidden) { interacted.current = true; cancelAnimationFrame(motion.current); setLoading(false); }
     };
     document.addEventListener('visibilitychange', visibility);
     return () => {
@@ -161,6 +162,7 @@ export function RVehicleOrbit({ vehicleId }: { vehicleId: string }) {
           if (!event.isPrimary || event.button !== 0) return;
           interacted.current = true;
           cancelAnimationFrame(motion.current);
+          setLoading(false);
           failed.current = false;
           drag.current = { id: event.pointerId, x: event.clientX, y: event.clientY, frame: frame.current, time: performance.now(), velocity: 0, moved: false };
           event.currentTarget.setPointerCapture(event.pointerId);

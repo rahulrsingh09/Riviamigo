@@ -11,7 +11,7 @@ import { Badge, Button, SelectPicker, Tooltip } from '@riviamigo/ui/primitives';
 import { TripMapChart, type TripMapRoute, type MapStyleMode } from '@riviamigo/ui/charts';
 import { formatMiles, formatDuration, formatPercent, formatEfficiency } from '@riviamigo/ui/lib/utils';
 import { formatDriveMode, getDriveModeBadgeClass } from '@riviamigo/ui/lib/driveMode';
-import { format, parseISO } from 'date-fns';
+import { formatAppDateTime } from '@riviamigo/ui/lib/dateTime';
 import { registerWidget } from '../../registry';
 import type { WidgetInstance, WidgetCtx } from '../../registry';
 import { useMeasuredWidgetHeight } from '../useMeasuredWidgetHeight';
@@ -65,7 +65,7 @@ function TripCard({
       <button type="button" onClick={onClick} className="w-full text-left pr-9">
       <div className="flex items-center justify-between gap-2 mb-1.5">
         <span className="text-xs text-fg-tertiary">
-          {format(parseISO(trip.started_at), 'MMM d, h:mm a')}
+          {formatAppDateTime(trip.started_at)}
         </span>
         {trip.drive_mode && (
           <Badge size="sm" className={getDriveModeBadgeClass(trip.drive_mode)}>
@@ -138,7 +138,7 @@ export function TripsMapWidget({ ctx }: { instance: WidgetInstance; ctx: WidgetC
     [mapQuery.data],
   );
   const routeIds = React.useMemo(() => new Set(routes.map((route) => route.id)), [routes]);
-  const { ref, height } = useMeasuredWidgetHeight(360, 180);
+  const { ref, height } = useMeasuredWidgetHeight(360, 1);
   const basemap = useBasemapConfig();
   const userPreferences = useUserPreferences();
 

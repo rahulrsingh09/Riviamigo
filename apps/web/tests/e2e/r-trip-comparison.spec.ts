@@ -5,6 +5,7 @@ for (const width of [393, 1440]) for (const mode of ['dark', 'light'] as const) 
   test(`multi-trip colors, emphasis and units at ${width}px in ${mode}`, async ({ page }) => {
     await page.setViewportSize({ width, height: 900 });
     await installRFixture(page, { mode, populatedAnalytics: true, populatedAdmin: true, tripCount: 20 });
+    await page.addInitScript(() => localStorage.setItem('rm-app-timezone', 'America/Los_Angeles'));
     await page.goto('/trips');
     const table = page.locator('[data-widget-id="d5000005-0000-0000-0000-000000000006"]');
     const key = page.getByRole('group', { name: 'Selected route key' });
@@ -17,6 +18,19 @@ for (const width of [393, 1440]) for (const mode of ['dark', 'light'] as const) 
     const colors = () => key.getByRole('button').evaluateAll(elements => Object.fromEntries(elements.map(element => [
       element.getAttribute('data-route-id')!, getComputedStyle(element.querySelector('path')!).stroke,
     ])));
+    const firstDate = await key.getByRole('button').first().locator('span.block').last().textContent();
+    const firstTrip = (width === 393 ? table.getByRole('button') : table.getByRole('row')).filter({ hasText: 'Route 01 · Home' });
+    await expect(firstTrip).toContainText(firstDate!.trim());
+    if (width === 1440) {
+      const compact = key.locator('../..');
+      await compact.evaluate(element => { (element as HTMLElement).style.height = '304px'; });
+      await expect.poll(() => compact.evaluate(element => {
+        const map = element.querySelector('.maplibregl-map')!.getBoundingClientRect();
+        const key = element.querySelector('[data-trip-route-key]')!.getBoundingClientRect();
+        return map.bottom <= key.top + 1 && element.scrollHeight <= element.clientHeight + 1;
+      })).toBe(true);
+      await compact.evaluate(element => { (element as HTMLElement).style.removeProperty('height'); });
+    }
     const before = await colors();
     expect(new Set(Object.values(before)).size).toBe(10);
     await key.getByRole('button').nth(7).click();

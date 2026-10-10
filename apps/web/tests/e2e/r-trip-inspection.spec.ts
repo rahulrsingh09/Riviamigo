@@ -106,9 +106,9 @@ test.describe('touch trip inspection', () => {
     await touch('touchEnd', 0, 0);
     await expectSharedTime(page, '24:00');
     const scrollBefore = await page.evaluate(() => scrollY);
-    await touch('touchStart', bounds.x + bounds.width * .8, y);
+    await touch('touchStart', bounds.x + bounds.width * .2, y);
     for (let step = 1; step <= 6; step++) {
-      await touch('touchMove', bounds.x + bounds.width * .8, y - step * 20);
+      await touch('touchMove', bounds.x + bounds.width * .2, y - step * 20);
     }
     await touch('touchEnd', 0, 0);
     await expect.poll(() => page.evaluate(() => scrollY)).toBeGreaterThan(scrollBefore + 30);

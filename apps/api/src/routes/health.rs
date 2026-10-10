@@ -1,6 +1,9 @@
 //! Vehicle health endpoint — returns tire pressures, software version history,
 //! closure states, and thermal event counts.
 
+mod history;
+use history::{fetch_sw_history, fetch_thermal_count};
+
 use axum::{
     extract::{Path, State},
     routing::{get, post},
@@ -468,35 +471,4 @@ async fn fetch_closures(pool: &sqlx::PgPool, vid: Uuid) -> Result<Option<Closure
     .await
     .map_err(AppError::from)?;
     Ok(row)
-}
-
-async fn fetch_sw_history(pool: &sqlx::PgPool, vid: Uuid) -> Result<Vec<SoftwareEntry>, AppError> {
-    let rows = sqlx::query_as::<_, SoftwareEntry>(
-        r#"SELECT version, installed_at, observed_until
-           FROM riviamigo.software_versions
-           WHERE vehicle_id = $1
-           ORDER BY installed_at DESC
-           LIMIT 20"#,
-    )
-    .bind(vid)
-    .fetch_all(pool)
-    .await
-    .map_err(AppError::from)?;
-    Ok(rows)
-}
-
-async fn fetch_thermal_count(pool: &sqlx::PgPool, vid: Uuid) -> Result<i64, AppError> {
-    let count: i64 = sqlx::query_scalar(
-        r#"SELECT COUNT(*)
-           FROM timeseries.telemetry
-           WHERE vehicle_id = $1
-             AND hv_thermal_event IS NOT NULL
-             AND hv_thermal_event != 'none'
-             AND ts >= now() - interval '30 days'"#,
-    )
-    .bind(vid)
-    .fetch_one(pool)
-    .await
-    .map_err(AppError::from)?;
-    Ok(count)
 }

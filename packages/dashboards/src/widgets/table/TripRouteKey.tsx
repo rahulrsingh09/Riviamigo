@@ -1,5 +1,5 @@
 import { tripRouteColor } from '@riviamigo/ui/charts';
-import { format, parseISO } from 'date-fns';
+import { formatAppDateTime } from '@riviamigo/ui/lib/dateTime';
 import type { TripRow } from '@riviamigo/ui/tables';
 
 export function TripRouteKey({ routes, trips, highlightedId, onHighlight }: {
@@ -9,9 +9,9 @@ export function TripRouteKey({ routes, trips, highlightedId, onHighlight }: {
   onHighlight: (id: string | null) => void;
 }) {
   if (routes.length < 2) return null;
-  return <div className="shrink-0" data-trip-route-key>
-    <p className="mb-2 text-xs text-fg-secondary">Tap a route to highlight it. Tap again to show every selected route.</p>
-    <div className="grid max-h-48 grid-cols-1 gap-1 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3" role="group" aria-label="Selected route key">
+  return <div className="flex min-h-0 max-h-[40%] flex-col" data-trip-route-key>
+    <p className="mb-2 shrink-0 text-xs text-fg-secondary">Tap a route to highlight it. Tap again to show every selected route.</p>
+    <div className="grid min-h-0 max-h-48 grid-cols-1 gap-1 overflow-y-auto sm:grid-cols-2 lg:grid-cols-3" role="group" aria-label="Selected route key">
       {routes.map(({ id, index }) => {
         const trip = trips[id];
         const title = trip
@@ -28,7 +28,7 @@ export function TripRouteKey({ routes, trips, highlightedId, onHighlight }: {
           </span>
           <span className="min-w-0 text-xs text-fg">
             <span className="block break-words">{title}</span>
-            {trip && <span className="mt-1 block text-fg-secondary">{format(parseISO(trip.started_at), 'MMM d, h:mm a')}</span>}
+            {trip && <span className="mt-1 block text-fg-secondary">{formatAppDateTime(trip.started_at)}</span>}
           </span>
         </button>;
       })}
