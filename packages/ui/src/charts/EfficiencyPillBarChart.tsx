@@ -75,7 +75,7 @@ export function EfficiencyPillBarChart({
       <div className={`mb-2 hidden items-center gap-x-4 text-[10px] font-medium uppercase tracking-wider text-fg-tertiary sm:grid ${cols}`}>
         <div>Category</div>
         <div>Driving efficiency</div>
-        <div className="text-right">{valueUnit === 'mi/kWh' ? 'mi/kWh' : 'Wh/mi'}</div>
+        <div className="text-right">{valueUnit}</div>
         {(hasDistance || hasSpeed) && <div className="text-right">Distance</div>}
         {(hasDistance || hasSpeed) && <div className="text-right">{hasSpeed ? 'Avg speed' : hasCoverage ? 'Coverage' : ''}</div>}
       </div>
@@ -99,7 +99,7 @@ export function EfficiencyPillBarChart({
                   <div className="truncate text-xs font-medium text-fg" title={`${item.label}: ${formattedValue}${meta.length ? ` · ${meta.join(' · ')}` : ''}`}>{item.label}</div>
                   {(item.count != null || item.coverage != null) ? <div className="text-[11px] text-fg-tertiary">{[item.count != null ? `${item.count} trips` : null, item.coverage != null ? `${Math.round(item.coverage * 100)}% coverage` : null].filter(Boolean).join(' · ')}</div> : null}
                 </div>
-                <PillSegments filledCount={filledCount} tone={item.tone} />
+                <PillSegments filledCount={filledCount} tone={item.tone} {...(seriesColor ? { seriesColor } : {})} />
                 <div className="whitespace-nowrap text-right font-mono text-xs font-medium tabular-nums text-fg">{formattedValue}</div>
                 {(hasDistance || hasSpeed) && (
                   <div className="whitespace-nowrap text-right font-mono text-xs tabular-nums text-fg-secondary">
@@ -144,6 +144,7 @@ function PillSegments({ filledCount, tone = 'accent', seriesColor }: { filledCou
         <span
           key={i}
           aria-hidden="true"
+          data-efficiency-pill-filled={i < filledCount && tone === 'accent' ? true : undefined}
           className={`h-[14px] min-w-0 flex-1 rounded-[3px] ${i < filledCount ? tone === 'neutral' ? 'bg-fg-tertiary/70' : seriesColor ? '' : 'bg-accent/85' : 'bg-bg-elevated'}`}
           style={i < filledCount && tone !== 'neutral' && seriesColor ? { backgroundColor: seriesColor } : undefined}
         />

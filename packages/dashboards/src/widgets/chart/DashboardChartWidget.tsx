@@ -2333,6 +2333,9 @@ function EfficiencyTemperatureChart({
   height: number;
 }) {
   const isDark = useDocumentTheme();
+  const preferences = getUnitPreferences();
+  const distanceFactor = preferences.distance_unit === 'kilometers' ? 1.609344 : 1;
+  const speedFactor = preferences.speed_unit === 'kmh' ? 1.609344 : 1;
   const seriesColor = editedSeriesColor(chartDefinition, 'accent', isDark);
   const points = data
     .filter((point) => point.avg_efficiency_wh_mi != null)
@@ -2340,8 +2343,8 @@ function EfficiencyTemperatureChart({
     .map((point) => ({
       label: formatTemp(point.temp_c_low),
       value: convertEfficiency(point.avg_efficiency_wh_mi),
-      distance: typeof point.total_miles === 'number' ? Math.round(point.total_miles) : null,
-      speed: typeof point.avg_speed_mph === 'number' ? point.avg_speed_mph : null,
+      distance: typeof point.total_miles === 'number' ? point.total_miles * distanceFactor : null,
+      speed: typeof point.avg_speed_mph === 'number' ? point.avg_speed_mph * speedFactor : null,
     }));
 
   return (
@@ -2353,6 +2356,8 @@ function EfficiencyTemperatureChart({
       emptyTitle={definition.emptyTitle}
       height={height}
       valueUnit={getEfficiencyUnit()}
+      distanceUnit={preferences.distance_unit === 'kilometers' ? 'km' : 'mi'}
+      speedUnit={preferences.speed_unit === 'kmh' ? 'km/h' : 'mph'}
       {...(seriesColor ? { seriesColor } : {})}
     />
   );
@@ -2419,6 +2424,8 @@ function EfficiencyTagsChart({
   hasTagFilter: boolean;
 }) {
   const isDark = useDocumentTheme();
+  const preferences = getUnitPreferences();
+  const distanceFactor = preferences.distance_unit === 'kilometers' ? 1.609344 : 1;
   const seriesColor = editedSeriesColor(chartDefinition, 'accent', isDark);
   const rows = data
     .filter((point) => point.avg_efficiency_wh_mi != null)
@@ -2426,7 +2433,7 @@ function EfficiencyTagsChart({
       label: point.tag_name,
       value: convertEfficiency(point.avg_efficiency_wh_mi),
       count: point.trip_count,
-      distance: point.total_miles,
+      distance: point.total_miles * distanceFactor,
       coverage: point.coverage,
       tone: point.tag_id == null ? ('neutral' as const) : ('accent' as const),
     }))
@@ -2456,6 +2463,7 @@ function EfficiencyTagsChart({
       height={height}
       valueUnit={getEfficiencyUnit()}
       wideLabels
+      distanceUnit={preferences.distance_unit === 'kilometers' ? 'km' : 'mi'}
       {...(seriesColor ? { seriesColor } : {})}
     />
   );

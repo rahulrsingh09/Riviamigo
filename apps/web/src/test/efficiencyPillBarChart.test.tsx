@@ -4,6 +4,29 @@ import { describe, expect, it } from 'vitest';
 import { EfficiencyPillBarChart } from '@riviamigo/ui/charts';
 
 describe('EfficiencyPillBarChart mobile layout', () => {
+  it.each(['km/kWh', 'Wh/km'])('uses the selected %s unit in the desktop header and row', (valueUnit) => {
+    const { container } = render(
+      <EfficiencyPillBarChart valueUnit={valueUnit} data={[{ label: 'Commute', value: 5 }]} />,
+    );
+    expect(container.firstElementChild?.firstElementChild?.textContent).toContain(valueUnit);
+    expect(screen.getByRole('group', { name: `Commute, 5 ${valueUnit}` })).toBeTruthy();
+  });
+
+  it('applies an explicit chart color to both layouts while keeping untagged neutral', () => {
+    const seriesColor = 'var(--rm-series-03)';
+    const { container } = render(
+      <EfficiencyPillBarChart valueUnit="mi/kWh" seriesColor={seriesColor}
+        data={[{ label: 'Commute', value: 3 }, { label: 'Untagged', value: 3, tone: 'neutral' }]} />,
+    );
+    const bars = container.querySelectorAll('[data-efficiency-pill-bar]');
+    for (const index of [0, 1]) {
+      expect((bars[index]?.firstElementChild as HTMLElement).style.backgroundColor).toBe(seriesColor);
+    }
+    for (const index of [2, 3]) {
+      expect((bars[index]?.firstElementChild as HTMLElement).style.backgroundColor).toBe('');
+    }
+  });
+
   it('keeps every segmented bar in a shrinkable full-width mobile row', () => {
     const { container } = render(
       <EfficiencyPillBarChart

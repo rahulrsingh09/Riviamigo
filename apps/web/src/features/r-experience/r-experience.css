@@ -45,6 +45,7 @@
 .r-experience [data-testid="sensor-chip"] .font-mono { font-family: inherit; font-weight: 450; line-height: 1.2; }
 .r-experience [data-sensor-value] { display: inline-flex; flex-wrap: wrap; align-items: baseline; column-gap: 4px; max-width: 100%; }
 .r-experience [data-sensor-unit] { font-size: 12px; font-weight: 450; letter-spacing: 0; white-space: nowrap; }
+.r-experience [data-efficiency-pill-filled] { background-color: var(--rm-chart-accent); }
 .r-experience [data-dashboard-grid="view"] [data-widget-type="sensor"] [data-ui-card] { border: 0; border-radius: 12px; background: var(--rm-bg-surface); }
 .r-experience [data-widget-type] > p { text-transform: none; letter-spacing: 0; color: var(--rm-text-primary); font-size: 18px; font-weight: 500; margin-bottom: 12px; }
 .r-health-hero { min-width: 0; display: flex; flex-direction: column; justify-content: space-between; padding: 8px 16px 0 0; }

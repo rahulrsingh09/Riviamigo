@@ -35,6 +35,7 @@ export interface SpeedHistogramChartProps {
   loading?: boolean;
   height?: number;
   activeBinLabel?: string | null;
+  speedUnit?: 'mph' | 'km/h';
 }
 
 export function SpeedHistogramChart({
@@ -42,6 +43,7 @@ export function SpeedHistogramChart({
   loading = false,
   height = 280,
   activeBinLabel = null,
+  speedUnit = 'mph',
 }: SpeedHistogramChartProps) {
   const palette = useDocumentPalette();
   const isDark = useDocumentTheme();
@@ -68,20 +70,25 @@ export function SpeedHistogramChart({
   const maxDuration = Math.max(...bins.map((bin) => bin.duration_seconds));
   const minDuration = Math.min(...bins.map((bin) => bin.duration_seconds));
   const durationRange = Math.max(1, maxDuration - minDuration);
+  const displayBins = bins.map(bin => ({
+    ...bin,
+    displayLabel: speedUnit === 'km/h' ? `${Math.round(bin.min * 1.609344)}-${Math.round(bin.max * 1.609344)}` : bin.label,
+  }));
 
   return (
     <ResponsiveContainer width="100%" height={height}>
       <BarChart
-        data={bins}
+        data={displayBins}
         margin={CHART_MARGINS.withYAxis}
       >
         <CartesianGrid strokeDasharray="3 3" stroke={CHART_COLORS.grid} vertical={false} />
         <XAxis
-          dataKey="label"
+          dataKey="displayLabel"
           tick={TICK_STYLE}
           tickLine={false}
           axisLine={false}
-          interval={0}
+          interval="preserveStartEnd"
+          minTickGap={8}
           angle={-30}
           textAnchor="end"
           height={48}
@@ -97,7 +104,7 @@ export function SpeedHistogramChart({
         <Tooltip
           content={<ChartTooltip
             formatter={(value) => [formatHistogramDuration(Number(value)), 'Time']}
-            labelFormatter={(value) => `${String(value)} mph`}
+            labelFormatter={(value) => `${String(value)} ${speedUnit}`}
           />}
           cursor={TOOLTIP_CURSOR_STYLE}
         />

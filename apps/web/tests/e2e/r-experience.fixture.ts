@@ -200,8 +200,8 @@ export async function installRFixture(page: Page, options: {
     }
     if (path === '/v1/metrics/batch') {
       const requestBody = request.postDataJSON();
-      const valueByName: Record<string, number> = { trip_miles: 1234, total_trips: 123, energy_charged: 401, avg_efficiency: 320, avg_trip_duration: 30 };
-      const unitByName: Record<string, string> = { trip_miles: 'mi', energy_charged: 'kWh', avg_efficiency: 'Wh/mi', avg_trip_duration: 'min' };
+      const valueByName: Record<string, number> = { trip_miles: 1234, total_trips: 123, energy_charged: 401, avg_efficiency: 320, avg_trip_duration: 30, avg_gross_efficiency: 350, avg_outside_temp_c: 18 };
+      const unitByName: Record<string, string> = { trip_miles: 'mi', energy_charged: 'kWh', avg_efficiency: 'Wh/mi', avg_trip_duration: 'min', avg_gross_efficiency: 'Wh/mi', avg_outside_temp_c: 'C' };
       return json({
         values: requestBody.metrics.map(({ metric }: { metric: string }) => ({ metric, value: valueByName[metric] ?? null, label: metric, ts: null, unit: unitByName[metric] ?? null })),
         series: options.populatedAnalytics ? requestBody.metrics.map(({ metric }: { metric: string }) => ({
@@ -250,16 +250,22 @@ export async function installRFixture(page: Page, options: {
     if (path === '/v1/charging/summary') return json({ total_energy_kwh: 401, total_cost_usd: null, session_count: 25, unknown_cost_session_count: 25, weekly: [] });
     if (path === '/v1/efficiency/summary') return json({ avg_wh_per_mi: 320, p10_wh_per_mi: 250, p90_wh_per_mi: 450, total_miles: 1234, efficiency_miles: 1100, coverage_percent: 89 });
     if (options.populatedAnalytics && path === '/v1/efficiency/by-mode') return json([
-      { drive_mode: 'all_purpose', avg_efficiency: 320, trip_count: 18 },
-      { drive_mode: 'conserve', avg_efficiency: 280, trip_count: 12 },
-      { drive_mode: 'sport', avg_efficiency: 380, trip_count: 5 },
+      { drive_mode: 'all_purpose', avg_wh_per_mi: 320, trip_count: 18 },
+      { drive_mode: 'conserve', avg_wh_per_mi: 280, trip_count: 12 },
+      { drive_mode: 'sport', avg_wh_per_mi: 380, trip_count: 5 },
     ]);
     if (options.populatedAnalytics && path === '/v1/efficiency/trend') return json(days.map((day, index) => ({
-      ts: day.day_start, trip_efficiency_wh_mi: 290 + index * 18, rolling_avg_wh_mi: 315, distance_mi: 20,
+      ts: day.day_start, trip_efficiency_wh_mi: 290 + index * 18, rolling_24h_wh_mi: 315, distance_mi: 20,
     })));
     if (options.populatedAnalytics && path === '/v1/efficiency/vs-temp') return json(days.map((_, index) => ({
-      temp_bucket_c: 8 + index * 4, avg_efficiency_wh_mi: 380 - index * 15, trip_count: 5,
+      temp_c_low: 8 + index * 4, temp_c_high: 12 + index * 4,
+      avg_efficiency_wh_mi: 380 - index * 15, trip_count: 5, total_miles: 20 + index * 10, avg_speed_mph: 30 + index * 5,
     })));
+    if (options.populatedAnalytics && path === '/v1/efficiency/by-tag') return json([
+      { tag_id: 'tag-daily', tag_name: 'Daily commute', trip_count: 8, total_miles: 160, efficiency_miles: 160, avg_efficiency_wh_mi: 300, coverage: 1 },
+      { tag_id: 'tag-weekend', tag_name: 'Weekend adventure', trip_count: 3, total_miles: 240, efficiency_miles: 180, avg_efficiency_wh_mi: 360, coverage: .75 },
+      { tag_id: null, tag_name: 'Untagged', trip_count: 2, total_miles: 30, efficiency_miles: 30, avg_efficiency_wh_mi: 320, coverage: 1 },
+    ]);
     if (options.populatedAnalytics && ['/v1/battery/soc', '/v1/battery/range'].includes(path)) return json(days.map((day, index) => ({
       ts: day.day_start, value: path.endsWith('/soc') ? 78 - index * 3 : 280 - index * 8,
     })));

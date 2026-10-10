@@ -22,6 +22,9 @@ There is no appearance gallery, Theme Studio entry or interface selector.
   Status colors retain their meaning. R overrides belong in the existing token
   owner, `packages/ui/src/tokens/globals.css`; saved account themes must not change
   automatic chart or sensor colors. Explicit chart-color overrides remain valid.
+- Efficiency bars use the chart accent in both layouts; untagged categories
+  remain neutral. Column headers, values, distance and speed metadata follow
+  the selected units.
 - The owner's R2 Performance uses the approved Catalina Cove, 21-inch-wheel,
   black-interior artwork even when live paint metadata is missing. Other vehicle
   models keep their own artwork. Lead the overview with total mileage and label
@@ -33,6 +36,13 @@ There is no appearance gallery, Theme Studio entry or interface selector.
   menus, dialogs, charts and authentication pages.
 - Pointer use leaves no colored focus frame. Keyboard focus and skip navigation
   remain visible; retain existing dialog focus management.
+- Trip inspection shares one sample between the map, drive, temperature,
+  elevation and tire-pressure graphs. Tapping or dragging any plot updates all
+  of them; the selected sample remains when the pointer leaves or the page
+  scrolls. Horizontal touch gestures inspect samples while vertical gestures
+  scroll the page. Selecting another trip clears the sample. Independent
+  analytics charts retain their own time ranges and zoom behavior. Trip speed,
+  histogram ranges, elevation, temperature and pressure follow unit preferences.
 - Page entry takes 220 ms. Rotation uses a deferred, same-origin frame pack with
   bounded decoding and one 3.6-second turn on first visible entry. Touch, pointer
   and keyboard interaction interrupt it. Reduced motion uses direct changes

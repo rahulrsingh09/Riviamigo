@@ -13,6 +13,7 @@ import { DEFAULT_CURVE_SMOOTHNESS, normalizeCurveSmoothness, type CurveSmoothnes
 import { useDocumentPalette } from '../hooks/useDocumentPalette';
 import { useDocumentTheme } from '../hooks/useDocumentTheme';
 import { useThemeRevision } from '../lib/themeRuntime';
+import { attachChartScrubbing } from './attachChartScrubbing';
 
 const NATIVE_SPLINE_PATH = uPlot.paths.spline!();
 
@@ -163,6 +164,8 @@ export interface RichTimeSeriesChartProps {
   xSplits?: number[] | undefined;
   /** Native uPlot cursor synchronization group for dense coordinated charts. */
   cursorSyncKey?: string | undefined;
+  /** Shared sample selection; enables persistent inspection instead of drag-to-zoom. */
+  activeCursorIndex?: number | null | undefined;
   /** Receives the aligned sample index without forcing the chart to re-render. */
   onCursorIndexChange?: ((index: number | null) => void) | undefined;
   /** Receives the currently rendered numeric Y-axis ranges for settings affordances. */
@@ -381,8 +384,8 @@ export function getAdaptiveDecimalPrecision(values: number[], maxPrecision = 4) 
 export function formatAxisDateForSpan(seconds: number, spanSeconds: number) {
   if (spanSeconds <= 24 * 3600) return formatDateForSpan(seconds, spanSeconds);
   const d = new Date(seconds * 1000);
-  if (spanSeconds <= 90 * 86400) return formatAppDate(d, { month: 'short', day: 'numeric' });
-  return formatAppDate(d, { month: 'short', year: '2-digit' });
+  if (spanSeconds <= 90 * 86400) return formatAppDate(d, { month: 'short', day: 'numeric', year: undefined });
+  return formatAppDate(d, { month: 'short', year: '2-digit', day: undefined });
 }
 
 /** Avoid repeated date labels from uPlot's hourly automatic splits. */
@@ -676,6 +679,7 @@ export function RichTimeSeriesChart({
   stepInterpolation = false,
   xSplits,
   cursorSyncKey,
+  activeCursorIndex,
   onCursorIndexChange,
   onResolvedAxisRanges,
   connectGaps = false,
@@ -719,6 +723,9 @@ export function RichTimeSeriesChart({
   const xValueFormatterRef = React.useRef(xValueFormatter);
   const xSecondaryFormatterRef = React.useRef(xSecondaryFormatter);
   const onCursorIndexChangeRef = React.useRef(onCursorIndexChange);
+  const activeCursorIndexRef = React.useRef(activeCursorIndex);
+  const applyCursorSelectionRef = React.useRef<(() => void) | null>(null);
+  const controlledCursor = activeCursorIndex !== undefined;
   const onResolvedAxisRangesRef = React.useRef(onResolvedAxisRanges);
   const onIntervalClickRef = React.useRef(onIntervalClick);
   const tooltipValuesRef = React.useRef<Array<Array<number | null>>>([]);
@@ -737,6 +744,7 @@ export function RichTimeSeriesChart({
   xValueFormatterRef.current = xValueFormatter;
   xSecondaryFormatterRef.current = xSecondaryFormatter;
   onCursorIndexChangeRef.current = onCursorIndexChange;
+  activeCursorIndexRef.current = activeCursorIndex;
   onResolvedAxisRangesRef.current = onResolvedAxisRanges;
   onIntervalClickRef.current = onIntervalClick;
 
@@ -769,13 +777,13 @@ export function RichTimeSeriesChart({
       `${chartHeight}|${xTime}|${xUnit ?? ''}|${mode}|${timeFilter}|${smoothness}|${stepInterpolation}|` +
       `${xRange ? xRange.join(',') : ''}|${yRange ? yRange.join(',') : ''}|${yRightRange ? yRightRange.join(',') : ''}|${xSplits ? xSplits.join(',') : ''}|` +
       `${xSecondaryFormatter ? '1' : '0'}|${yRightUnit ?? ''}|${xAxisLabel ?? ''}|${yAxisLabel ?? ''}|${yRightAxisLabel ?? ''}|${showLegend ? '1' : '0'}|${showGrid ? '1' : '0'}|${showTooltip ? '1' : '0'}|${showPoints ? '1' : '0'}|` +
-      `${cursorSyncKey ?? ''}|${connectGaps ? 'connect-gaps' : ''}|` +
+      `${cursorSyncKey ?? ''}|${controlledCursor}|${connectGaps ? 'connect-gaps' : ''}|` +
       `${interactionMode}|${intervalBandRatio}|` +
       `${packedIntervals.map((item) => `${item.id}:${item.start}:${item.end}:${item.lane}`).join('|')}|` +
       `${referenceLines.map((line) => `${line.value}:${line.color ?? ''}`).join('|')}|` +
       series.map((s) => `${s.key}:${s.label}:${s.mode ?? ''}:${s.color ?? ''}:${s.strokeWidth ?? ''}:${s.yScale ?? ''}:${s.stackId ?? ''}:${s.tooltipOnly ? 'tooltip' : ''}`).join('|') +
       `|${hiddenKeySignature}|${isDark ? 'dark' : 'light'}|${palette}|${themeRevision}`,
-    [chartHeight, xTime, xUnit, mode, timeFilter, smoothness, stepInterpolation, xRange, yRange, yRightRange, xSplits, xSecondaryFormatter, yRightUnit, xAxisLabel, yAxisLabel, yRightAxisLabel, showLegend, showGrid, showTooltip, showPoints, cursorSyncKey, connectGaps, interactionMode, intervalBandRatio, series, hiddenKeySignature, packedIntervals, referenceLines, isDark, palette, themeRevision],
+    [chartHeight, xTime, xUnit, mode, timeFilter, smoothness, stepInterpolation, xRange, yRange, yRightRange, xSplits, xSecondaryFormatter, yRightUnit, xAxisLabel, yAxisLabel, yRightAxisLabel, showLegend, showGrid, showTooltip, showPoints, cursorSyncKey, controlledCursor, connectGaps, interactionMode, intervalBandRatio, series, hiddenKeySignature, packedIntervals, referenceLines, isDark, palette, themeRevision],
   );
 
   React.useEffect(() => {
@@ -831,7 +839,7 @@ export function RichTimeSeriesChart({
                 getCalendarDateSplits(
                   scaleMin,
                   scaleMax,
-                  getResponsiveCalendarTickMaximum(u.bbox.width)
+                  getResponsiveCalendarTickMaximum(u.bbox.width / uPlot.pxRatio)
                 ) ?? [],
             }
         : {}),
@@ -860,10 +868,8 @@ export function RichTimeSeriesChart({
           font: `${CHART_FONT.fontWeight} ${CHART_FONT.fontSize}px ${CHART_FONT.fontFamily}`,
           size: 40,
           gap: 6,
-          // Limit to ≤7 evenly spaced ticks so time labels don't crowd each other
-          // regardless of how many data-point splits the primary axis uses.
-          splits: (_u, _axisIdx, scaleMin, scaleMax) => {
-            const count = 7;
+          splits: (u, _axisIdx, scaleMin, scaleMax) => {
+            const count = getResponsiveCalendarTickMaximum(u.bbox.width / uPlot.pxRatio);
             const step = (scaleMax - scaleMin) / (count - 1);
             return Array.from({ length: count }, (_, i) => scaleMin + i * step);
           },
@@ -979,17 +985,22 @@ export function RichTimeSeriesChart({
       });
     };
 
+    let applyingSelection = false;
     const opts: Options = {
       width,
       height: chartHeight,
       data: alignedDataRef.current,
       // Keep a small left gutter so y-axis labels are not clipped at narrow widths.
       // Right gutter grows when a right axis is present so its labels aren't clipped.
-      padding: [topPadding, hasRightDataAxis ? 4 : 14, 0, 10],
+      padding: [topPadding, hasRightDataAxis ? 4 : 24, 0, 10],
       cursor: {
-        drag: { x: interactionMode !== 'touch-explore', y: false },
+        drag: { x: !controlledCursor && interactionMode !== 'touch-explore', y: false },
         points: { size: 6 },
-        ...(cursorSyncKey ? { sync: { key: cursorSyncKey, scales: ['x', null] } } : {}),
+        ...(controlledCursor ? { bind: {
+          mousemove: () => null, mouseleave: () => null,
+          mousedown: () => null, mouseup: () => null, dblclick: () => null,
+        } } : {}),
+        ...(cursorSyncKey && !controlledCursor ? { sync: { key: cursorSyncKey, scales: ['x', null] } } : {}),
       },
       legend: { show: false },
       scales: {
@@ -1028,11 +1039,12 @@ export function RichTimeSeriesChart({
             }
             const idx = u.cursor.idx;
             if (idx == null || idx < 0) {
-              onCursorIndexChangeRef.current?.(null);
+              if (controlledCursor && !applyingSelection) return;
+              if (!applyingSelection) onCursorIndexChangeRef.current?.(null);
               setTooltip(null);
               return;
             }
-            onCursorIndexChangeRef.current?.(idx);
+            if (!controlledCursor && !applyingSelection) onCursorIndexChangeRef.current?.(idx);
             const data = alignedDataRef.current;
             const currentSeries = seriesRef.current;
             const timestamp = data[0]?.[idx];
@@ -1088,6 +1100,19 @@ export function RichTimeSeriesChart({
     setIsZoomed(false);
 
     const chart = chartRef.current;
+    applyCursorSelectionRef.current = () => {
+      if (!controlledCursor) return;
+      const index = activeCursorIndexRef.current;
+      const value = index == null ? undefined : alignedDataRef.current[0]?.[index];
+      applyingSelection = true;
+      try {
+        chart.setCursor(value == null
+          ? { left: -10, top: -10 }
+          : { left: chart.valToPos(value, 'x'), top: 12 });
+      } finally {
+        applyingSelection = false;
+      }
+    };
     const rangeFromScale = (scale: uPlot.Scale | undefined): [number, number] | undefined => (
       scale?.min != null && scale.max != null && Number.isFinite(scale.min) && Number.isFinite(scale.max)
         ? [scale.min, scale.max]
@@ -1098,7 +1123,9 @@ export function RichTimeSeriesChart({
       ...(rangeFromScale(chart.scales.y2) ? { y2: rangeFromScale(chart.scales.y2)! } : {}),
     });
     requestAnimationFrame(updateOverlay);
-    const touchCleanup = interactionMode === 'touch-explore'
+    const touchCleanup = controlledCursor
+      ? attachChartScrubbing(chart, (index) => onCursorIndexChangeRef.current?.(index))
+      : interactionMode === 'touch-explore'
       ? attachTouchExploration(root, chart, fullXRange)
       : undefined;
 
@@ -1106,6 +1133,7 @@ export function RichTimeSeriesChart({
       typeof ResizeObserver !== 'undefined'
         ? new ResizeObserver(() => {
             chartRef.current?.setSize({ width: Math.max(320, root.clientWidth || 320), height: chartHeight });
+            applyCursorSelectionRef.current?.();
             requestAnimationFrame(updateOverlay);
           })
         : null;
@@ -1114,6 +1142,7 @@ export function RichTimeSeriesChart({
     return () => {
       observer?.disconnect();
       touchCleanup?.();
+      applyCursorSelectionRef.current = null;
       chartRef.current?.destroy();
       chartRef.current = null;
       setTooltip(null);
@@ -1128,6 +1157,10 @@ export function RichTimeSeriesChart({
       chartRef.current.setData(alignedData);
     }
   }, [alignedData, loading, hasData]);
+
+  React.useEffect(() => {
+    applyCursorSelectionRef.current?.();
+  }, [activeCursorIndex, alignedData, structureKey, loading, hasData]);
 
   if (loading) return <ChartSkeleton height={height} />;
 
@@ -1277,6 +1310,7 @@ export function RichTimeSeriesChart({
       ) : null}
       {tooltip ? (
         <div
+          role="tooltip"
           className="pointer-events-none absolute z-30 whitespace-pre rounded-md border border-border-strong bg-bg-surface px-2.5 py-1.5 text-[11px] leading-[1.5] text-fg shadow-xl"
           style={{ left: tooltip.left, top: tooltip.top }}
         >

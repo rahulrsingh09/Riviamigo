@@ -62,12 +62,16 @@ export function TripDetailContent() {
     });
   }, []);
 
-  React.useEffect(() => () => {
-    if (activeIndexFrameRef.current !== null) {
-      cancelAnimationFrame(activeIndexFrameRef.current);
-      activeIndexFrameRef.current = null;
-    }
-  }, []);
+  React.useEffect(() => {
+    pendingActiveIndexRef.current = null;
+    setActiveIndex(null);
+    return () => {
+      if (activeIndexFrameRef.current !== null) {
+        cancelAnimationFrame(activeIndexFrameRef.current);
+        activeIndexFrameRef.current = null;
+      }
+    };
+  }, [tripId]);
 
   const { data: detailData, isLoading: detailLoading } = useTripDetailData(tripId, effectiveVehicleId);
   const trip = detailData?.trip;
@@ -131,6 +135,10 @@ export function TripDetailContent() {
   const temperatureFactor = unitPreferences.temperature_unit === 'fahrenheit' ? 9 / 5 : 1;
   const temperatureOffset = unitPreferences.temperature_unit === 'fahrenheit' ? 32 : 0;
   const pressureFactor = unitPreferences.pressure_unit === 'kpa' ? 6.89476 : 1;
+  const speedFactor = unitPreferences.speed_unit === 'kmh' ? 1.609344 : 1;
+  const altitudeFactor = unitPreferences.altitude_unit === 'feet' ? 3.28084 : 1;
+  const speedUnitLabel = unitPreferences.speed_unit === 'kmh' ? 'km/h' : 'mph';
+  const altitudeUnitLabel = unitPreferences.altitude_unit === 'feet' ? 'ft' : 'm';
   const temperatureUnitLabel = unitPreferences.temperature_unit === 'fahrenheit' ? '°F' : '°C';
   const pressureUnitLabel = unitPreferences.pressure_unit === 'kpa' ? 'kPa' : 'psi';
   const outsideTemperatureLabel = detailData?.outside_temperature?.source === 'open_meteo'
@@ -149,7 +157,7 @@ export function TripDetailContent() {
           { key: 'power', label: 'Power', color: CHART_COLORS.accent, values: timeline.map((point) => point.power_kw) },
           { key: 'regen', label: 'Regen', color: CHART_COLORS.success, values: timeline.map((point) => point.regen_kw) },
         ]),
-      { key: 'speed', label: 'Speed', color: CHART_COLORS.sky, yScale: 'y2' as const, values: timeline.map((point) => point.speed_mph) },
+      { key: 'speed', label: 'Speed', color: CHART_COLORS.sky, yScale: 'y2' as const, values: timeline.map((point) => point.speed_mph == null ? null : point.speed_mph * speedFactor) },
     ],
     temperature: [
       { key: 'outside', label: outsideTemperatureLabel, color: CHART_COLORS.sky, values: timeline.map((point) => point.outside_temp_c == null ? null : point.outside_temp_c * temperatureFactor + temperatureOffset) },
@@ -157,7 +165,7 @@ export function TripDetailContent() {
       { key: 'driver', label: 'Driver setpoint', color: CHART_COLORS.warning, values: timeline.map((point) => point.driver_temp_c == null ? null : point.driver_temp_c * temperatureFactor + temperatureOffset) },
     ],
     elevation: [
-      { key: 'elevation', label: 'Elevation', color: CHART_COLORS.teal, values: timeline.map((point) => point.altitude_m == null ? null : point.altitude_m * 3.28084) },
+      { key: 'elevation', label: 'Elevation', color: CHART_COLORS.teal, values: timeline.map((point) => point.altitude_m == null ? null : point.altitude_m * altitudeFactor) },
     ],
     tires: [
       { key: 'tire_fl', label: 'Front Left', color: CHART_COLORS.accent, values: timeline.map((point) => point.tire_fl_psi == null ? null : point.tire_fl_psi * pressureFactor) },
@@ -165,7 +173,7 @@ export function TripDetailContent() {
       { key: 'tire_rl', label: 'Rear Left', color: CHART_COLORS.success, values: timeline.map((point) => point.tire_rl_psi == null ? null : point.tire_rl_psi * pressureFactor) },
       { key: 'tire_rr', label: 'Rear Right', color: CHART_COLORS.warning, values: timeline.map((point) => point.tire_rr_psi == null ? null : point.tire_rr_psi * pressureFactor) },
     ],
-  }), [drivePowerIsEstimated, outsideTemperatureLabel, pressureFactor, temperatureFactor, temperatureOffset, timeline]);
+  }), [drivePowerIsEstimated, outsideTemperatureLabel, pressureFactor, speedFactor, altitudeFactor, temperatureFactor, temperatureOffset, timeline]);
 
   const metricCoverage = React.useMemo(() => {
     let powerSamples = 0;
@@ -389,9 +397,9 @@ export function TripDetailContent() {
                     xUnit="s"
                     xValueFormatter={(value) => formatElapsed(value)}
                     yUnit="kW"
-                    yRightUnit="mph"
+                    yRightUnit={speedUnitLabel}
                     yValueFormatter={(value, unit) => value == null || !Number.isFinite(value) ? '—' : `${Math.round(value)} ${unit ?? ''}`}
-                    cursorSyncKey={`trip-${tripId}`}
+                    activeCursorIndex={activeIndex}
                     onCursorIndexChange={setActiveIndexThrottled}
                     connectGaps
                     emptyTitle="No drive profile data for this trip."
@@ -415,6 +423,7 @@ export function TripDetailContent() {
                     bins={speedBins}
                     loading={chartLoading}
                     activeBinLabel={activeSpeedBinLabel}
+                    speedUnit={speedUnitLabel}
                   />
                 </div>
 
@@ -437,7 +446,7 @@ export function TripDetailContent() {
                     xValueFormatter={(value) => formatElapsed(value)}
                     yUnit={temperatureUnitLabel}
                     yValueFormatter={(value, unit) => value == null || !Number.isFinite(value) ? '—' : `${Math.round(value)} ${unit ?? ''}`}
-                    cursorSyncKey={`trip-${tripId}`}
+                    activeCursorIndex={activeIndex}
                     onCursorIndexChange={setActiveIndexThrottled}
                     connectGaps
                     emptyTitle="No temperature data for this trip."
@@ -472,9 +481,9 @@ export function TripDetailContent() {
                     xTime={false}
                     xUnit="s"
                     xValueFormatter={(value) => formatElapsed(value)}
-                    yUnit="ft"
+                    yUnit={altitudeUnitLabel}
                     yValueFormatter={(value, unit) => value == null || !Number.isFinite(value) ? '—' : `${Math.round(value)} ${unit ?? ''}`}
-                    cursorSyncKey={`trip-${tripId}`}
+                    activeCursorIndex={activeIndex}
                     onCursorIndexChange={setActiveIndexThrottled}
                     connectGaps
                     emptyTitle="No elevation profile data for this trip."
@@ -500,7 +509,7 @@ export function TripDetailContent() {
                     xValueFormatter={(value) => formatElapsed(value)}
                     yUnit={pressureUnitLabel}
                     yValueFormatter={(value, unit) => value == null || !Number.isFinite(value) ? '—' : `${Math.round(value)} ${unit ?? ''}`}
-                    cursorSyncKey={`trip-${tripId}`}
+                    activeCursorIndex={activeIndex}
                     onCursorIndexChange={setActiveIndexThrottled}
                     connectGaps
                     emptyTitle="No tire pressure data for this trip."
