@@ -63,6 +63,19 @@ There is no appearance gallery, Theme Studio entry or interface selector.
   Long option labels wrap. Escape closes the picker before its parent dialog;
   keyboard focus returns to the trigger.
 - Preserve canonical charts, settings operations, permissions and map panning.
+- Phantom Drain uses compact summaries and expandable parked-period cards below
+  768px. Each card leads with date, duration, battery loss, hourly drain and sleep;
+  its details retain the desktop table's readings and unknown-state explanations.
+  Search, sorting and pagination remain available. Desktop keeps the table.
+  Parked-energy windows occupy a complete row on phones, with three fully visible
+  labels and 44px targets.
+  External Connections wraps provider names in visible rows; Jobs uses labeled
+  mobile rows with its Run action in view instead of a horizontally scrolled table.
+- Rich time-series plots measure the actual card width, including below 320px.
+  Keep readable axis text; Phantom Drain uses concise percentage ticks and
+  preserves daily loss/session calculations. Embedded plots support touch tap
+  and horizontal scrubbing while allowing vertical page scrolling. Tooltips stay
+  within the card; wrapping legends reserve their measured height.
 - Home is the complete dashboard; the former `/d/dashboard` landing page
   redirects there. Keep the approved open car stage and quiet surfaces. Place
   the car above trip distance, total trips and efficiency. SOC, estimated
@@ -78,12 +91,15 @@ There is no appearance gallery, Theme Studio entry or interface selector.
   Do not show individual door/frunk/gate indicators or an open count. Preserve
   the clean photographic rotation without opening effects or cutout overlays.
   Desktop places the car and readings on the left and recent trips/charging
-  on the right. Period-total cards and charts span the space below.
+  on the right. Period-total cards form a two-column grid beneath that activity,
+  filling the right column. Charts span the space below both columns.
   Mobile orders the car, trip cards, energy cards, detail summaries, period
   totals, recent trips/charging, then charts. The optional Overview Charts
   catalog stays last; charts never displace recent activity.
   Home groups saved widgets into vehicle, totals and chart sections, each
-  using the normal dashboard renderer. Edit mode retains add/remove, sizes and options;
+  using the normal dashboard renderer. Home has no Edit dashboard control,
+  including when the account enables dashboard edit shortcuts. Editing remains
+  in the dashboard library under Settings, retaining add/remove, sizes and options;
   removing the car removes its summary from Home. Dashboard tools retain
   duplication, export and import. Imported dashboards open as personal copies
   after confirmation. Untouched bundled dashboards flow to fit content;

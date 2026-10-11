@@ -110,7 +110,7 @@ export function ExternalConnectionsSection() {
 
       {!connections.isLoading ? (
         <div className="grid gap-4 lg:grid-cols-[15rem_minmax(0,1fr)]">
-          <nav aria-label="External connections" className="flex gap-2 overflow-x-auto pb-1 lg:flex-col lg:overflow-visible">
+          <nav aria-label="External connections" className="grid grid-cols-1 gap-2 pb-1 sm:grid-cols-2 lg:flex lg:flex-col">
             {items.map((connection) => {
               const active = connection.enabled && connection.mode !== 'disabled';
               const selectedConnection = connection.id === selected?.id;
@@ -119,26 +119,28 @@ export function ExternalConnectionsSection() {
                   key={connection.id}
                   type="button"
                   onClick={() => setSelectedId(connection.id)}
-                  className={`min-w-44 rounded-xl border px-3 py-2.5 text-left transition lg:min-w-0 ${selectedConnection ? 'border-accent bg-accent/10' : 'border-border bg-bg-elevated/30 hover:bg-bg-elevated/60'}`}
+                  aria-pressed={selectedConnection}
+                  className={`min-w-0 rounded-xl border px-3 py-2.5 text-left transition ${selectedConnection ? 'border-accent bg-accent/10' : 'border-border bg-bg-elevated/30 hover:bg-bg-elevated/60'}`}
                 >
                   <span className="flex items-center justify-between gap-2">
-                    <span className="truncate text-sm font-medium text-fg">{connection.name}</span>
+                    <span className="min-w-0 break-words text-sm font-medium text-fg">{connection.name}</span>
                     <Badge variant={active ? 'success' : 'default'}>{active ? 'Enabled' : 'Disabled'}</Badge>
                   </span>
-                  <span className="mt-1 block truncate text-xs text-fg-tertiary">{connection.mode === 'remote' ? 'Remote service' : connection.mode === 'custom' ? 'Custom endpoint' : 'No outbound requests'}</span>
+                  <span className="mt-1 block text-xs text-fg-tertiary">{connection.mode === 'remote' ? 'Remote service' : connection.mode === 'custom' ? 'Custom endpoint' : 'No outbound requests'}</span>
                 </button>
               );
             })}
             <button
               type="button"
               onClick={() => setSelectedId(GITHUB_RELEASES_ID)}
-              className={`min-w-44 rounded-xl border px-3 py-2.5 text-left transition lg:min-w-0 ${showReleases ? 'border-accent bg-accent/10' : 'border-border bg-bg-elevated/30 hover:bg-bg-elevated/60'}`}
+              aria-pressed={showReleases}
+              className={`min-w-0 rounded-xl border px-3 py-2.5 text-left transition ${showReleases ? 'border-accent bg-accent/10' : 'border-border bg-bg-elevated/30 hover:bg-bg-elevated/60'}`}
             >
               <span className="flex items-center justify-between gap-2">
-                <span className="truncate text-sm font-medium text-fg">GitHub Releases</span>
+                <span className="min-w-0 break-words text-sm font-medium text-fg">GitHub Releases</span>
                 <Badge variant={releaseChecksEnabled ? 'success' : 'default'}>{releaseChecksEnabled ? 'Enabled' : 'Disabled'}</Badge>
               </span>
-              <span className="mt-1 block truncate text-xs text-fg-tertiary">{releaseChecksEnabled ? 'Browser-side release check' : 'No outbound requests'}</span>
+              <span className="mt-1 block text-xs text-fg-tertiary">{releaseChecksEnabled ? 'Browser-side release check' : 'No outbound requests'}</span>
             </button>
           </nav>
           {showReleases ? <GitHubReleasesCard canManage={canManage} connectionsLoaded={connections.isSuccess} /> : null}

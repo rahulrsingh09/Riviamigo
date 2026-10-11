@@ -169,11 +169,11 @@ export function formatSmartNumber(value: number | null | undefined, decimals = 1
   });
 }
 
-export function formatMiles(value: number | null | undefined): string {
+export function formatMiles(value: number | null | undefined, decimals?: number): string {
   if (value === null || value === undefined || Number.isNaN(value)) return '-';
   const prefs = getUnitPreferences();
-  if (prefs.distance_unit === 'kilometers') return `${formatNumber(value * MILES_TO_KM, 1)} km`;
-  return `${formatNumber(value, 0)} mi`;
+  if (prefs.distance_unit === 'kilometers') return `${formatNumber(value * MILES_TO_KM, decimals ?? 1)} km`;
+  return `${formatNumber(value, decimals ?? 0)} mi`;
 }
 
 export function formatDistanceKm(value: number | null | undefined): string {

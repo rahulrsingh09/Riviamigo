@@ -2,7 +2,7 @@ import React from 'react';
 import { DashboardChartWidget, SensorChipSummary, type WidgetInstance } from '@riviamigo/dashboards';
 import { usePhantomDrainPeriods, useVehicleHealth } from '@riviamigo/hooks';
 import type { PhantomDrainPeriod } from '@riviamigo/types';
-import { DataTable, TableControls, phantomDrainColumns } from '@riviamigo/ui/tables';
+import { DataTable, TableControls, PhantomDrainPeriodCard, phantomDrainColumns } from '@riviamigo/ui/tables';
 import { formatPercent } from '@riviamigo/ui/lib/utils';
 import { DashboardPageShell, type DashboardPageShellRenderState } from './DashboardPageShell';
 import type { DashboardPageProps } from './DashboardPage';
@@ -98,7 +98,7 @@ function PhantomDrainContent({ state }: { state: DashboardPageShellRenderState }
         </div>
       </div>
 
-      <div className="grid min-w-0 grid-cols-1 gap-3 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="grid min-w-0 grid-cols-2 gap-3 xl:grid-cols-4">
         {summaryCards.map((card) => (
           <SensorChipSummary
             key={card.key}
@@ -107,17 +107,22 @@ function PhantomDrainContent({ state }: { state: DashboardPageShellRenderState }
             icon={card.icon}
             dataAccent={card.dataAccent}
             valueColor="data"
+            valueSize="sm"
             {...(card.accentBorder === undefined ? {} : { accentBorder: card.accentBorder })}
             {...(card.secondary === undefined ? {} : { secondary: card.secondary })}
           />
         ))}
       </div>
 
-      <section className="h-[380px] min-w-0" data-testid="phantom-drain-chart-section">
+      <section className="min-w-0" aria-label="Battery history">
+        <p className="mb-2 text-xs text-fg-secondary md:hidden">Tap or drag across the chart for details</p>
+        <div className="h-[340px] min-w-0 sm:h-[380px]" data-testid="phantom-drain-chart-section">
         <DashboardChartWidget instance={PHANTOM_DRAIN_CHART_INSTANCE} ctx={ctx} />
+        </div>
       </section>
 
       <div data-testid="phantom-drain-periods-table" className="min-w-0 rounded-xl border border-border p-3">
+        <h2 className="mb-3 text-base font-semibold text-fg">Parked periods</h2>
         <TableControls
           search={search}
           onSearchChange={setSearch}
@@ -141,9 +146,10 @@ function PhantomDrainContent({ state }: { state: DashboardPageShellRenderState }
           columnVisibilityMenu
           fixedLayout
           defaultHiddenColumns={['range_lost_per_hour_mi', 'state_coverage_pct', 'validation_reason']}
+          renderMobileRow={(row) => <PhantomDrainPeriodCard period={row.original} />}
         />
 
-        <div className="mt-3 flex items-center justify-between gap-3 border-t border-border pt-3">
+        <div className="mt-3 flex flex-wrap items-center justify-between gap-3 border-t border-border pt-3">
           <p className="text-xs text-fg-tertiary">
             Showing {pagedPeriods.length} of {filteredPeriods.length} period{filteredPeriods.length === 1 ? '' : 's'}
           </p>
@@ -152,7 +158,7 @@ function PhantomDrainContent({ state }: { state: DashboardPageShellRenderState }
               type="button"
               disabled={page <= 1}
               onClick={() => setPage((current) => Math.max(1, current - 1))}
-              className="rounded-lg border border-border px-3 py-1.5 text-xs transition-colors hover:bg-bg-elevated disabled:opacity-40"
+              className="min-h-11 rounded-lg border border-border px-4 py-2 text-xs transition-colors hover:bg-bg-elevated disabled:opacity-40"
             >
               Prev
             </button>
@@ -160,7 +166,7 @@ function PhantomDrainContent({ state }: { state: DashboardPageShellRenderState }
               type="button"
               disabled={page >= totalPages || totalPages <= 1}
               onClick={() => setPage((current) => Math.min(totalPages, current + 1))}
-              className="rounded-lg border border-border px-3 py-1.5 text-xs transition-colors hover:bg-bg-elevated disabled:opacity-40"
+              className="min-h-11 rounded-lg border border-border px-4 py-2 text-xs transition-colors hover:bg-bg-elevated disabled:opacity-40"
             >
               Next
             </button>

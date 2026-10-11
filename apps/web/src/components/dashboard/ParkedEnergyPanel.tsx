@@ -43,8 +43,8 @@ export function ParkedEnergyPanel({
 
   return (
     <Card data-testid="parked-energy-panel">
-      <CardHeader className="gap-3 sm:flex-row sm:items-start sm:justify-between">
-        <div>
+      <CardHeader className="flex-col items-stretch gap-4 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0">
           <div className="flex flex-wrap items-center gap-2">
             <CardTitle>Parked Energy</CardTitle>
             <Badge variant="accent">Rivian reported</Badge>
@@ -53,14 +53,15 @@ export function ParkedEnergyPanel({
             Vehicle-reported energy use by system. This is separate from Riviamigo&apos;s battery-change estimate below.
           </p>
         </div>
-        <div className="flex max-w-full gap-1 overflow-x-auto rounded-lg border border-border bg-bg-elevated p-1">
+        <div role="group" aria-label="Parked energy window" className="grid w-full grid-cols-[1.25fr_1fr_1fr] gap-1 rounded-lg border border-border bg-bg-elevated p-1 lg:w-auto lg:shrink-0">
           {WINDOWS.map((option) => (
             <button
               key={option.value}
               type="button"
               onClick={() => setWindow(option.value)}
               disabled={!samples.some((candidate) => candidate.window === option.value)}
-              className={`shrink-0 rounded-md px-2.5 py-1.5 text-xs font-medium transition-colors disabled:opacity-35 ${
+              aria-pressed={window === option.value}
+              className={`min-h-11 whitespace-nowrap rounded-md px-2.5 py-2 text-xs font-medium transition-colors disabled:opacity-35 ${
                 window === option.value
                   ? 'bg-accent text-fg-on-accent'
                   : 'text-fg-secondary hover:bg-bg-surface hover:text-fg'
@@ -84,7 +85,7 @@ export function ParkedEnergyPanel({
           </div>
         ) : (
           <div className="grid gap-5">
-            <div className="grid gap-3 sm:grid-cols-3" data-testid="parked-energy-metrics">
+            <div className="grid grid-cols-3 gap-2 sm:gap-3" data-testid="parked-energy-metrics">
               <Metric label="Energy used" value={formatEnergy(sample.total_kwh)} />
               <Metric label="Duration" value={formatDuration(sample.duration_minutes)} />
               <Metric label="Range impact" value={formatRange(sample.total_range_impact_km)} />
@@ -145,7 +146,7 @@ function Metric({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-xl border border-border bg-bg-elevated/40 p-3">
       <p className="text-xs text-fg-tertiary">{label}</p>
-      <p className="mt-1 text-xl font-semibold text-fg">{value}</p>
+      <p className="mt-1 break-words text-base sm:text-xl font-semibold text-fg">{value}</p>
     </div>
   );
 }

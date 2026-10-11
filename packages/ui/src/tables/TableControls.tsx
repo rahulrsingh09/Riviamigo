@@ -35,18 +35,18 @@ export function TableControls({
 
   return (
     <div className={cn('flex shrink-0 flex-wrap items-center justify-between gap-3', className)}>
-      <label className="relative flex-1 min-w-0 sm:min-w-[14rem] max-w-md">
+      <label className="relative w-full min-w-0 sm:flex-1 sm:min-w-[14rem] sm:max-w-md">
         <span className="sr-only">{searchLabel ?? `Search ${itemLabelPlural}`}</span>
         <input
           type="search"
           value={search}
           onChange={(event) => onSearchChange(event.target.value)}
           placeholder={searchPlaceholder}
-          className="w-full rounded-lg border border-border bg-bg-surface px-3 py-2 text-sm text-fg outline-none placeholder:text-fg-tertiary focus:border-accent"
+          className="min-h-11 w-full rounded-lg border border-border bg-bg-surface px-3 py-2 text-sm text-fg outline-none placeholder:text-fg-tertiary focus-visible:border-accent"
         />
       </label>
 
-      <div className="flex items-center gap-3">
+      <div className="flex w-full flex-wrap items-center justify-between gap-3 sm:w-auto">
         <label className="flex items-center gap-2 text-xs text-fg-tertiary shrink-0">
           Rows
           <SelectPicker

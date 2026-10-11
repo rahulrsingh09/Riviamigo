@@ -313,7 +313,7 @@ export function VehicleHealthContent() {
                         >
                           <button
                             type="button"
-                            className="relative inline-flex h-3 w-3 items-center justify-center rounded-sm text-fg-tertiary transition-colors before:absolute before:-inset-2 hover:bg-bg-elevated hover:text-fg focus:outline-none focus:ring-1 focus:ring-accent"
+                            className="inline-flex h-11 w-11 shrink-0 sm:h-5 sm:w-5 items-center justify-center rounded-md text-fg-tertiary transition-colors hover:bg-bg-elevated hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
                             aria-label="About acquisition status"
                           >
                             <Info className="h-2.5 w-2.5" />

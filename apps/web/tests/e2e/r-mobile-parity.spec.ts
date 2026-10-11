@@ -195,3 +195,30 @@ test('vehicle settings keep Catalina Cove artwork and capture controls fit long 
   await expect(stop).toBeVisible();
   expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
 });
+
+for (const width of [320, 402]) {
+  test(`connection names and job actions remain visible at ${width}px`, async ({ page }, testInfo) => {
+    await page.setViewportSize({ width, height: 874 });
+    await installRFixture(page, { populatedAdmin: true, role: 'super_user' });
+    await page.goto('/settings?section=external');
+    const connections = page.getByRole('navigation', { name: 'External connections' });
+    for (const button of await connections.getByRole('button').all()) {
+      await button.click();
+      await expect(button).toHaveAttribute('aria-pressed', 'true');
+      expect(await button.evaluate(e => {
+        const box = e.getBoundingClientRect();
+        return box.left >= 0 && box.right <= innerWidth && e.scrollWidth <= e.clientWidth;
+      })).toBe(true);
+    }
+    await connections.screenshot({ path: testInfo.outputPath('connection-options.png') });
+    await page.goto('/settings?section=jobs');
+    const run = page.getByRole('button', { name: 'Run', exact: true });
+    await run.scrollIntoViewIfNeeded();
+    await expect(run).toBeVisible();
+    expect(await run.evaluate(e => {
+      const box = e.getBoundingClientRect();
+      return box.left >= 0 && box.right <= innerWidth && e.contains(document.elementFromPoint(box.x + box.width / 2, box.y + box.height / 2));
+    })).toBe(true);
+    await page.screenshot({ path: testInfo.outputPath('jobs-mobile.png') });
+  });
+}

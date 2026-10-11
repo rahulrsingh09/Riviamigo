@@ -17,15 +17,17 @@ export interface DashboardPageProps {
   title?: string | undefined;
   /** Show the page-level efficiency unit toggle next to the date range picker. */
   showEfficiencyDisplayToggle?: boolean | undefined;
+  enableDashboardEditing?: boolean | undefined;
 }
 
-export function DashboardPage({ navKey, slug, title, showEfficiencyDisplayToggle = false }: DashboardPageProps) {
+export function DashboardPage({ navKey, slug, title, showEfficiencyDisplayToggle = false, enableDashboardEditing = true }: DashboardPageProps) {
   return (
     <DashboardPageShell
       navKey={navKey}
       slug={slug}
       title={title}
       showEfficiencyDisplayToggle={showEfficiencyDisplayToggle}
+      enableDashboardEditing={enableDashboardEditing}
     />
   );
 }

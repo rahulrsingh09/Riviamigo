@@ -75,16 +75,14 @@ test('mobile efficiency remains reachable and desktop restores its primary tab',
 
 test('removing a pinned graph stays removed after saving the system layout', async ({ page }) => {
   const fixture = await installGraphFixture(page, { role: 'super_user' });
-  await page.goto('/');
-  await page.getByLabel('Dashboard tools', { exact: true }).click();
-  await page.getByRole('button', { name: 'Edit dashboard', exact: true }).click();
+  await page.goto('/d/dashboard?edit=1');
   const widget = page.locator('[data-widget-frame="edit"]').filter({ has: page.locator('[data-chart-id="charge-level"]') });
   await widget.getByRole('button', { name: 'Edit widget settings' }).click();
   await page.getByRole('button', { name: 'Remove component' }).click();
   await page.getByRole('button', { name: 'Delete Widget', exact: true }).click();
   await page.getByRole('button', { name: 'Save dashboard changes' }).click();
   await expect(page.locator('.rgl-editor')).toHaveCount(0);
-  await page.reload();
+  await page.goto('/');
   await expect(page.locator('[data-dashboard-grid] > [data-widget-id="d1000001-0000-0000-0000-000000000101"]')).toHaveCount(0);
   await expect(page.locator('[data-dashboard-grid] > [data-widget-id="d1000001-0000-0000-0000-000000000102"]')).toHaveCount(1);
   expect(fixture.writes.filter(w => w.includes('/dashboards/'))).toHaveLength(1);

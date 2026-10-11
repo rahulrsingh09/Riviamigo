@@ -699,6 +699,8 @@ export function RichTimeSeriesChart({
 }: RichTimeSeriesChartProps) {
   const rootRef = React.useRef<HTMLDivElement | null>(null);
   const chartRef = React.useRef<uPlot | null>(null);
+  const legendRef = React.useRef<HTMLDivElement | null>(null);
+  const [legendHeight, setLegendHeight] = React.useState(34);
   const [tooltip, setTooltip] = React.useState<{ left: number; top: number; text: string } | null>(null);
   const [intervalHover, setIntervalHover] = React.useState<string | null>(null);
   const [overlay, setOverlay] = React.useState<{
@@ -769,7 +771,21 @@ export function RichTimeSeriesChart({
   const hasData = alignedData.length > 1 && (alignedData[0]?.length ?? 0) > 0;
   const legendSeries = series.filter((item) => !item.tooltipOnly && item.showInLegend !== false);
   const legendVisible = showLegend && legendSeries.length > 0;
-  const chartHeight = Math.max(120, height - (legendVisible ? 34 : 0));
+  const chartHeight = Math.max(120, height - (legendVisible ? legendHeight : 0));
+
+  React.useEffect(() => {
+    const legend = legendRef.current;
+    if (!legend) return;
+    let frame = 0;
+    const measure = () => setLegendHeight(legend.getBoundingClientRect().height);
+    measure();
+    const observer = new ResizeObserver(() => {
+      cancelAnimationFrame(frame);
+      frame = requestAnimationFrame(measure);
+    });
+    observer.observe(legend);
+    return () => { observer.disconnect(); cancelAnimationFrame(frame); };
+  }, [legendVisible, loading, hasData]);
   const hiddenKeySignature = React.useMemo(() => [...hiddenKeys].sort().join('|'), [hiddenKeys]);
 
   const structureKey = React.useMemo(
@@ -801,7 +817,7 @@ export function RichTimeSeriesChart({
     const resolveColor = (value: string) => resolveChartColor(value, root);
     const chartMuted = resolveColor(CHART_COLORS.muted);
     const chartGrid = resolveColor(CHART_COLORS.grid);
-    const width = Math.max(320, root.clientWidth || 320);
+    const width = Math.max(1, root.clientWidth || 320);
 
     const xValues = alignedDataRef.current[0] as number[];
     const xSpan = xValues.length > 1 ? (xValues[xValues.length - 1]! - xValues[0]!) : 86400;
@@ -1127,20 +1143,25 @@ export function RichTimeSeriesChart({
       ? attachChartScrubbing(chart, (index) => onCursorIndexChangeRef.current?.(index))
       : interactionMode === 'touch-explore'
       ? attachTouchExploration(root, chart, fullXRange)
-      : undefined;
+      : attachChartScrubbing(chart, () => {}, true);
 
+    let resizeFrame = 0;
     const observer =
       typeof ResizeObserver !== 'undefined'
         ? new ResizeObserver(() => {
-            chartRef.current?.setSize({ width: Math.max(320, root.clientWidth || 320), height: chartHeight });
-            applyCursorSelectionRef.current?.();
-            requestAnimationFrame(updateOverlay);
+            cancelAnimationFrame(resizeFrame);
+            resizeFrame = requestAnimationFrame(() => {
+              chartRef.current?.setSize({ width: Math.max(1, root.clientWidth || 320), height: chartHeight });
+              applyCursorSelectionRef.current?.();
+              updateOverlay();
+            });
           })
         : null;
     observer?.observe(root);
 
     return () => {
       observer?.disconnect();
+      cancelAnimationFrame(resizeFrame);
       touchCleanup?.();
       applyCursorSelectionRef.current = null;
       chartRef.current?.destroy();
@@ -1301,7 +1322,7 @@ export function RichTimeSeriesChart({
             if (!chart || values.length < 2) return;
             chart.setScale('x', { min: xRange?.[0] ?? values[0]!, max: xRange?.[1] ?? values[values.length - 1]! });
           }}
-          className="absolute right-3 top-3 z-20 flex h-8 w-8 items-center justify-center rounded-md border border-border bg-bg-surface/95 text-fg-secondary shadow-sm transition-colors hover:border-border-strong hover:text-fg focus:outline-none focus:ring-1 focus:ring-accent"
+          className="absolute right-3 top-3 z-20 flex h-11 w-11 sm:h-8 sm:w-8 items-center justify-center rounded-md border border-border bg-bg-surface/95 text-fg-secondary shadow-sm transition-colors hover:border-border-strong hover:text-fg focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-accent"
           aria-label="Return to full chart view"
           title="Return to full chart view"
         >
@@ -1311,14 +1332,14 @@ export function RichTimeSeriesChart({
       {tooltip ? (
         <div
           role="tooltip"
-          className="pointer-events-none absolute z-30 whitespace-pre rounded-md border border-border-strong bg-bg-surface px-2.5 py-1.5 text-[11px] leading-[1.5] text-fg shadow-xl"
-          style={{ left: tooltip.left, top: tooltip.top }}
+          className="pointer-events-none absolute z-30 whitespace-pre-wrap break-words rounded-md border border-border-strong bg-bg-surface px-2.5 py-1.5 text-xs leading-[1.5] text-fg shadow-xl"
+          style={{ left: tooltip.left, top: tooltip.top, maxWidth: `calc(100% - ${tooltip.left + 8}px)` }}
         >
           {tooltip.text}
         </div>
       ) : null}
       {legendVisible ? (
-        <div className="flex h-[34px] shrink-0 items-center justify-center gap-3 border-t border-border/60 px-3 text-[11px] text-fg-tertiary">
+        <div ref={legendRef} className="flex min-h-[34px] max-h-[88px] shrink-0 flex-wrap items-center justify-center gap-x-3 overflow-y-auto border-t border-border/60 px-3 text-[11px] text-fg-tertiary">
           {legendSeries.map((item, index) => {
             const color = item.color ?? (index === 0 ? CHART_COLORS.accent : CHART_COLORS.emerald);
             const isHidden = hiddenKeys.has(item.key);
@@ -1335,11 +1356,11 @@ export function RichTimeSeriesChart({
                   });
                 }}
                 className={cn(
-                  'flex items-center gap-1.5 rounded-md px-1.5 py-1 transition hover:bg-bg',
+                  'flex min-h-11 sm:min-h-[32px] max-w-full items-center gap-1.5 rounded-md px-1.5 py-1 transition hover:bg-bg',
                   isHidden && 'opacity-45',
                 )}
               >
-                <span className="h-2 w-2 rounded-full" style={{ backgroundColor: color }} />
+                <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: color }} />
                 <span>{item.label}</span>
               </button>
             );

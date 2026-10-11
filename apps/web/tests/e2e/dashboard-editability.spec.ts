@@ -50,7 +50,7 @@ const dashboards = new Map<string, DashboardConfig>([
 ]);
 
 const routeCases = [
-  { path: '/', slug: 'dashboard', widgetId: 'd1000001-0000-0000-0000-000000000002' },
+  { path: '/d/overview-fixture', slug: 'dashboard', widgetId: 'd1000001-0000-0000-0000-000000000002' },
   { path: '/battery', slug: 'battery', widgetId: 'd2000002-0000-0000-0000-000000000001' },
   { path: '/charging', slug: 'charging', widgetId: 'd4000004-0000-0000-0000-000000000001' },
   { path: '/efficiency', slug: 'efficiency', widgetId: 'd3000003-0000-0000-0000-000000000001' },

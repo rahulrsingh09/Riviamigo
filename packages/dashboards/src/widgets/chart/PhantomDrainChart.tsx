@@ -132,6 +132,10 @@ export function PhantomDrainChart({
   seriesColor,
 }: PhantomDrainChartProps) {
   const data = React.useMemo(() => buildPhantomDrainDailySeries(periods), [periods]);
+  const dailyXRange = React.useMemo<[number, number] | undefined>(() => {
+    if (!data.length) return undefined;
+    return [Date.parse(data[0]!.ts) / 1000 - 43200, Date.parse(data[data.length - 1]!.ts) / 1000 + 43200];
+  }, [data]);
   const dailyYRange = React.useMemo<[number, number] | undefined>(() => {
     if (yRange) return yRange;
     const maximum = Math.max(0, ...data.map((point) => point.socLost));
@@ -184,6 +188,8 @@ export function PhantomDrainChart({
       emptyTitle={emptyTitle}
       height={height}
       yUnit={yUnit}
+      yAxisValueFormatter={yUnit === '% SoC lost' ? (value) => value == null ? '' : formatPercent(value, 2) : undefined}
+      xRange={dailyXRange}
       {...(dailyYRange ? { yRange: dailyYRange } : {})}
       mode="bar"
       interactionMode={interactionMode}

@@ -153,7 +153,7 @@ export function ChartPicker<TValue extends string = string>({
   }
 
   return (
-    <div ref={rootRef} className={cn('relative mb-3 grid w-full gap-2', trailing ? 'grid-cols-[1fr_auto] sm:grid-cols-[1fr_minmax(0,3fr)_auto]' : 'grid-cols-1 sm:grid-cols-4', className)}>
+    <div ref={rootRef} className={cn('relative mb-3 grid w-full gap-2', trailing ? 'grid-cols-[minmax(0,1fr)_auto] sm:grid-cols-[1fr_minmax(0,3fr)_auto]' : 'grid-cols-1 sm:grid-cols-4', className)}>
       <label className={cn('relative', trailing ? 'col-span-2 sm:col-span-1' : '')}>
         <span className="sr-only">Search charts</span>
         <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-fg-tertiary" />
@@ -166,7 +166,7 @@ export function ChartPicker<TValue extends string = string>({
           }}
           placeholder={searchPlaceholder}
           className={cn(
-            'h-9 w-full rounded-lg border border-border bg-bg-surface pl-9 pr-3 text-sm text-fg',
+            'h-11 sm:h-9 w-full rounded-lg border border-border bg-bg-surface pl-9 pr-3 text-sm text-fg',
             'placeholder:text-fg-tertiary transition-colors',
             'hover:border-border-strong focus:border-accent focus:outline-none focus:ring-0 focus-visible:!outline-none focus-visible:!outline-offset-0 focus-visible:ring-0',
           )}
@@ -181,11 +181,11 @@ export function ChartPicker<TValue extends string = string>({
           aria-expanded={isOpen}
           onClick={() => setIsOpen((current) => !current)}
           className={cn(
-            'flex h-9 w-full items-center justify-between gap-3 rounded-lg border border-border bg-bg-surface px-3 text-left text-sm text-fg',
+            'flex min-h-11 sm:min-h-9 w-full items-center justify-between gap-2 rounded-lg border border-border bg-bg-surface px-3 py-2 sm:py-1 text-left text-sm text-fg',
             'transition-colors hover:border-border-strong focus:border-accent focus:outline-none focus:ring-0 focus-visible:!outline-none focus-visible:!outline-offset-0 focus-visible:ring-0',
           )}
         >
-          <span className="truncate">{selectedOption?.label ?? 'Select chart'}</span>
+          <span className="min-w-0 break-words">{selectedOption?.label ?? 'Select chart'}</span>
           <ChevronDown className={cn('h-4 w-4 shrink-0 text-fg-tertiary transition-transform', isOpen && 'rotate-180')} />
         </button>
       </div>

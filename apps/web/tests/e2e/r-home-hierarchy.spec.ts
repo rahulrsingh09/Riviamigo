@@ -2,7 +2,7 @@ import { expect, test } from '@playwright/test';
 import { readFileSync } from 'node:fs';
 import { installRFixture } from './r-experience.fixture';
 
-for (const width of [320, 393, 1280, 1920]) for (const mode of ['dark', 'light'] as const) {
+for (const width of [320, 393, 901, 1280, 1920]) for (const mode of ['dark', 'light'] as const) {
   test(`Home prioritizes the vehicle and recent activity at ${width}px in ${mode}`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 900 });
     await page.emulateMedia({ reducedMotion: 'reduce' });
@@ -20,8 +20,27 @@ for (const width of [320, 393, 1280, 1920]) for (const mode of ['dark', 'light']
     if (width > 900) {
       expect(recent.x).toBeGreaterThan(car.x + car.width);
       expect(Math.abs(recent.y - car.y)).toBeLessThan(12);
-      expect(summary.y).toBeGreaterThanOrEqual(Math.max(car.y + car.height, recent.y + recent.height));
-      expect(graph.y).toBeGreaterThan(summary.y + summary.height);
+      expect(Math.abs(summary.x - recent.x)).toBeLessThan(1);
+      expect(Math.abs(summary.width - recent.width)).toBeLessThan(1);
+      expect(summary.y).toBeGreaterThan(recent.y + recent.height);
+      expect(summary.y - (recent.y + recent.height)).toBeLessThan(48);
+      const summaryCards = await totals.locator('[data-ui-card]').evaluateAll(elements =>
+        elements.map(element => {
+          const { x, y, width, height } = element.getBoundingClientRect();
+          const value = element.querySelector('.font-mono')?.getBoundingClientRect();
+          const sprite = element.querySelector('[data-testid="sensor-sprite-layer"]')?.getBoundingClientRect();
+          return {
+            x, y, width, height, fits: element.scrollWidth <= element.clientWidth + 1,
+            readable: !value || !sprite || value.bottom + 4 <= sprite.y,
+          };
+        }));
+      expect(summaryCards.every(card => card.fits)).toBe(true);
+      expect(summaryCards.every(card => card.readable)).toBe(true);
+      expect(Math.abs(summaryCards[0]!.y - summaryCards[1]!.y)).toBeLessThan(1);
+      expect(Math.abs(summaryCards[2]!.y - summaryCards[3]!.y)).toBeLessThan(1);
+      expect(Math.abs(summaryCards[0]!.x - summaryCards[2]!.x)).toBeLessThan(1);
+      expect(summaryCards[2]!.y).toBeGreaterThan(summaryCards[0]!.y + summaryCards[0]!.height);
+      expect(graph.y).toBeGreaterThan(Math.max(car.y + car.height, summary.y + summary.height));
     } else {
       expect(summary.y).toBeGreaterThanOrEqual(car.y + car.height);
       expect(recent.y).toBeGreaterThan(summary.y + summary.height);

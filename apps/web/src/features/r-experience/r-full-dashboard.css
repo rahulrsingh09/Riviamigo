@@ -70,6 +70,12 @@
 .r-dashboard-tools > p { margin-top: 12px; color: var(--rm-status-danger); }
 .r-home-activity { grid-area: activity; display: flex; flex-direction: column; gap: 32px; padding-top: 8px; min-width: 0; }
 .r-home-activity > section { margin-top: 0; min-width: 0; }
+@media(min-width:901px) {
+  .r-home-content[data-has-vehicle="true"] { grid-template-areas: "vehicle activity" "vehicle totals" "charts charts"; grid-template-rows: auto 1fr auto; }
+  .r-home-content[data-has-vehicle="true"] .r-home-totals [data-dashboard-grid="view"] { grid-template-columns: repeat(2,minmax(0,1fr)) !important; gap: 16px !important; }
+  .r-home-content[data-has-vehicle="true"] .r-home-totals [data-dashboard-grid="view"] > [data-widget-id] { grid-column: auto !important; }
+  .r-home-content[data-has-vehicle="true"] .r-home-totals [data-widget-type="sensor"] [data-ui-card] { padding-bottom: 54px; }
+}
 @media(max-width:900px) {
   .r-home-content,.r-home-content[data-has-vehicle="false"] { grid-template-columns: minmax(0,1fr); grid-template-areas: "vehicle" "totals" "activity" "charts"; gap: 28px; }
   .r-home-activity { gap: 24px; padding-top: 0; }

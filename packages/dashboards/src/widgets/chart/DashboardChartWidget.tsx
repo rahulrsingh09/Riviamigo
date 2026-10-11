@@ -436,7 +436,7 @@ function DashboardChartFrame({
         aria-expanded={settingsOpen}
         onClick={() => setSettingsOpen((value) => !value)}
         className={cn(
-          'flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-bg-surface text-fg-tertiary transition-colors',
+          'flex h-11 w-11 shrink-0 sm:h-9 sm:w-9 items-center justify-center rounded-lg border border-border bg-bg-surface text-fg-tertiary transition-colors',
           'hover:border-border-strong hover:text-fg focus:outline-none focus:ring-0 focus-visible:!outline-none focus-visible:!outline-offset-0 focus-visible:ring-0',
           settingsOpen && 'border-accent text-accent'
         )}
@@ -448,7 +448,7 @@ function DashboardChartFrame({
         type="button"
         aria-label="Expand chart"
         onClick={() => setViewerOpen(true)}
-        className="flex h-9 w-9 items-center justify-center rounded-lg border border-border bg-bg-surface text-fg-tertiary transition-colors hover:border-border-strong hover:text-fg focus:outline-none focus:ring-0 focus-visible:!outline-none focus-visible:!outline-offset-0 focus-visible:ring-0 sm:hidden"
+        className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-border bg-bg-surface text-fg-tertiary transition-colors hover:border-border-strong hover:text-fg focus:outline-none focus:ring-0 focus-visible:!outline-none focus-visible:!outline-offset-0 focus-visible:ring-0 sm:hidden"
       >
         <Maximize2 className="h-4 w-4" />
       </button>

@@ -22,7 +22,6 @@ export function RDashboardTools({ state }: { state: DashboardPageShellRenderStat
   return <details className="r-dashboard-tools">
     <summary aria-label="Dashboard tools" title="Dashboard tools"><PanelsTopLeft aria-hidden="true" /><span>Dashboard tools</span></summary>
     <div>
-      <button type="button" onClick={state.enterEdit}>Edit dashboard</button>
       <button type="button" disabled={clone.isPending} onClick={() => void duplicate()}>Duplicate dashboard</button>
       <button type="button" onClick={() => { if (state.activeConfig) downloadDashboardYaml(state.activeConfig); }}>Export dashboard</button>
       <RDashboardImport />

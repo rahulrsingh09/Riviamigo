@@ -39,12 +39,12 @@ function formatDateTime(value: string | null) {
   return formatAppDateTime(value);
 }
 
-function formatDurationHours(value: number | null) {
+export function formatDurationHours(value: number | null) {
   if (value == null || Number.isNaN(value)) return '-';
   return `${formatSmartNumber(value, 1)} h`;
 }
 
-function formatPowerWatts(value: number | null) {
+export function formatPowerWatts(value: number | null) {
   if (value == null || Number.isNaN(value)) return '-';
   if (Math.abs(value) >= 1000) {
     return `${formatSmartNumber(value / 1000, 2)} kW`;
@@ -52,7 +52,7 @@ function formatPowerWatts(value: number | null) {
   return `${formatSmartNumber(value, 0)} W`;
 }
 
-function formatRatioPercent(value: number | null, decimals = 0) {
+export function formatRatioPercent(value: number | null, decimals = 0) {
   if (value == null || Number.isNaN(value)) return '-';
   return formatPercent(value * 100, decimals);
 }
@@ -233,7 +233,7 @@ export const phantomDrainColumns = [
     cell: (info) => {
       const value = info.getValue();
       if (value == null || Number.isNaN(value)) return <span className="text-fg-tertiary">-</span>;
-      return <span className="font-mono text-fg-secondary">{`${formatMiles(value)} / h`}</span>;
+      return <span className="font-mono text-fg-secondary">{`${formatMiles(value, 2)} / h`}</span>;
     },
   }),
   col.accessor('energy_drained_kwh', {

@@ -190,7 +190,7 @@ function DashboardPageShellContent({
   const apiConfig = dashboardId ? byId.data : bySlug.data;
   const apiConfigForSlug = apiConfig?.slug === slug ? apiConfig : undefined;
   const localDefault = getDefaultBySlug(slug);
-  const savedConfig: DashboardConfig | undefined = dashboardId
+  const savedConfig: DashboardConfig | undefined = dashboardId || (controlledEditMode && (!authReady || bySlug.isLoading || bySlug.isError))
     ? apiConfigForSlug
     : apiConfigForSlug ?? localDefault;
   const dashboardIsLoading = dashboardId ? byId.isLoading : bySlug.isLoading;

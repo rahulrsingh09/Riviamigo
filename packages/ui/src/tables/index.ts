@@ -8,3 +8,4 @@ export { chargingColumns } from './chargingColumns';
 export type { ChargeSessionRow } from './chargingColumns';
 export { phantomDrainColumns } from './phantomDrainColumns';
 export type { PhantomDrainRow } from './phantomDrainColumns';
+export { PhantomDrainPeriodCard } from './PhantomDrainPeriodCard';

@@ -46,8 +46,8 @@ export function JobsSection({ vehicles }: JobsSectionProps) {
           <p className="text-sm text-fg-tertiary">No vehicles connected yet.</p>
         ) : (
           <div className="overflow-x-auto">
-            <table className="min-w-full text-sm">
-              <thead className="border-b border-border text-xs uppercase tracking-wide text-fg-tertiary">
+            <table className="block w-full text-sm md:table">
+              <thead className="hidden border-b border-border text-xs uppercase tracking-wide text-fg-tertiary md:table-header-group">
                 <tr>
                   <th className="py-2 pr-4 text-left font-medium">Vehicle</th>
                   <th className="py-2 pr-4 text-left font-medium">Job</th>
@@ -57,29 +57,32 @@ export function JobsSection({ vehicles }: JobsSectionProps) {
                   <th className="py-2 text-right font-medium">Action</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-border">
+              <tbody className="grid gap-4 md:table-row-group md:divide-y md:divide-border">
                 {vehicles.map((vehicle, index) => {
                   const backfill = backfillQueries[index]!;
                   const status = backfill.data?.status ?? vehicle.history_backfill_status ?? 'unknown';
                   const running = status === 'running' || status === 'pending';
                   return (
                     <React.Fragment key={vehicle.id}>
-                      <tr>
-                        <td className="py-3 pr-4 align-top">
+                      <tr className="grid grid-cols-2 gap-x-3 rounded-xl border border-border p-3 md:table-row md:rounded-none md:border-0 md:p-0">
+                        <td className="col-span-2 py-3 md:pr-4 align-top">
                           <div className="font-medium text-fg">{vehicle.display_name}</div>
                           <div className="text-xs text-fg-tertiary">{vehicle.model}</div>
                         </td>
-                        <td className="py-3 pr-4 align-top text-fg">Charging history backfill</td>
-                        <td className="py-3 pr-4 align-top">
+                        <td className="py-3 md:pr-4 align-top text-fg"><span className="mb-1 block text-xs text-fg-tertiary md:hidden">Job</span>Charging history backfill</td>
+                        <td className="py-3 md:pr-4 align-top">
+                          <span className="mb-1 block text-xs text-fg-tertiary md:hidden">Status</span>
                           <StatusBadge status={status} loading={backfill.isLoading} />
                         </td>
-                        <td className="py-3 pr-4 align-top text-fg-secondary">
+                        <td className="py-3 md:pr-4 align-top text-fg-secondary">
+                          <span className="mb-1 block text-xs text-fg-tertiary md:hidden">Last run</span>
                           {formatDateTime(backfill.data?.history_backfilled_at ?? vehicle.history_backfilled_at)}
                         </td>
-                        <td className="py-3 pr-4 align-top text-fg-secondary">
+                        <td className="py-3 md:pr-4 align-top text-fg-secondary">
+                          <span className="mb-1 block text-xs text-fg-tertiary md:hidden">Evidence</span>
                           {formatBackfillEvidence(backfill.data?.rivian_session_count ?? vehicle.history_session_count, backfill.data?.local_session_count)}
                         </td>
-                        <td className="py-3 text-right align-top">
+                        <td className="col-span-2 py-3 md:text-right align-top">
                           <Button
                             variant="secondary"
                             size="sm"

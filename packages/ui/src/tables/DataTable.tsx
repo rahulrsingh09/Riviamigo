@@ -13,6 +13,7 @@ import { ChevronUp, ChevronDown, ChevronsUpDown } from 'lucide-react';
 import { cn } from '../lib/utils';
 import { Skeleton } from '../primitives/Skeleton';
 import { EmptyState } from '../primitives/EmptyState';
+import { SelectPicker } from '../primitives/SelectPicker';
 
 type ColumnMeta = {
   headerClassName?: string;
@@ -35,6 +36,7 @@ export interface DataTableProps<TData> {
   fixedLayout?: boolean;
   columnVisibilityMenu?: boolean;
   defaultHiddenColumns?: string[];
+  renderMobileRow?: (row: Row<TData>) => React.ReactNode;
 }
 
 export function DataTable<TData>({
@@ -50,6 +52,7 @@ export function DataTable<TData>({
   fixedLayout = false,
   columnVisibilityMenu = false,
   defaultHiddenColumns,
+  renderMobileRow,
 }: DataTableProps<TData>) {
   const [sorting, setSorting] = React.useState<SortingState>([]);
   const [columnVisibility, setColumnVisibility] = React.useState<VisibilityState>(() => {
@@ -107,7 +110,38 @@ export function DataTable<TData>({
 
   return (
     <div className={cn('relative w-full overflow-x-auto', className)}>
-      <table className={cn('w-full text-sm', fixedLayout && 'table-fixed')}>
+      {renderMobileRow ? (
+        <div className="grid gap-3 py-3 md:hidden" data-testid="mobile-table-cards">
+          <div className="flex items-center gap-2">
+            <SelectPicker
+              aria-label="Sort rows by"
+              className="min-w-0 flex-1"
+              value={sorting[0]?.id ?? ''}
+              onChange={(id) => setSorting(id ? [{ id, desc: sorting[0]?.desc ?? false }] : [])}
+              options={[
+                { value: '', label: 'Original order' },
+                ...menuColumns.filter((column) => column.getCanSort()).map((column) => ({
+                  value: column.id,
+                  label: (column.columnDef.meta as ColumnMeta | undefined)?.columnLabel ?? String(column.columnDef.header),
+                })),
+              ]}
+            />
+            <button
+              type="button"
+              aria-label={sorting[0]?.desc ? 'Sort ascending' : 'Sort descending'}
+              disabled={!sorting.length}
+              onClick={() => setSorting((current) => current.map((sort) => ({ ...sort, desc: !sort.desc })))}
+              className="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-border bg-bg-surface text-fg-secondary transition-colors hover:bg-bg-elevated disabled:opacity-40"
+            >
+              {sorting[0]?.desc ? <ChevronDown aria-hidden="true" className="h-4 w-4" /> : <ChevronUp aria-hidden="true" className="h-4 w-4" />}
+            </button>
+          </div>
+          {loading ? Array.from({ length: Math.min(loadingRows, 5) }, (_, i) => <Skeleton key={i} className="h-36" />)
+            : table.getRowModel().rows.length === 0 ? <EmptyState title={emptyTitle} description={emptyDescription} />
+            : table.getRowModel().rows.map((row) => <React.Fragment key={row.id}>{renderMobileRow(row)}</React.Fragment>)}
+        </div>
+      ) : null}
+      <table className={cn('w-full text-sm', fixedLayout && 'table-fixed', renderMobileRow && 'hidden md:table')}>
         <thead onContextMenu={openColumnMenu}>
           {table.getHeaderGroups().map((headerGroup) => (
             <tr key={headerGroup.id} className="border-b border-border">

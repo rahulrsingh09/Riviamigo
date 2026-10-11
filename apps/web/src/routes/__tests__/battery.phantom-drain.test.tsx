@@ -1,7 +1,7 @@
 // The canonical dashboard controller is exercised independently of the R presentation.
 vi.mock('../../features/r-experience/RDashboardSurface', () => ({ RDashboardSurface: ({ children }: { children: React.ReactNode }) => children }));
 import React from 'react';
-import { fireEvent, render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor, within } from '@testing-library/react';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 
 const mockCollector = vi.hoisted(() => ({
@@ -204,7 +204,7 @@ describe('BatteryPhantomDrainPage', () => {
     expect(screen.getByText('Parked Energy')).toBeInTheDocument();
     expect(screen.getByText('Rivian reported')).toBeInTheDocument();
     expect(screen.getByText('Riviamigo battery-change estimate')).toBeInTheDocument();
-    expect(screen.getByTestId('parked-energy-metrics')).toHaveClass('grid', 'sm:grid-cols-3');
+    expect(screen.getByTestId('parked-energy-metrics')).toHaveClass('grid', 'grid-cols-3');
 
     expect(screen.getByPlaceholderText('Search periods')).toBeInTheDocument();
     expect(screen.getByText('Rows')).toBeInTheDocument();
@@ -225,11 +225,11 @@ describe('BatteryPhantomDrainPage', () => {
     ]);
 
     await waitFor(() => expect(
-      screen.getByText((content) => content.includes('68') && content.includes('62'))
+      within(screen.getByRole('table')).getByText((content) => content.includes('68') && content.includes('62'))
     ).toBeInTheDocument());
 
     fireEvent.change(screen.getByPlaceholderText('Search periods'), { target: { value: '999' } });
-    expect(await screen.findByText('No matching phantom drain periods')).toBeInTheDocument();
+    expect(await screen.findAllByText('No matching phantom drain periods')).toHaveLength(2);
   });
 
   it('hides the Parked Energy panel when the Parallax collector is not running', () => {

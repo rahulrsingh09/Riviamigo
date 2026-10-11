@@ -8,6 +8,7 @@ for (const width of [393, 1280]) {
       await page.setViewportSize({ width, height: 900 });
       const fixture = await installRFixture(page, { mode, populatedAdmin: true, populatedAnalytics: true, unknownConfiguration: true });
       await page.emulateMedia({ reducedMotion: 'reduce' });
+      await page.addInitScript(() => localStorage.setItem('rm-show-dashboard-edit-button:33333333-3333-4333-8333-333333333333', 'true'));
       await page.goto('/d/dashboard');
       await expect(page).toHaveURL(/\/$/);
       await expect(page.getByRole('heading', { name: 'Your Rivian', exact: true })).toBeVisible();
@@ -41,10 +42,8 @@ for (const width of [393, 1280]) {
       await page.getByRole('button', { name: /Toggle efficiency units/ }).click();
       await expect(workspace.locator('[data-testid="sensor-chip"]').filter({ hasText: 'Avg Efficiency' })).toContainText('320 Wh/mi');
       await page.getByLabel('Dashboard tools', { exact: true }).click();
-      await page.getByRole('button', { name: 'Edit dashboard', exact: true }).click();
-      await expect(page.locator('.rgl-editor')).toBeVisible();
-      await expect(page.locator('.r-dashboard-vehicle')).toBeVisible();
-      await page.getByRole('button', { name: 'Discard dashboard changes' }).click();
+      await expect(page.getByRole('button', { name: 'Edit dashboard', exact: true })).toHaveCount(0);
+      await expect(page.getByRole('link', { name: 'Dashboard library' })).toBeVisible();
       await expect(workspace).toBeVisible();
     });
   }
@@ -125,9 +124,7 @@ for (const width of [393, 1280]) {
 
 test('Home honors removal, re-adding and saving its vehicle widget', async ({ page }) => {
   const fixture = await installRFixture(page, { populatedAdmin: true, role: 'super_user' });
-  await page.goto('/');
-  await page.getByLabel('Dashboard tools', { exact: true }).click();
-  await page.getByRole('button', { name: 'Edit dashboard', exact: true }).click();
+  await page.goto('/d/dashboard?edit=1');
   const vehicleWidget = page.locator('[data-widget-frame="edit"]').filter({ has: page.locator('[data-widget-definition="overview.vehicle"]') });
   await vehicleWidget.getByRole('button', { name: 'Edit widget settings' }).click();
   await page.getByRole('button', { name: 'Remove component' }).click();
@@ -135,17 +132,16 @@ test('Home honors removal, re-adding and saving its vehicle widget', async ({ pa
   await expect(page.locator('.r-dashboard-vehicle')).toHaveCount(0);
   await page.getByRole('button', { name: 'Save dashboard changes' }).click();
   await expect(page.locator('.rgl-editor')).toHaveCount(0);
-  await page.reload();
+  await page.goto('/');
   await expect(page.locator('.r-dashboard-vehicle')).toHaveCount(0);
   await expect(page.getByRole('heading', { name: 'Home', exact: true })).toBeVisible();
-  await page.getByLabel('Dashboard tools', { exact: true }).click();
-  await page.getByRole('button', { name: 'Edit dashboard', exact: true }).click();
+  await page.goto('/d/dashboard?edit=1');
   await page.getByPlaceholder('Search widgets…').fill('vehicle');
   await page.getByRole('button', { name: /Vehicle Overview/ }).click();
   await expect(page.locator('.r-dashboard-vehicle')).toBeVisible();
   await page.getByRole('button', { name: 'Save dashboard changes' }).click();
   await expect(page.locator('.rgl-editor')).toHaveCount(0);
-  await page.reload();
+  await page.goto('/');
   await expect(page.locator('.r-dashboard-vehicle')).toBeVisible();
   expect(fixture.writes.filter(write => write.includes('/dashboards/'))).toHaveLength(2);
 });

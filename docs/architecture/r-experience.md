@@ -62,8 +62,10 @@ default. Changing that favorite leaves independently pinned graph cards intact.
 Home groups the saved configuration into the first vehicle widget, sensor
 totals and remaining analysis widgets. Each section uses `DashboardRenderer`;
 the original configuration remains the source for editing, export and writes.
-The vehicle occupies the left desktop column and recent activity the right;
-totals and charts span the rows below. Mobile orders vehicle/readings, totals,
+The vehicle occupies the left desktop column. Recent activity and a two-column
+grid of totals share the right column; charts span the row below both.
+Without a vehicle widget, totals retain their full-width layout.
+Mobile orders vehicle/readings, totals,
 recent trips/charging, then charts. Relative widget rows are normalized within
 each section without mutating saved geometry. No vehicle is injected if absent.
 The first vehicle widget supplies the page heading through app-local context;
@@ -156,6 +158,17 @@ turn and inertia, deferring the frame pack until direct interaction. Leaving the
 viewport, hiding the tab or unmounting stops motion.
 
 ## Security and cost boundaries
+
+Home disables the shared shell's edit shortcut and omits the dashboard-tools
+edit action. The Settings dashboard library still opens the canonical editor.
+Direct edit routes wait for the saved API configuration before creating a draft;
+they must not capture the bundled fallback while a saved layout is loading.
+
+Phantom Drain opts into the shared table's responsive row renderer. Mobile cards
+use the same sorted row model and page data as the desktop table; desktop column
+controls remain intact. Canonical charts still own drain aggregation. Shared
+rich charts measure their real width and legend height, and enable touch-only
+scrubbing on embedded plots without changing desktop zoom or fullscreen gestures.
 
 API private-deployment modules, private gateway, database catalog adapter,
 origin gate and release guards do not depend on R. R adds no credentials,

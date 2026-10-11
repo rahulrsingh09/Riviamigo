@@ -1,6 +1,6 @@
 import type uPlot from 'uplot';
 
-export function attachChartScrubbing(chart: uPlot, onSelect: (index: number) => void): () => void {
+export function attachChartScrubbing(chart: uPlot, onSelect: (index: number) => void, touchOnly = false): () => void {
   const target = chart.over;
   const previousTouchAction = target.style.touchAction;
   let pointerId: number | null = null;
@@ -17,6 +17,7 @@ export function attachChartScrubbing(chart: uPlot, onSelect: (index: number) => 
     if (chart.cursor.idx != null && chart.cursor.idx >= 0) onSelect(chart.cursor.idx);
   };
   const start = (event: PointerEvent) => {
+    if (touchOnly && event.pointerType !== 'touch') return;
     if (event.button !== 0 || !event.isPrimary) return;
     pointerId = event.pointerId;
     origin = { x: event.clientX, y: event.clientY };
@@ -25,6 +26,7 @@ export function attachChartScrubbing(chart: uPlot, onSelect: (index: number) => 
     if (gesture === 'scrub') select(event);
   };
   const move = (event: PointerEvent) => {
+    if (touchOnly && event.pointerType !== 'touch') return;
     if (event.pointerType === 'mouse') { select(event); return; }
     if (event.pointerId !== pointerId) return;
     if (gesture === 'pending') {
