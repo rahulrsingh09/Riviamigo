@@ -123,9 +123,12 @@ for (const width of [393, 1280]) {
     statusOverrides.door_front_left_closed = true;
     statusOverrides.door_rear_right_closed = true;
     statusOverrides.closure_frunk_closed = true;
-    await page.reload();
+    await expect.poll(fixture.liveConnections).toBeGreaterThan(0);
+    fixture.publishStatus(statusOverrides);
     await page.getByRole('button', { name: /Doors & locks: Doors closed, Unlocked/ }).click();
     await expect(page.locator('[data-door="front-left"]')).toHaveAttribute('data-position', 'closed');
+    await expect(page.locator('[data-door="rear-right"]')).toHaveAttribute('data-position', 'closed');
+    await expect(page.locator('[data-door="frunk"]')).toHaveAttribute('data-position', 'closed');
     expect(fixture.writes).toEqual([]);
   });
 }
