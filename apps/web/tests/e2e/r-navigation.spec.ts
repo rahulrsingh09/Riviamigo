@@ -49,3 +49,26 @@ for (const width of [320, 393, 900, 901, 1280]) for (const mode of ['dark', 'lig
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
   });
 }
+
+for (const width of [393, 1280]) {
+  test(`battery section selection is exclusive at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    await installRFixture(page);
+    await page.goto('/battery');
+    const sections = page.getByRole('navigation', { name: 'Battery sections' });
+    const overview = sections.getByRole('link', { name: 'Battery overview', exact: true });
+    const drain = sections.getByRole('link', { name: 'Phantom drain', exact: true });
+    await expect(sections.locator('[aria-current="page"]')).toHaveCount(1);
+    await expect(overview).toHaveAttribute('aria-current', 'page');
+    await drain.click();
+    await expect(page).toHaveURL(/\/battery\/phantom-drain$/);
+    await expect(sections.locator('[aria-current="page"]')).toHaveCount(1);
+    await expect(drain).toHaveAttribute('aria-current', 'page');
+    await page.reload();
+    await expect(sections.locator('[aria-current="page"]')).toHaveCount(1);
+    await expect(drain).toHaveAttribute('aria-current', 'page');
+    await overview.click();
+    await expect(sections.locator('[aria-current="page"]')).toHaveCount(1);
+    await expect(overview).toHaveAttribute('aria-current', 'page');
+  });
+}

@@ -33,13 +33,13 @@ export function RVehicleDetails({ status, vehicle }: { status: VehicleStatus | n
     ? Math.min(...pressures) === Math.max(...pressures) ? formatPressure(pressures[0]!) : `${formatPressure(Math.min(...pressures)).split(' ')[0]}–${formatPressure(Math.max(...pressures))}`
     : 'Readings incomplete';
   return <div className="r-vehicle-details" aria-label="Vehicle details">
-    <Link to="/charging" className="r-energy-summary" aria-label="Energy and charging details" data-charging={charging || undefined}>
-      <div className="r-soc-summary"><span>State of charge</span><strong>{soc == null ? '—' : formatPercent(soc)}</strong>
-        <span className="r-soc-track" aria-hidden="true"><span style={{ width: `${soc == null ? 0 : Math.min(100, Math.max(0, soc))}%` }} /></span></div>
-      <div><span>Est. remaining range</span><strong>{formatMiles(vehicleReading(status, 'range_miles'))}</strong><small>Current estimate</small></div>
-      <div><span>Charging <ArrowUpRight /></span><strong>{charging ? 'Charging' : !connectionKnown ? 'Unknown' : connected ? 'Connected' : 'Not charging'}</strong>
-        <small>{charging ? `To limit ${formatDuration(vehicleReading(status, 'time_to_end_of_charge_min'))}` : !connectionKnown ? 'Connection unknown' : connected ? 'Plugged in' : 'Not connected'} · Limit {limit == null ? '—' : formatPercent(limit)}</small></div>
-    </Link>
+    <div className="r-energy-summary" aria-label="Energy and charging details" data-charging={charging || undefined}>
+      <Link to="/battery" className="r-soc-summary"><span>State of charge <ArrowUpRight /></span><strong>{soc == null ? '—' : formatPercent(soc)}</strong>
+        <span className="r-soc-track" aria-hidden="true"><span style={{ width: `${soc == null ? 0 : Math.min(100, Math.max(0, soc))}%` }} /></span></Link>
+      <Link to="/battery" aria-label="Estimated remaining range"><span>Est. range <ArrowUpRight /></span><strong>{formatMiles(vehicleReading(status, 'range_miles'))}</strong><small>Remaining estimate</small></Link>
+      <Link to="/charging"><span>Charging <ArrowUpRight /></span><strong>{charging ? 'Charging' : !connectionKnown ? 'Unknown' : connected ? 'Connected' : 'Not charging'}</strong>
+        <small>{charging ? `To limit ${formatDuration(vehicleReading(status, 'time_to_end_of_charge_min'))}` : !connectionKnown ? 'Connection unknown' : connected ? 'Plugged in' : 'Not connected'} · Limit {limit == null ? '—' : formatPercent(limit)}</small></Link>
+    </div>
     <div className="r-status-glances">
       <Link to="/vehicle-health" className="r-status-glance"><span><CircleGauge />Drive mode<ArrowUpRight /></span>
         <strong>{status?.drive_mode ? formatDriveMode(status.drive_mode) : 'Unknown mode'}</strong>

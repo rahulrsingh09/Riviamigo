@@ -30,6 +30,10 @@ export function RVehicleStage({ vehicle, status, distance, trips, efficiency, he
         <div className="r-car-status"><span>{vehicleState(status)}</span>
           <RDoorStatus status={status} vehicleModel={vehicle.model} /></div>
       </header>
+      {configured ? <RVehicleOrbit key={vehicle.id} vehicleId={vehicle.id} /> : <div className="r-static-car">
+        <AuthenticatedVehicleArtwork source={dark ? artwork.dark ?? artwork.light : artwork.light} fallbackSource={artwork.fallback}
+          alt={`${vehicle.model} vehicle artwork`} />
+      </div>}
       <div className="r-trip-instruments" aria-label="Trip totals for selected period">
         <Link className="r-trip-instrument" to="/trips">
           <span className="r-card-top">Trip distance <ArrowUpRight /></span>
@@ -44,10 +48,6 @@ export function RVehicleStage({ vehicle, status, distance, trips, efficiency, he
           <strong>{formatEfficiencyValue(efficiency)}</strong><span className="r-metric-unit">{getEfficiencyUnitLabel()}</span>
         </Link>
       </div>
-      {configured ? <RVehicleOrbit key={vehicle.id} vehicleId={vehicle.id} /> : <div className="r-static-car">
-        <AuthenticatedVehicleArtwork source={dark ? artwork.dark ?? artwork.light : artwork.light} fallbackSource={artwork.fallback}
-          alt={`${vehicle.model} vehicle artwork`} />
-      </div>}
       <RVehicleDetails status={status} vehicle={vehicle} />
       <footer className="r-snapshot-foot">
         <span>Odometer {formatMiles(vehicleReading(status, 'odometer_miles'))}</span>

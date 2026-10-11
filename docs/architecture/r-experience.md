@@ -12,8 +12,9 @@ discovery, the vehicle stage, motion and scoped CSS. Existing hooks own auth,
 account preferences, vehicle selection, cache keys and API transport. Existing
 dashboard/settings controllers retain editing, permissions, queries and mutations.
 The canonical bundled-chart renderer is unchanged. Only analytics matching the
-bundled widget geometry use compact R spacing. Personal layouts, administrator
-edits to system layouts, and editing mode retain saved positions and sizes.
+bundled widget geometry use compact R spacing. Home groups its saved widgets
+into the responsive sections described below; custom dashboard pages and editing
+mode retain saved positions and sizes.
 
 | Shared seam | Purpose |
 | --- | --- |
@@ -40,8 +41,8 @@ to `/` unless an exact dashboard ID or editing query was requested.
 The R2 vehicle widget owns the interactive stage and compact status summaries.
 Its poster and rotation canvas share a uniform 1.1 scale and a theme-token
 radial backdrop. This closer, soft-light treatment adds no assets or requests.
-Its primary cards show period trip distance, total trips and efficiency; SOC,
-estimated range and charging occupy a secondary strip. Linked drive, climate,
+The car precedes period trip distance, total trips and efficiency cards; SOC,
+estimated range and charging use a matching second card row. Linked drive, climate,
 tire and software summaries open Vehicle health. The door control opens a
 telemetry-driven diagram with separate closed and locked fields, including
 frunk and liftgate. Missing or unavailable closure fields remain unknown.
@@ -65,14 +66,19 @@ Assigned chart catalogs initialize their selection after saved favorites load.
 Without a saved favorite, the configured chart is selected and starred by
 default. Changing that favorite leaves independently pinned graph cards intact.
 
-Home renders the entire saved configuration through `DashboardRenderer`,
-including the vehicle widget. No fixed hero is injected outside that layout.
+Home groups the saved configuration into the first vehicle widget, sensor
+totals and remaining analysis widgets. Each section uses `DashboardRenderer`;
+the original configuration remains the source for editing, export and writes.
+The vehicle occupies the left desktop column and recent activity the right;
+totals and charts span the rows below. Mobile orders vehicle/readings, totals,
+recent trips/charging, then charts. Relative widget rows are normalized within
+each section without mutating saved geometry. No vehicle is injected if absent.
 The first vehicle widget supplies the page heading through app-local context;
-removing it leaves a normal Overview heading and dashboard tools. Visibility
-rules, ordering, sizes, addition and removal remain owned by the shared renderer.
-Only unchanged bundled geometry receives automatic section heights. Custom and
-edited system layouts retain their dimensions and scroll vehicle content within
-its widget. The bundled distance sensor uses `trip_miles` as total trip distance instead of
+removing it leaves a Home heading and dashboard tools. Visibility rules, addition,
+removal and widget options remain owned by the shared renderer. Home's vehicle
+section uses content height, including for previously shortened widgets.
+Other custom dashboard pages and the editor retain saved dimensions and ordering.
+The bundled distance sensor uses `trip_miles` as total trip distance instead of
 cumulative `total_miles`. View, export and editing use the same saved config;
 there is no additional Home-only metric projection. Import validates existing YAML and
 creates a uniquely named personal copy through the existing dashboard API after
@@ -99,7 +105,8 @@ Charging, Battery and Explore. Efficiency is reached from the Home summary or
 Explore and keeps Explore selected on mobile. Resizing restores its direct
 desktop tab without changing the route.
 Battery overview and Phantom drain share a visible section navigation, and both
-keep Battery selected in the primary bar. Explore retains direct Battery and
+keep Battery selected in the primary bar. Exact section-route matching prevents
+the overview link from remaining active on Phantom drain. Explore retains direct Battery and
 Phantom drain links alongside Vehicle health, dashboard library, settings and
 permission-gated account administration.
 

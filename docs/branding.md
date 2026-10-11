@@ -14,8 +14,8 @@ This fork presents **R** as its only interface. The upstream reference below is
 retained for synchronization; these R rules take precedence for the running fork.
 There is no appearance gallery, Theme Studio entry or interface selector.
 
-- Use the R mark and approved Option B: an open vehicle stage, readings above
-  the car, and compact linked summaries below; stack these on mobile.
+- Use the R mark and approved Option B: an open vehicle stage, the car above
+  its reading cards, and compact linked summaries below; stack these on mobile.
   Keep the complete vehicle silhouette visible.
 - Use neutral surfaces, restrained borders and `--r-signal`. Cove teal, lime,
   caliper gold and supporting cool series colors form the fixed R data palette.
@@ -51,7 +51,9 @@ There is no appearance gallery, Theme Studio entry or interface selector.
   bounded decoding and one 3.6-second turn on first visible entry. Touch, pointer
   and keyboard interaction interrupt it. Reduced motion uses direct changes
   and defers loading until interaction. Do not animate page backgrounds through white.
-- On phones, headings and actions form intentional separate rows. Sensor titles,
+- On phones, headings and actions form intentional separate rows. When a vehicle
+  picker is present, allow the date control onto another row instead of scrolling
+  or squeezing the header; retain 44px touch targets. Sensor titles,
   notes and units remain readable without uppercase truncation or numeric halos.
   Charging chart layout uses actual content width, retaining at least 11px labels
   and space for its toolbar. Selected-trip tagging places a full-width picker
@@ -63,21 +65,29 @@ There is no appearance gallery, Theme Studio entry or interface selector.
 - Preserve canonical charts, settings operations, permissions and map panning.
 - Home is the complete dashboard; the former `/d/dashboard` landing page
   redirects there. Keep the approved open car stage and quiet surfaces. Place
-  trip distance, total trips and efficiency above the car. Below it, use one
-  compact energy strip for SOC, estimated range and charging, then linked
+  the car above trip distance, total trips and efficiency. SOC, estimated
+  remaining range and charging use a second row of matching surface cards,
+  with the same column widths and radius. Energy-card labels and values share
+  aligned rows even when text wraps. Follow those with linked
   summaries for drive mode/speed/altitude, cabin/outside temperature, tires and
   software. Do not append a separate telemetry table. Odometer and snapshot
   time form a secondary footer. Summary links lead to existing detail pages.
   The door-status control opens a top-view diagram with independent opening
   and lock readings; unknown positions are dashed, never inferred closed.
   The photographed rotation frames do not articulate doors or operate the car.
-  Home renders every saved widget, including the car, through the normal
-  dashboard renderer. Edit mode retains add/remove, ordering, sizes and options;
+  Desktop places the car and readings on the left and recent trips/charging
+  on the right. Period-total cards and charts span the space below.
+  Mobile orders the car, trip cards, energy cards, detail summaries, period
+  totals, recent trips/charging, then charts. The optional Overview Charts
+  catalog stays last; charts never displace recent activity.
+  Home groups saved widgets into vehicle, totals and chart sections, each
+  using the normal dashboard renderer. Edit mode retains add/remove, sizes and options;
   removing the car removes its summary from Home. Dashboard tools retain
   duplication, export and import. Imported dashboards open as personal copies
   after confirmation. Untouched bundled dashboards flow to fit content;
-  personal layouts and editor geometry stay intact, with scrolling inside
-  constrained widgets.
+  Home's vehicle expands to its content without an inner scrollbar, including
+  when the saved widget is short. Custom dashboard pages and the editor
+  retain saved geometry and constrained-widget scrolling.
 - Multi-trip maps assign colors before filtering selection so a route keeps its
   color when other routes are added or removed. Use sixteen token-based colors,
   numbered route keys with dates and destinations, and a tap-to-highlight action
@@ -390,7 +400,8 @@ zone and scroll within compact saved widgets without covering the map.
 
 R treats Battery as a primary destination alongside Charging. Battery overview
 and Phantom drain use a restrained, underlined section navigation with 44px
-minimum targets. The primary bar stays at the top on desktop and bottom on
+minimum targets. Section links use exact route matching so only one is active.
+The primary bar stays at the top on desktop and bottom on
 mobile. Mobile shows five labeled destinations: Home, Trips, Charging,
 Battery and Explore. Efficiency remains available from Home and Explore; on
 that route the mobile bar selects Explore. Desktop retains all six destinations.
@@ -402,7 +413,7 @@ Desktop tabs size to their text with horizontal padding instead of squeezing
 longer labels into equal-width compartments.
 
 Default analytics use individual, editable chart cards instead of hiding the
-entire set behind a picker. Home prioritizes SOC, capacity and odometer, projected
+entire set behind a picker. Below the vehicle and recent activity, Home includes SOC, capacity and odometer, projected
 full-charge range, battery health, parked drain, charging, efficiency and tires.
 Charging and Efficiency show their remaining specialized graphs by default.
 Related cards share a two-column desktop grid where the chart permits it; mobile

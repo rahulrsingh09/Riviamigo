@@ -147,7 +147,7 @@ test('Home honors removal, re-adding and saving its vehicle widget', async ({ pa
   await expect(page.locator('.rgl-editor')).toHaveCount(0);
   await page.reload();
   await expect(page.locator('.r-dashboard-vehicle')).toHaveCount(0);
-  await expect(page.getByRole('heading', { name: 'Overview', exact: true })).toBeVisible();
+  await expect(page.getByRole('heading', { name: 'Home', exact: true })).toBeVisible();
   await page.getByLabel('Dashboard tools', { exact: true }).click();
   await page.getByRole('button', { name: 'Edit dashboard', exact: true }).click();
   await page.getByPlaceholder('Search widgets…').fill('vehicle');
