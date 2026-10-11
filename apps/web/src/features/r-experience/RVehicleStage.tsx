@@ -9,7 +9,7 @@ import { AuthenticatedVehicleArtwork, resolveVehicleArtwork } from '@riviamigo/h
 import { useDocumentTheme } from '@riviamigo/ui/hooks';
 import { RVehicleOrbit } from './RVehicleOrbit';
 import { RVehicleDetails } from './RVehicleDetails';
-import { RDoorStatus } from './RDoorStatus';
+import { RVehicleLockStatus } from './RVehicleLockStatus';
 import './r-overview.css';
 
 export function RVehicleStage({ vehicle, status, distance, trips, efficiency, headingLevel = 'h1' }: {
@@ -28,7 +28,7 @@ export function RVehicleStage({ vehicle, status, distance, trips, efficiency, he
         <div><Heading>{vehicle.display_name || vehicle.model}</Heading><p>{configured ? 'R2 Performance · Catalina Cove' : [vehicle.model, vehicle.trim, vehicle.color].filter(Boolean).join(' · ')}</p>
           {vehicle.is_demo && <small>Demo vehicle · Illustrative data</small>}</div>
         <div className="r-car-status"><span>{vehicleState(status)}</span>
-          <RDoorStatus status={status} vehicleModel={vehicle.model} /></div>
+          <RVehicleLockStatus status={status} /></div>
       </header>
       {configured ? <RVehicleOrbit key={vehicle.id} vehicleId={vehicle.id} /> : <div className="r-static-car">
         <AuthenticatedVehicleArtwork source={dark ? artwork.dark ?? artwork.light : artwork.light} fallbackSource={artwork.fallback}

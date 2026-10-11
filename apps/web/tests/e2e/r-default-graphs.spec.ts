@@ -90,7 +90,7 @@ test('removing a pinned graph stays removed after saving the system layout', asy
   expect(fixture.writes.filter(w => w.includes('/dashboards/'))).toHaveLength(1);
 });
 
-test('charging, lock, hatch and software states stay explicit', async ({ page }, testInfo) => {
+test('charging, vehicle lock and software states stay explicit', async ({ page }, testInfo) => {
   await page.setViewportSize({ width: 393, height: 852 });
   await installGraphFixture(page, { statusOverrides: { charger_state: 'Charging', charger_status: 'chrgr_sts_connected_charging', time_to_end_of_charge_min: 42, doors_locked: false, door_front_left_closed: false, closure_frunk_closed: false, closure_liftgate_closed: false, ota_available_version: '2026.39' } });
   await page.goto('/');
@@ -99,8 +99,8 @@ test('charging, lock, hatch and software states stay explicit', async ({ page },
   await expect(energy).toContainText('68%');
   await expect(energy).toContainText('218 mi');
   await expect(energy).toContainText('42m');
-  await expect(page.locator('.r-door-status')).toContainText('Unlocked');
-  await expect(page.locator('.r-door-status')).toContainText('3 open');
+  await expect(page.getByRole('img', { name: 'Vehicle unlocked', exact: true })).toBeVisible();
+  await expect(page.locator('.r-door-status')).toHaveCount(0);
   await expect(page.locator('.r-status-glances')).toContainText('Update 2026.39 available');
   await expect(page.locator('.r-status-glances')).toContainText('410 ft');
   await energy.scrollIntoViewIfNeeded();
@@ -108,9 +108,4 @@ test('charging, lock, hatch and software states stay explicit', async ({ page },
   await page.screenshot({ path: testInfo.outputPath('charging-mobile.png') });
   await page.emulateMedia({ reducedMotion: 'reduce' });
   expect(await page.locator('.r-soc-track > span').evaluate(e => getComputedStyle(e, '::after').animationName)).toBe('none');
-  await page.getByRole('button', { name: /^Doors & locks:/ }).click();
-  for (const id of ['front-left', 'frunk', 'gate']) {
-    await expect(page.locator(`[data-door="${id}"]`)).toHaveAttribute('data-position', 'open');
-  }
-  await page.screenshot({ path: testInfo.outputPath('open-panels-mobile.png') });
 });

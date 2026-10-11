@@ -86,27 +86,19 @@ for (const width of [1280, 390]) {
       await page.setViewportSize({ width, height: 844 });
       const mutations = await installFixture(page, locked);
       await page.goto('/');
-      const overview = page.getByRole('button', { name: /^Doors & locks:/ });
-      await expect(overview).toContainText(label);
+      const name = locked === null ? 'Vehicle lock status unavailable' : locked ? 'Vehicle locked' : 'Vehicle unlocked';
+      const indicator = page.getByRole('img', { name, exact: true });
+      await expect(indicator).toBeVisible();
       mutations.length = 0;
-      await overview.click();
-      const dialog = page.getByRole('dialog');
-      const indicator = dialog.locator('.r-door-list > div').filter({ hasText: 'Rear gate' });
-      await expect(indicator.locator('.r-door-lock-reading')).toHaveText(locked === null ? 'Lock unknown' : label);
+      await indicator.click();
+      await expect(page.getByRole('dialog')).toHaveCount(0);
       await expect(
         page.getByRole('button', { name: /^(lock|unlock)( vehicle| doors)?$/i })
       ).toHaveCount(0);
-      await indicator.click();
       await page.evaluate(
-        () =>
-          new Promise<void>((resolve) =>
-            requestAnimationFrame(() => requestAnimationFrame(() => resolve()))
-          )
+        () => new Promise<void>((resolve) => requestAnimationFrame(() => requestAnimationFrame(() => resolve())))
       );
-      expect(mutations).toEqual([]);
-      await expect(indicator.locator('.r-door-lock-reading')).toHaveText(locked === null ? 'Lock unknown' : label);
-      await page.getByRole('button', { name: 'Close door status' }).click();
-      await expect(overview).toContainText(label);
+      await expect(indicator).toHaveAccessibleName(name);
       expect(mutations).toEqual([]);
     });
   }

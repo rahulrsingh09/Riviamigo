@@ -43,22 +43,17 @@ Its poster and rotation canvas share a uniform 1.1 scale and a theme-token
 radial backdrop. This closer, soft-light treatment adds no assets or requests.
 The car precedes period trip distance, total trips and efficiency cards; SOC,
 estimated range and charging use a matching second card row. Linked drive, climate,
-tire and software summaries open Vehicle health. The door control opens a
-telemetry-driven diagram with separate closed and locked fields, including
-frunk and liftgate. Missing or unavailable closure fields remain unknown.
-Each closure displays its independent lock reading with an animated shackle;
-the overall lock and individual readings use the same availability checks.
-This is a status visualization, not a vehicle command or articulated photo.
+tire and software summaries open Vehicle health. A single vehicle lock icon
+reflects the overall `doors_locked` reading, with an accessible label and hover
+title. Missing or unavailable readings show an unknown icon. The shackle follows
+known lock changes and respects reduced motion. It is not a button or a vehicle
+command; there is no door/frunk/gate modal, open count or individual indicator.
 The presentation provider also applies inside dashboard copies and editing
-previews; other models retain their model-specific overhead annotations.
+previews; other models retain their model-specific artwork.
 
-The main car uses the unchanged photographic rotation. Opening outlines and
-cutout effects are intentionally omitted: the reviewed all-panel recording
-cannot isolate every door and gate without seams or neighbouring-panel content,
-and represents only its recorded camera angle. Open counts and the door-status
-dialog carry the actual independent readings; the dialog explicitly identifies
-the car photo as not reflecting door positions. Do not use an all-open video to
-represent a single reported opening or reintroduce illustrative overlays.
+The main car uses the unchanged photographic rotation. Opening outlines,
+cutout effects and recorded opening clips are intentionally omitted. Do not
+infer physical opening or overall lock state from individual closure fields.
 
 Assigned chart catalogs initialize their selection after saved favorites load.
 Without a saved favorite, the configured chart is selected and starred by

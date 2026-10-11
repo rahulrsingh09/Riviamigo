@@ -72,13 +72,11 @@ There is no appearance gallery, Theme Studio entry or interface selector.
   summaries for drive mode/speed/altitude, cabin/outside temperature, tires and
   software. Do not append a separate telemetry table. Odometer and snapshot
   time form a secondary footer. Summary links lead to existing detail pages.
-  The door-status control opens a top-view diagram with independent opening
-  and lock readings; unknown positions are dashed, never inferred closed.
-  Keep the rotating R2 photograph clean. Door/frunk/rear-gate positions appear
-  in the status control and detail dialog; the photo does not change with them.
-  Do not add opening outlines, cutout effects or an all-open clip for a single
-  reported opening.
-  The photographed rotation frames do not articulate doors or operate the car.
+  Keep one vehicle lock-status icon beside the car. Give it an accessible label
+  and hover title; it is not clickable and opens no modal. The overall API lock
+  reading controls it, with an unknown state for missing/unavailable readings.
+  Do not show individual door/frunk/gate indicators or an open count. Preserve
+  the clean photographic rotation without opening effects or cutout overlays.
   Desktop places the car and readings on the left and recent trips/charging
   on the right. Period-total cards and charts span the space below.
   Mobile orders the car, trip cards, energy cards, detail summaries, period
@@ -424,14 +422,11 @@ Related cards share a two-column desktop grid where the chart permits it; mobile
 stacks full-width cards without scaling down labels. Keep the optional chart
 catalog for additional assigned charts. Pinned chart titles appear once.
 
-The vehicle lock icon remains visible when a closure is open; the open count is
-a separate line. The door detail diagram reflects each reported door, frunk and
-rear gate position independently. It does not imply that the photographic car
-artwork changes its panels. Unknown readings stay explicitly unknown.
-Each closure has its own lock icon and text. The shackle turns when a known
-lock reading changes; reduced motion makes that change immediate. Neither an
-overall lock reading nor an opening position fills in a missing individual lock
-reading. Unavailable readings use the question icon and explicit unknown text.
+The single vehicle lock icon reflects the overall lock reading independently
+of physical door position. The shackle turns when a known lock reading changes;
+reduced motion makes that change immediate. Unknown readings use the question
+icon and an explicit accessible label. There is no door-status modal or
+individual closure UI.
 
 While charging, a restrained highlight travels across the SOC bar three times
 when the charging state appears. The percentage, remaining range, charge limit

@@ -23,10 +23,7 @@ for (const width of [393, 1280]) {
       await expect(details).toContainText('68%');
       await expect(details).toContainText('218 mi');
       await expect(details).toContainText('80%');
-      await page.getByRole('button', { name: /^Doors & locks:/ }).click();
-      await expect(page.getByRole('dialog').getByText('Front left door', { exact: true })).toBeVisible();
-      await expect(page.locator('[data-door="front-left"]')).toHaveAttribute('data-position', 'closed');
-      await page.getByRole('button', { name: 'Close door status' }).click();
+      await expect(page.getByRole('img', { name: 'Vehicle locked', exact: true })).toBeVisible();
       const workspace = page.getByRole('region', { name: 'Dashboard analysis' });
       await workspace.scrollIntoViewIfNeeded();
       await expect(workspace.locator('[data-testid="sensor-chip"]').filter({ hasText: 'Total trip distance' })).toContainText('1,234');
@@ -100,7 +97,7 @@ test('duplicating the home dashboard opens an editable custom dashboard without 
 });
 
 for (const width of [393, 1280]) {
-  test(`door telemetry and update availability at ${width}px`, async ({ page }, testInfo) => {
+  test(`vehicle lock and update availability at ${width}px`, async ({ page }, testInfo) => {
     await page.setViewportSize({ width, height: 900 });
     const statusOverrides = {
       door_front_left_closed: false as boolean | null, door_front_left_locked: false,
@@ -111,24 +108,17 @@ for (const width of [393, 1280]) {
     await page.emulateMedia({ reducedMotion: 'reduce' });
     await page.goto('/');
     await expect(page.locator('.r-status-glance').filter({ hasText: 'Software' })).toContainText('Update 2026.39 available');
-    await page.getByRole('button', { name: /Doors & locks: 2 closures open/ }).click();
-    await expect(page.locator('[data-door="front-left"]')).toHaveAttribute('data-position', 'open');
-    await expect(page.locator('[data-door="front-right"]')).toHaveAttribute('data-position', 'closed');
-    await expect(page.locator('[data-door="rear-right"]')).toHaveAttribute('data-position', 'unknown');
-    await expect(page.locator('[data-door="frunk"]')).toHaveAttribute('data-position', 'open');
-    await expect(page.locator('.r-door-list > div').filter({ hasText: 'Rear right door' })).toContainText('Position unknown');
-    await page.screenshot({ path: testInfo.outputPath('doors.png') });
-    await page.getByRole('button', { name: 'Close door status' }).click();
+    await expect(page.getByRole('img', { name: 'Vehicle unlocked', exact: true })).toBeVisible();
+    await expect(page.getByRole('button', { name: /^Doors & locks:/ })).toHaveCount(0);
+    await page.screenshot({ path: testInfo.outputPath('vehicle-lock.png') });
     expect(fixture.writes).toEqual([]);
     statusOverrides.door_front_left_closed = true;
     statusOverrides.door_rear_right_closed = true;
     statusOverrides.closure_frunk_closed = true;
+    statusOverrides.doors_locked = true;
     await expect.poll(fixture.liveConnections).toBeGreaterThan(0);
     fixture.publishStatus(statusOverrides);
-    await page.getByRole('button', { name: /Doors & locks: Doors closed, Unlocked/ }).click();
-    await expect(page.locator('[data-door="front-left"]')).toHaveAttribute('data-position', 'closed');
-    await expect(page.locator('[data-door="rear-right"]')).toHaveAttribute('data-position', 'closed');
-    await expect(page.locator('[data-door="frunk"]')).toHaveAttribute('data-position', 'closed');
+    await expect(page.getByRole('img', { name: 'Vehicle locked', exact: true })).toBeVisible();
     expect(fixture.writes).toEqual([]);
   });
 }
@@ -171,5 +161,5 @@ test('unavailable vehicle readings stay unknown instead of implying a safe state
   await expect(page.locator('.r-soc-summary strong')).toHaveText('—');
   await expect(page.locator('.r-status-glances')).toContainText('Unknown mode');
   await expect(page.locator('.r-status-glances')).toContainText('Update status unknown');
-  await expect(page.getByRole('button', { name: /Doors & locks: Door status unknown, Locks unknown/ })).toBeVisible();
+  await expect(page.getByRole('img', { name: 'Vehicle lock status unavailable', exact: true })).toBeVisible();
 });
