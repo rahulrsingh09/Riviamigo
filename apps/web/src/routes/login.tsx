@@ -32,9 +32,7 @@ export function LoginPage() {
     isBootstrapping,
     resumeSession,
   } = useAuth();
-  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
-  const [setupToken, setSetupToken] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const redirectTarget = normalizeLoginRedirectTarget(search.redirect);
@@ -135,8 +133,12 @@ export function LoginPage() {
     );
   }
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    const fields = new FormData(e.currentTarget);
+    const submittedEmail = String(fields.get('email') ?? '');
+    const submittedPassword = String(fields.get('password') ?? '');
+    const submittedSetupToken = String(fields.get('setupToken') ?? '');
     setError('');
     setLoading(true);
     try {
@@ -147,11 +149,11 @@ export function LoginPage() {
           );
           return;
         }
-        await register(email, password, setupProofRequired ? setupToken : undefined);
+        await register(submittedEmail, submittedPassword, setupProofRequired ? submittedSetupToken : undefined);
         navigate({ to: '/connect' });
         return;
       }
-      await login(email, password);
+      await login(submittedEmail, submittedPassword);
       navigate({ to: (redirectTarget ?? '/') as never });
     } catch (err) {
       const status = (err as { status?: number }).status;
@@ -213,17 +215,16 @@ export function LoginPage() {
           {passwordEnabled && <form onSubmit={handleSubmit} className="flex flex-col gap-4">
             <Input
               label="Email"
+              name="email"
               type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
               placeholder="you@example.com"
               required
               autoComplete="email"
             />
             <Input
               label="Password"
+              name="password"
               type="password"
-              value={password}
               onChange={(e) => setPassword(e.target.value)}
               placeholder="••••••••"
               required
@@ -233,9 +234,8 @@ export function LoginPage() {
             {setupRequired && setupProofRequired && setupProofAvailable && (
               <Input
                 label="Instance setup token"
+                name="setupToken"
                 type="password"
-                value={setupToken}
-                onChange={(e) => setSetupToken(e.target.value)}
                 hint="Use the one-time RIVIAMIGO_SETUP_TOKEN configured for this instance."
                 autoComplete="off"
                 required

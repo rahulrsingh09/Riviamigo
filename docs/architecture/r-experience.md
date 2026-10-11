@@ -170,6 +170,11 @@ controls remain intact. Canonical charts still own drain aggregation. Shared
 rich charts measure their real width and legend height, and enable touch-only
 scrubbing on embedded plots without changing desktop zoom or fullscreen gestures.
 
+The sign-in form reads named fields at submission so browser-filled credentials
+cannot diverge from older React state. Password bytes are preserved exactly.
+Cloudflare Access and the app's existing password verification remain separate;
+this form correction does not reset accounts or change either access policy.
+
 API private-deployment modules, private gateway, database catalog adapter,
 origin gate and release guards do not depend on R. R adds no credentials,
 endpoints, permissions, migrations, workers, databases or cloud services.
