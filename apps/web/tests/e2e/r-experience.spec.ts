@@ -36,6 +36,9 @@ for (const width of [390, 1280]) {
         expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1), path).toBe(true);
         if (['/', '/settings', '/vehicle-health', '/charging'].includes(path)) {
           await page.screenshot({ path: testInfo.outputPath(`${path.replaceAll('/', '') || 'overview'}.png`), fullPage: true });
+          // Restoring the viewport can activate deferred charts after capture.
+          await page.evaluate(() => new Promise<void>(resolve =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve()))));
         }
         await expect.poll(() => requests.size).toBe(0);
       }

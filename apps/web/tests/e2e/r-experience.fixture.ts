@@ -333,6 +333,10 @@ export async function installRFixture(page: Page, options: {
           : [-122.34 + point * .003, 47.6 + point * .002 + index * .008]),
       })) : [],
     });
+    if (path === '/v1/trips/tire-pressure-timeline') return json({
+      vehicle_id: vehicle.id, from: days[0]!.day_start, to: days[6]!.day_start,
+      samples: [], trips: [],
+    });
     if (path === '/v1/dashboards') return json(dashboards);
     if (path === '/v1/charts/effective') return json([]);
     if (path === '/v1/chart-sources') return json([]);

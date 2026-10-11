@@ -102,14 +102,16 @@ test('bundled editor preview survives save and reload and matches the Overview p
   ).toHaveCSS('background-color', 'rgb(121, 181, 170)');
 
   await page.goto('/d/dashboard');
-  await page.getByRole('button', { name: 'Chart', exact: true }).click();
+  const productionChart = page.locator('[data-widget-id="d1000001-0000-0000-0000-000000000006"]');
+  await productionChart.scrollIntoViewIfNeeded();
+  await productionChart.getByRole('button', { name: 'Chart', exact: true }).click();
   await page.getByRole('option', { name: /Battery Capacity by Mileage/ }).click();
-  await expect(page.getByRole('button', { name: 'Usable Capacity', exact: true })).toBeVisible();
-  await expect(page.getByRole('button', { name: 'Mileage', exact: true })).toBeVisible();
+  await expect(productionChart.getByRole('button', { name: 'Usable Capacity', exact: true })).toBeVisible();
+  await expect(productionChart.getByRole('button', { name: 'Mileage', exact: true })).toBeVisible();
   await expect(
-    page.getByRole('button', { name: 'Usable Capacity', exact: true }).locator('span').first()
+    productionChart.getByRole('button', { name: 'Usable Capacity', exact: true }).locator('span').first()
   ).toHaveCSS('background-color', 'rgb(121, 181, 170)');
-  await expect(page.locator('.uplot')).toHaveCount(1);
+  await expect(productionChart.locator('.uplot')).toHaveCount(1);
 });
 
 async function installMocks(page: Page, options: { persistMutations?: boolean } = {}) {
@@ -183,6 +185,7 @@ async function installMocks(page: Page, options: { persistMutations?: boolean } 
       { ts: '2026-08-15T00:00:00Z', odometer_mi: 19000, usable_kwh: 111.5, range_mi: 329, projected_max_range_mi: 333, degradation_pct: 2.0 },
       { ts: '2026-08-29T00:00:00Z', odometer_mi: 19200, usable_kwh: 111.1, range_mi: 330, projected_max_range_mi: 332, degradation_pct: 2.2 },
     ]);
+    if (path.startsWith('/v1/battery/') || path.startsWith('/v1/efficiency/')) return json(route, []);
     if (path.endsWith('/status')) return json(route, {});
     if (path.endsWith('/images')) return json(route, { all: [] });
     return json(route, {});

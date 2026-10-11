@@ -868,7 +868,9 @@ mod tests {
             .as_array()
             .unwrap()
             .iter()
-            .find(|widget| widget["componentType"] == "chart" && widget["options"]["showPicker"] == true)
+            .find(|widget| {
+                widget["componentType"] == "chart" && widget["options"]["showPicker"] == true
+            })
             .and_then(|widget| widget["options"]["chartIds"].as_array())
             .expect("efficiency chart IDs");
 

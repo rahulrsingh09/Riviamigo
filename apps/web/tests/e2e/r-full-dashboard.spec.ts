@@ -6,7 +6,7 @@ for (const width of [393, 1280]) {
   for (const mode of ['dark', 'light'] as const) {
     test(`complete home dashboard at ${width}px in ${mode}`, async ({ page }, testInfo) => {
       await page.setViewportSize({ width, height: 900 });
-      await installRFixture(page, { mode, populatedAdmin: true, populatedAnalytics: true, unknownConfiguration: true });
+      const fixture = await installRFixture(page, { mode, populatedAdmin: true, populatedAnalytics: true, unknownConfiguration: true });
       await page.emulateMedia({ reducedMotion: 'reduce' });
       await page.goto('/d/dashboard');
       await expect(page).toHaveURL(/\/$/);
@@ -35,6 +35,8 @@ for (const width of [393, 1280]) {
       await page.getByRole('option').filter({ hasText: 'Efficiency Trend' }).getByRole('button', { name: 'Efficiency Trend', exact: true }).click();
       await expect(page.getByRole('button', { name: 'Chart', exact: true })).toContainText('Efficiency Trend');
       await expect(workspace.locator('svg').first()).toBeVisible();
+      expect(fixture.unsupportedRequests).toEqual([]);
+      await expect(page.getByText('The requested resource could not be found.', { exact: true })).toHaveCount(0);
       expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
       await page.evaluate(() => window.scrollTo(0, 0));
       await page.screenshot({ path: testInfo.outputPath('home-dashboard.png'), fullPage: true });
