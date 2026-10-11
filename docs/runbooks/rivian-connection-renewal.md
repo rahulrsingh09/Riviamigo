@@ -33,6 +33,24 @@ vehicle discovery should still succeed. Password changes, account unlinking,
 permission removal, and Rivian-side revocation can invalidate credentials before
 the estimate.
 
+## Browser-dependent sign-in failures
+
+The **Rivian Email** and **Rivian Password** fields connect the vehicle account;
+they are separate from the Riviamigo app login and any Cloudflare access identity.
+A secondary Rivian driver account does not need a matching Riviamigo user record
+to complete this connection for an authorized vehicle.
+
+Add-vehicle and credential-renewal forms submit the current native form values,
+including password-manager fills that do not fire React change events. The
+verification-code form follows the same rule. Preserve passwords exactly,
+including spaces and special characters, and pass the submitted email to the MFA
+step. Do not reintroduce controlled credential fields backed by stale state.
+
+If one browser fails, identify the page and error first. Distinguish
+`/v1/auth/login` (app sign-in) from `/v1/vehicles/connect` and its `/otp` step
+(Rivian sign-in). Verify the visible values using synthetic browser tests before
+changing account records or access policy. Never capture a real password or code.
+
 ## Release verification
 
 After changing this behavior, verify the renewal-state boundary tests, manual

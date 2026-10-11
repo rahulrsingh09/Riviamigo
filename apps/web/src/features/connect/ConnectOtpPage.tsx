@@ -18,7 +18,6 @@ export function ConnectOtpContent() {
   const { data: connectedVehicles } = useVehicles();
   const refreshVehicleId = mode === 'refresh' ? vehicle_id : undefined;
   const refreshVehicle = connectedVehicles?.find((vehicle) => vehicle.id === refreshVehicleId);
-  const [otp, setOtp] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [vehicles, setVehicles] = useState<ConnectedRivianVehicle[]>([]);
@@ -30,8 +29,9 @@ export function ConnectOtpContent() {
     emitAuthError('Rivian connection failed', message);
   };
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    const otp = String(new FormData(e.currentTarget).get('otp') ?? '');
     setError('');
     setLoading(true);
     try {
@@ -167,8 +167,8 @@ export function ConnectOtpContent() {
                     type="text"
                     inputMode="numeric"
                     pattern="[0-9]*"
-                    value={otp}
-                    onChange={(e) => setOtp(e.target.value)}
+                    name="otp"
+                    autoComplete="one-time-code"
                     placeholder="123456"
                     required
                     autoFocus

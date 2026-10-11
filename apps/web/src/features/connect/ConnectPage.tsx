@@ -18,8 +18,6 @@ export function ConnectContent() {
   const { data: connectedVehicles } = useVehicles();
   const refreshVehicleId = search.mode === 'refresh' ? search.vehicle_id : undefined;
   const refreshVehicle = connectedVehicles?.find((vehicle) => vehicle.id === refreshVehicleId);
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
   const [vehicles, setVehicles] = useState<ConnectedRivianVehicle[]>([]);
@@ -32,8 +30,11 @@ export function ConnectContent() {
     emitAuthError('Rivian connection failed', message);
   };
 
-  async function handleSubmit(e: React.FormEvent) {
+  async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
+    const fields = new FormData(e.currentTarget);
+    const email = String(fields.get('email') ?? '');
+    const password = String(fields.get('password') ?? '');
     setError('');
     setLoading(true);
     try {
@@ -181,16 +182,16 @@ export function ConnectContent() {
                   <Input
                     label="Rivian Email"
                     type="email"
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    name="email"
+                    autoComplete="section-rivian username"
                     placeholder="you@example.com"
                     required
                   />
                   <Input
                     label="Rivian Password"
                     type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
+                    name="password"
+                    autoComplete="section-rivian current-password"
                     placeholder="Password"
                     required
                   />
