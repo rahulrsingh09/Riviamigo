@@ -48,19 +48,24 @@ telemetry-driven diagram with separate closed and locked fields, including
 frunk and liftgate. Missing or unavailable closure fields remain unknown.
 Each closure displays its independent lock reading with an animated shackle;
 the overall lock and individual readings use the same availability checks.
-This is a status visualization, not a vehicle command or articulated photo.
+This is a status visualization, not a vehicle command.
 The presentation provider also applies inside dashboard copies and editing
 previews; other models retain their model-specific overhead annotations.
 
-The pending main-car articulation must represent API state, not play a demo.
-Render the initial snapshot directly; later changes affect only the corresponding
-front-left, front-right, rear-left, rear-right, frunk or rear-gate panel. Hold
-that position until its reading changes. Repeated snapshots, navigation and
-unrelated updates must not replay opening or closing. Lock changes alone must
-not change panel position, and unavailable readings must not imply closure.
-Any brief panel transition must follow a real position change. Preserve the
-artwork's aspect ratio and natural perspective; review recordings do not satisfy
-this independent-state contract.
+`RVehicleOpenings` projects simplified hinged outlines over the existing R2
+photograph. The source photograph remains unchanged; this is an illustrated
+opening indication, not a photoreal articulated model. Approximate panel geometry
+follows the angle of the last frame actually drawn, so slow image decoding does
+not place an overlay ahead of the car. Far-side panels become visible when the
+user rotates toward them; the door-status summary still lists every reading.
+
+Each of the four doors, frunk and rear gate has independent state. Initial
+positions appear directly. A known position change animates for 480ms and holds
+until that reading changes. Repeated snapshots, navigation, lock-only changes
+and unrelated telemetry do not replay the transition. Unknown readings remove
+the overlay directly and remain unknown in the status summary. Reduced motion
+and a hidden document settle transitions immediately. There are no new assets,
+dependencies, model downloads, status requests or background animation loops.
 
 Assigned chart catalogs initialize their selection after saved favorites load.
 Without a saved favorite, the configured chart is selected and starred by

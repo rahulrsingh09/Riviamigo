@@ -34,8 +34,13 @@
 .r-orbit-stage::before { content: ""; position: absolute; inset: 8% 0; background: radial-gradient(ellipse at 50% 58%,var(--rm-bg-elevated),transparent 70%); pointer-events: none; }
 .r-orbit-stage:active { cursor: grabbing; }
 .r-orbit-stage img,.r-orbit-stage canvas { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; scale: 1.1; pointer-events: none; }
+.r-orbit-openings { position: absolute; inset: 0; width: 100%; height: 100%; scale: 1.1; pointer-events: none; overflow: visible; }
+.r-orbit-openings path { stroke-linejoin: round; stroke-linecap: round; vector-effect: non-scaling-stroke; }
+.r-opening-rest { fill: none; stroke: color-mix(in srgb,var(--r-signal) 18%,transparent); stroke-width: .65; }
+.r-opening-panel { fill: color-mix(in srgb,var(--r-signal) 8%,transparent); stroke: color-mix(in srgb,var(--r-signal) 72%,transparent); stroke-width: 1; }
+.r-opening-travel { fill: none; stroke: color-mix(in srgb,var(--r-signal) 30%,transparent); stroke-width: .65; stroke-dasharray: 2 4; }
 .r-orbit-hidden { visibility: hidden; }
-.r-orbit-poster { animation: r-car-arrive 850ms cubic-bezier(.22,1,.36,1); }
+.r-orbit-stage { animation: r-car-arrive 850ms cubic-bezier(.22,1,.36,1); }
 .r-orbit-controls { display: flex; gap: 4px; align-items: center; justify-content: flex-end; font-size: 11px; color: var(--rm-text-secondary); margin: -32px 24px 0; position: relative; }
 .r-orbit-controls span { margin-right: auto; }
 .r-orbit-controls button { display: grid; place-items: center; min-width: 44px; height: 44px; border-radius: 50%; }

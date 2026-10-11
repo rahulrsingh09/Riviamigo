@@ -53,6 +53,7 @@ export function RDoorStatus({ status, vehicleModel }: { status: VehicleStatus | 
           </dd>
         </div>)}</dl>
         <p className="r-reading-note">Positions and locks from the latest vehicle snapshot.</p>
+        {vehicleModel === 'R2' && <p className="r-reading-note">Openings on the car are illustrated. Rotate it to see the other side.</p>}
       </section>
     </ResponsiveDialog>}
   </>;
