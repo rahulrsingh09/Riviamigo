@@ -30,7 +30,7 @@ export function RVehicleStage({ vehicle, status, distance, trips, efficiency, he
         <div className="r-car-status"><span>{vehicleState(status)}</span>
           <RDoorStatus status={status} vehicleModel={vehicle.model} /></div>
       </header>
-      {configured ? <RVehicleOrbit key={vehicle.id} vehicleId={vehicle.id} status={status} /> : <div className="r-static-car">
+      {configured ? <RVehicleOrbit key={vehicle.id} vehicleId={vehicle.id} /> : <div className="r-static-car">
         <AuthenticatedVehicleArtwork source={dark ? artwork.dark ?? artwork.light : artwork.light} fallbackSource={artwork.fallback}
           alt={`${vehicle.model} vehicle artwork`} />
       </div>}

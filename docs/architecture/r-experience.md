@@ -48,24 +48,17 @@ telemetry-driven diagram with separate closed and locked fields, including
 frunk and liftgate. Missing or unavailable closure fields remain unknown.
 Each closure displays its independent lock reading with an animated shackle;
 the overall lock and individual readings use the same availability checks.
-This is a status visualization, not a vehicle command.
+This is a status visualization, not a vehicle command or articulated photo.
 The presentation provider also applies inside dashboard copies and editing
 previews; other models retain their model-specific overhead annotations.
 
-`RVehicleOpenings` projects simplified hinged outlines over the existing R2
-photograph. The source photograph remains unchanged; this is an illustrated
-opening indication, not a photoreal articulated model. Approximate panel geometry
-follows the angle of the last frame actually drawn, so slow image decoding does
-not place an overlay ahead of the car. Far-side panels become visible when the
-user rotates toward them; the door-status summary still lists every reading.
-
-Each of the four doors, frunk and rear gate has independent state. Initial
-positions appear directly. A known position change animates for 480ms and holds
-until that reading changes. Repeated snapshots, navigation, lock-only changes
-and unrelated telemetry do not replay the transition. Unknown readings remove
-the overlay directly and remain unknown in the status summary. Reduced motion
-and a hidden document settle transitions immediately. There are no new assets,
-dependencies, model downloads, status requests or background animation loops.
+The main car uses the unchanged photographic rotation. Opening outlines and
+cutout effects are intentionally omitted: the reviewed all-panel recording
+cannot isolate every door and gate without seams or neighbouring-panel content,
+and represents only its recorded camera angle. Open counts and the door-status
+dialog carry the actual independent readings; the dialog explicitly identifies
+the car photo as not reflecting door positions. Do not use an all-open video to
+represent a single reported opening or reintroduce illustrative overlays.
 
 Assigned chart catalogs initialize their selection after saved favorites load.
 Without a saved favorite, the configured chart is selected and starred by

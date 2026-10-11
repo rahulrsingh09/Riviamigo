@@ -74,11 +74,11 @@ There is no appearance gallery, Theme Studio entry or interface selector.
   time form a secondary footer. Summary links lead to existing detail pages.
   The door-status control opens a top-view diagram with independent opening
   and lock readings; unknown positions are dashed, never inferred closed.
-  R2 openings use restrained, hinged outlines on the main car, projected to its
-  current rotation angle. The photograph stays intact; these are simplified
-  illustrations, not photoreal panel movement. Only reported open panels show
-  an overlay. Position and lock readings stay independent, including unknowns;
-  the car view never operates the vehicle.
+  Keep the rotating R2 photograph clean. Door/frunk/rear-gate positions appear
+  in the status control and detail dialog; the photo does not change with them.
+  Do not add opening outlines, cutout effects or an all-open clip for a single
+  reported opening.
+  The photographed rotation frames do not articulate doors or operate the car.
   Desktop places the car and readings on the left and recent trips/charging
   on the right. Period-total cards and charts span the space below.
   Mobile orders the car, trip cards, energy cards, detail summaries, period

@@ -1,17 +1,14 @@
 import React from 'react';
 import { RotateCcw, Play } from 'lucide-react';
-import type { VehicleStatus } from '@riviamigo/types';
 import { createOrbitFrames, DEFAULT_FRAME, FRONT_FRAME, ORBIT_FRAMES, wrapFrame } from './orbitFrames';
-import { RVehicleOpenings } from './RVehicleOpenings';
 import heroUrl from './assets/r2-hero.webp';
 
 const rememberedAngles = new Map<string, number>();
 
-export function RVehicleOrbit({ vehicleId, status }: { vehicleId: string; status: VehicleStatus | null | undefined }) {
+export function RVehicleOrbit({ vehicleId }: { vehicleId: string }) {
   const canvas = React.useRef<HTMLCanvasElement>(null);
   const frame = React.useRef(rememberedAngles.get(vehicleId) ?? DEFAULT_FRAME);
   const [angle, setAngle] = React.useState(frame.current);
-  const [renderedFrame, setRenderedFrame] = React.useState(DEFAULT_FRAME);
   const [ready, setReady] = React.useState(false);
   const [loading, setLoading] = React.useState(false);
   const [error, setError] = React.useState(false);
@@ -59,7 +56,6 @@ export function RVehicleOrbit({ vehicleId, status }: { vehicleId: string; status
             if (context) {
               context.clearRect(0, 0, 840, 430);
               context.drawImage(image, 0, 0, 840, 430);
-              setRenderedFrame(target);
               setReady(true);
               setError(false);
             }
@@ -188,7 +184,6 @@ export function RVehicleOrbit({ vehicleId, status }: { vehicleId: string; status
         onPointerUp={event => finish(event)} onPointerCancel={event => finish(event, true)}>
         <img src={heroUrl} alt="Rivian R2 Performance in Catalina Cove with 21-inch wheels" draggable={false} className={ready ? 'r-orbit-poster r-orbit-hidden' : 'r-orbit-poster'} />
         <canvas ref={canvas} width={840} height={430} aria-hidden="true" className={ready ? '' : 'r-orbit-hidden'} />
-        <RVehicleOpenings frame={ready ? renderedFrame : DEFAULT_FRAME} status={status} />
       </div>
       <div className="r-orbit-controls">
         <span id="r-orbit-hint">{error ? 'Rotation unavailable. Try again.' : loading && !ready ? 'Loading rotation…' : 'Drag to turn · 360°'}</span>

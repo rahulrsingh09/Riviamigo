@@ -39,6 +39,8 @@ for (const width of [393, 1280]) for (const mode of ['dark', 'light'] as const) 
     await expect(sheet.locator('[data-door="front-left"]')).toHaveAttribute('data-position', 'open');
     await page.getByRole('button', { name: 'Close door status' }).click();
     await expect(summary).toHaveAccessibleName('Doors & locks: 3 closures open, Unlocked');
+    await expect(page.locator('.r-orbit-openings')).toHaveCount(0);
+    await expect(page.getByRole('slider', { name: 'Rotate vehicle' })).toBeVisible();
     await page.screenshot({ path: testInfo.outputPath('vehicle-summary.png') });
     expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth)).toBe(true);
     expect(fixture.writes).toEqual([]);
