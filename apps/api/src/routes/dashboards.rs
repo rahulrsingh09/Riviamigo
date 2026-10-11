@@ -15,7 +15,7 @@ use crate::{
 
 // Advance this whenever a bundled system dashboard changes so existing
 // installations receive the new baseline on their next startup.
-const BUNDLED_DASHBOARD_BASELINE_REVISION: i32 = 8;
+const BUNDLED_DASHBOARD_BASELINE_REVISION: i32 = 9;
 
 const RETIRED_TRIPS_MANAGED_WIDGETS: &[(&str, &str)] = &[(
     "trips.tire-pressure-timeline",
@@ -868,11 +868,11 @@ mod tests {
             .as_array()
             .unwrap()
             .iter()
-            .find(|widget| widget["componentType"] == "chart")
+            .find(|widget| widget["componentType"] == "chart" && widget["options"]["showPicker"] == true)
             .and_then(|widget| widget["options"]["chartIds"].as_array())
             .expect("efficiency chart IDs");
 
-        assert_eq!(BUNDLED_DASHBOARD_BASELINE_REVISION, 8);
+        assert_eq!(BUNDLED_DASHBOARD_BASELINE_REVISION, 9);
         assert!(chart_ids.iter().any(|id| id == "efficiency-tags"));
         assert!(UPSERT_SYSTEM_DEFAULT_SQL.contains("dashboards.owner_id IS NULL"));
         assert!(UPSERT_SYSTEM_DEFAULT_SQL.contains("dashboards.is_default = TRUE"));

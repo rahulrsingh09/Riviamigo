@@ -159,6 +159,7 @@ vi.mock('@riviamigo/ui/primitives', () => ({
     </div>
   ),
   DateRangePicker: () => <div data-testid="date-range-picker" />,
+  EfficiencyDisplayToggle: () => <button type="button">Toggle efficiency units</button>,
   SelectPicker: ({ value, options, onChange, ...props }: {
     value: string;
     options: Array<{ value: string; label: React.ReactNode }>;
@@ -215,10 +216,10 @@ describe('dashboard editability', () => {
   });
 
   it.each([
-    ['dashboard', 'd1000001-0000-0000-0000-000000000002', 6, 5],
-    ['battery', 'd2000002-0000-0000-0000-000000000001', 9, 9],
-    ['charging', 'd4000004-0000-0000-0000-000000000001', 9, 9],
-    ['efficiency', 'd3000003-0000-0000-0000-000000000001', 5, 5],
+    ['dashboard', 'd1000001-0000-0000-0000-000000000002', 15, 14],
+    ['battery', 'd2000002-0000-0000-0000-000000000001', 14, 14],
+    ['charging', 'd4000004-0000-0000-0000-000000000001', 13, 13],
+    ['efficiency', 'd3000003-0000-0000-0000-000000000001', 9, 9],
     ['trips', 'd5000005-0000-0000-0000-000000000005', 6, 6],
   ] as const)('opens widget editing from the shared shell for %s', async (slug, widgetId, widgetCount, editableWidgetCount) => {
     render(<DashboardPageShell navKey={slug} slug={slug} title={slug} />);

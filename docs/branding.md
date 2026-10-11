@@ -15,7 +15,7 @@ retained for synchronization; these R rules take precedence for the running fork
 There is no appearance gallery, Theme Studio entry or interface selector.
 
 - Use the R mark and approved Option B: an open vehicle stage, readings above
-  the car, and a compact activity column on desktop; stack these on mobile.
+  the car, and compact linked summaries below; stack these on mobile.
   Keep the complete vehicle silhouette visible.
 - Use neutral surfaces, restrained borders and `--r-signal`. Cove teal, lime,
   caliper gold and supporting cool series colors form the fixed R data palette.
@@ -27,8 +27,12 @@ There is no appearance gallery, Theme Studio entry or interface selector.
   the selected units.
 - The owner's R2 Performance uses the approved Catalina Cove, 21-inch-wheel,
   black-interior artwork even when live paint metadata is missing. Other vehicle
-  models keep their own artwork. Lead the overview with total mileage and label
-  battery range separately as an estimate.
+  models keep their own artwork. Lead the overview with trip distance, total
+  trips and efficiency for the selected period. Keep odometer secondary and
+  battery range separately labeled as an estimate.
+  Use the approved closer, soft-light presentation: a uniform 1.1 scale for
+  both the poster and rotation frames, with a quiet token-colored radial light
+  behind the car. Preserve the image aspect ratio and complete silhouette.
 - Navigation is at the top on desktop and bottom on mobile. Settings use grouped
   full-width rows, in two desktop columns and one mobile column. Hover covers
   the whole row through its divider.
@@ -57,6 +61,23 @@ There is no appearance gallery, Theme Studio entry or interface selector.
   Long option labels wrap. Escape closes the picker before its parent dialog;
   keyboard focus returns to the trigger.
 - Preserve canonical charts, settings operations, permissions and map panning.
+- Home is the complete dashboard; the former `/d/dashboard` landing page
+  redirects there. Keep the approved open car stage and quiet surfaces. Place
+  trip distance, total trips and efficiency above the car. Below it, use one
+  compact energy strip for SOC, estimated range and charging, then linked
+  summaries for drive mode/speed/altitude, cabin/outside temperature, tires and
+  software. Do not append a separate telemetry table. Odometer and snapshot
+  time form a secondary footer. Summary links lead to existing detail pages.
+  The door-status control opens a top-view diagram with independent opening
+  and lock readings; unknown positions are dashed, never inferred closed.
+  The photographed rotation frames do not articulate doors or operate the car.
+  Home renders every saved widget, including the car, through the normal
+  dashboard renderer. Edit mode retains add/remove, ordering, sizes and options;
+  removing the car removes its summary from Home. Dashboard tools retain
+  duplication, export and import. Imported dashboards open as personal copies
+  after confirmation. Untouched bundled dashboards flow to fit content;
+  personal layouts and editor geometry stay intact, with scrolling inside
+  constrained widgets.
 - Multi-trip maps assign colors before filtering selection so a route keeps its
   color when other routes are added or removed. Use sixteen token-based colors,
   numbered route keys with dates and destinations, and a tap-to-highlight action
@@ -364,3 +385,40 @@ the existing capture and restores focus to its trigger.
 Trip inspection selects a sample on a tap or horizontal scrub; a vertical touch
 scroll preserves the existing shared selection. Comparison keys use the app time
 zone and scroll within compact saved widgets without covering the map.
+
+### Default analytics and Battery navigation
+
+R treats Battery as a primary destination alongside Charging. Battery overview
+and Phantom drain use a restrained, underlined section navigation with 44px
+minimum targets. The primary bar stays at the top on desktop and bottom on
+mobile. Mobile shows five labeled destinations: Home, Trips, Charging,
+Battery and Explore. Efficiency remains available from Home and Explore; on
+that route the mobile bar selects Explore. Desktop retains all six destinations.
+Targets stay at least 44px wide at 320px; labels remain visible.
+The first tab reads Home; the dashboard remains the overview at `/`. Mobile
+highlights only the active icon, with the label outside that highlight. The
+five equal targets use 11px labels in a bar inset 12px from narrow screens.
+Desktop tabs size to their text with horizontal padding instead of squeezing
+longer labels into equal-width compartments.
+
+Default analytics use individual, editable chart cards instead of hiding the
+entire set behind a picker. Home prioritizes SOC, capacity and odometer, projected
+full-charge range, battery health, parked drain, charging, efficiency and tires.
+Charging and Efficiency show their remaining specialized graphs by default.
+Related cards share a two-column desktop grid where the chart permits it; mobile
+stacks full-width cards without scaling down labels. Keep the optional chart
+catalog for additional assigned charts. Pinned chart titles appear once.
+
+The vehicle lock icon remains visible when a closure is open; the open count is
+a separate line. The door detail diagram reflects each reported door, frunk and
+rear gate position independently. It does not imply that the photographic car
+artwork changes its panels. Unknown readings stay explicitly unknown.
+Each closure has its own lock icon and text. The shackle turns when a known
+lock reading changes; reduced motion makes that change immediate. Neither an
+overall lock reading nor an opening position fills in a missing individual lock
+reading. Unavailable readings use the question icon and explicit unknown text.
+
+While charging, a restrained highlight travels across the SOC bar three times
+when the charging state appears. The percentage, remaining range, charge limit
+and estimated completion remain readable throughout. Reduced motion disables
+the highlight. A connected cable alone must not trigger the charging animation.

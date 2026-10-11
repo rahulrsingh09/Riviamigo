@@ -1,7 +1,8 @@
 // Synthetic API responses; no live vehicle or account is used.
 import { createAdminFixture } from './r-admin.fixture.ts';
 import { createAnalysisFixture } from './r-analysis.fixture.ts';
-import type { Page } from '@playwright/test';
+import type { Page, WebSocketRoute } from '@playwright/test';
+import type { VehicleStatus } from '@riviamigo/types';
 import { readFileSync } from 'node:fs';
 
 export async function installRFixture(page: Page, options: {
@@ -11,6 +12,8 @@ export async function installRFixture(page: Page, options: {
   authenticated?: boolean;
   secondVehicle?: boolean;
   missingSensors?: boolean;
+  missingSoftware?: boolean;
+  statusOverrides?: Partial<VehicleStatus>;
   populatedTrip?: boolean;
   statusDelay?: number;
   unknownConfiguration?: boolean;
@@ -24,6 +27,8 @@ export async function installRFixture(page: Page, options: {
   const writes: string[] = [];
   const metricRequests: Record<string, unknown>[] = [];
   const unsupportedRequests: string[] = [];
+  const liveSockets = new Set<WebSocketRoute>();
+  const chartFavorites: Record<string, string> = {};
   let mode: 'light' | 'dark' | 'system' = options.mode ?? 'light';
   let timezone = options.timezone ?? 'UTC';
   const readJson = (path: string) => JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8'));
@@ -84,7 +89,11 @@ export async function installRFixture(page: Page, options: {
     const day = `2026-10-${String(index + 1).padStart(2, '0')}`;
     return { day_local: day, day_start: `${day}T00:00:00Z`, total_energy_kwh: [24, 37, 18, 53, 42, 31, 22][index]!, session_count: 1 };
   });
-  await page.routeWebSocket('**/v1/vehicles/live**', (socket) => socket.onMessage(() => socket.send(JSON.stringify({ type: 'heartbeat' }))));
+  await page.routeWebSocket('**/v1/vehicles/live**', (socket) => {
+    liveSockets.add(socket);
+    socket.onClose(() => liveSockets.delete(socket));
+    socket.onMessage(() => socket.send(JSON.stringify({ type: 'heartbeat' })));
+  });
   await page.route('**/*', async (route) => {
     const url = new URL(route.request().url());
     if (!['127.0.0.1', 'localhost'].includes(url.hostname)) return route.abort();
@@ -157,7 +166,8 @@ export async function installRFixture(page: Page, options: {
       rivian_session_count: null, local_session_count: 0, missing_source_count: null,
     });
     if (/\/vehicles\/[^/]+\/health$/.test(path)) return json({
-      vehicle: { id: vehicle.id, name: 'Your Rivian', model: 'R2', trim: 'Performance' },
+      vehicle_id: vehicle.id, extended_telemetry: { collector: null },
+      vehicle: { name: 'Your Rivian', model: 'R2', trim: 'Performance' },
       latest: { ts: new Date().toISOString(), twelve_volt_health: null, hv_thermal_event: null },
       runtime: { last_event_at: new Date().toISOString(), worker_health: 'healthy' },
       tires: null, closures: null, software_history: [], thermal_events_30d: 0,
@@ -172,7 +182,13 @@ export async function installRFixture(page: Page, options: {
     });
     if (path === '/v1/app/version') return json({ version: 'local-preview' });
     if (path === '/v1/settings/update-check') return json({ enabled: false, frequency: 'daily' });
-    if (path === '/v1/auth/preferences/chart-favorites') return json({ chart_favorites: {} });
+    if (path === '/v1/auth/preferences/chart-favorites') {
+      if (request.method() === 'PUT') {
+        const body = request.postDataJSON();
+        chartFavorites[body.key] = body.chart_id;
+      }
+      return json({ chart_favorites: chartFavorites });
+    }
     if (path === '/v1/auth/identities') return json({ password_configured: true, oidc_linked: false, oidc_link_available: false });
     if (path === '/v1/api-keys') return json([]);
     if (path === '/v1/api/catalog') return json({ version: 'v1', authentication: 'Bearer token', endpoints: [] });
@@ -202,10 +218,20 @@ export async function installRFixture(page: Page, options: {
       return json({
         vehicle_id: path.includes('other-vehicle') ? 'other-vehicle' : vehicle.id,
         battery_level: path.includes('other-vehicle') ? 20 : 68, battery_limit: 80,
+        charger_state: 'Disconnected', charger_status: 'chrgr_sts_not_connected',
         range_miles: 218, odometer_miles: options.odometer ?? 12486, power_state: 'ready', is_online: true,
         last_updated: new Date().toISOString(), doors_locked: true,
+        drive_mode: 'all_purpose', gear_status: 'park', speed_mph: 0, altitude_m: 125,
+        ota_current_version: options.missingSoftware ? null : '2026.35', ota_available_version: null, ota_status: 'idle',
+        door_front_left_locked: true, door_front_right_locked: true,
+        door_rear_left_locked: true, door_rear_right_locked: true,
+        closure_frunk_locked: true, closure_liftgate_locked: true,
+        door_front_left_closed: true, door_front_right_closed: true,
+        door_rear_left_closed: true, door_rear_right_closed: true,
+        closure_frunk_closed: true, closure_liftgate_closed: true,
         cabin_temp_c: 20, outside_temp_c: 15, tire_fl_psi: 45, tire_fr_psi: 45, tire_rl_psi: 45,
         tire_rr_psi: options.missingSensors ? null : 44, tire_rr_valid: options.missingSensors ? false : true,
+        ...options.statusOverrides,
       });
     }
     if (path === '/v1/metrics/batch') {
@@ -317,5 +343,12 @@ export async function installRFixture(page: Page, options: {
     unsupportedRequests.push(`${request.method()} ${path}`);
     return json({ error: { message: 'This endpoint is unavailable in the local preview.' } }, 404);
   });
-  return { writes, metricRequests, unsupportedRequests };
+  return {
+    writes, metricRequests, unsupportedRequests,
+    liveConnections: () => liveSockets.size,
+    publishStatus: (data: Partial<VehicleStatus>) => {
+      const message = JSON.stringify({ type: 'status', ts: new Date().toISOString(), data });
+      for (const socket of liveSockets) socket.send(message);
+    },
+  };
 }

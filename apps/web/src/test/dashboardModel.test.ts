@@ -145,8 +145,12 @@ describe('dashboard model helpers', () => {
     const sessions = charging!.widgets.find(
       (widget) => widget.definitionId === 'charging.sessions.table',
     );
-    expect(chart?.layout).toMatchObject({ x: 0, y: 6, w: 12, h: 11 });
-    expect(sessions?.layout).toMatchObject({ x: 0, y: 17, w: 12, h: 12 });
+    expect(chart?.layout).toMatchObject({ x: 0, y: 6, w: 12, h: 9 });
+    const charts = charging!.widgets.filter((widget) => widget.definitionId === 'catalog');
+    expect(charts).toHaveLength(5);
+    expect(sessions?.layout).toMatchObject({
+      x: 0, y: Math.max(...charts.map((widget) => widget.layout.y + widget.layout.h)), w: 12, h: 12,
+    });
 
     for (const connection of ['plugged', 'unplugged'] as const) {
       const visible = resolveDashboardViewWidgets(charging!.widgets, {

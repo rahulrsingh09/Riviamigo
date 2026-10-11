@@ -1,7 +1,7 @@
 import { getDefaultBySlug, type DashboardConfig } from '@riviamigo/dashboards';
 
 export function usesBundledLayout(config: DashboardConfig | undefined): boolean {
-  if (!config?.isDefault || config.slug === 'dashboard') return false;
+  if (!config?.isDefault) return false;
   const bundled = getDefaultBySlug(config.slug);
   if (!bundled || config.widgets.length !== bundled.widgets.length) return false;
   return config.widgets.every(widget => {

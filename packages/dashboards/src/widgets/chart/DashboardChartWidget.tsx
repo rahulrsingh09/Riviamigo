@@ -571,7 +571,8 @@ function AssignedChartRuntime({
   charts: ChartRecord[];
 }) {
   const available = charts.filter(
-    (chart) => chart.isEnabled || options.requiredChartSlugs.includes(chart.slug)
+    (chart) => (chart.isEnabled || options.requiredChartSlugs.includes(chart.slug))
+      && (options.showPicker || options.chartIds.length !== 1 || options.chartIds.includes(chart.slug))
   );
   const chartIdsSignature = available.map((chart) => chart.slug).join('|');
   const chartOptions = available.map((chart) => ({ value: chart.slug, label: chart.name }));
@@ -599,14 +600,14 @@ function AssignedChartRuntime({
   React.useEffect(() => setDraftChartSettings(options.chartSettings), [options.chartSettings]);
 
   React.useEffect(() => {
-    if (!available.length) return;
+    if (!available.length || !favoritesLoaded) return;
     const initializationKey = `${storageKey}|${chartIdsSignature}|${defaultChartId}`;
     setDefaultChartId(resolvedFavorite);
     if (favoriteInitializationRef.current !== initializationKey) {
       setChartId(resolvedFavorite);
       favoriteInitializationRef.current = initializationKey;
     }
-  }, [chartIdsSignature, defaultChartId, resolvedFavorite, storageKey, available.length]);
+  }, [chartIdsSignature, defaultChartId, resolvedFavorite, storageKey, available.length, favoritesLoaded]);
 
   const active = available.find((chart) => chart.slug === chartId) ?? available[0];
   const settings = resolveChartDisplaySettings(

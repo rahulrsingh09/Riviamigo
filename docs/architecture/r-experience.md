@@ -26,6 +26,7 @@ edits to system layouts, and editing mode retain saved positions and sizes.
 | Health and chart editor composition | R identity while preserving workflows |
 | `routes/settings.themes.$themeId.tsx` | Redirect retired appearance URLs |
 | Card, PageLayout, MetricTabs and WidgetHost attributes | Stable styling hooks |
+| `WidgetPresentationProvider` | Scoped vehicle presentation without changing widget definitions, data requirements, saved configuration or canonical charts |
 | `packages/ui/src/tokens/globals.css` | R overrides in the canonical token owner |
 | `DataPaletteProvider` and `useChartColorPairs` | Fixed R data colors without changing stored account themes or explicit chart colors |
 | TripMapChart and trip-detail composition | Optional point inspection; proxy policy unchanged |
@@ -33,11 +34,50 @@ edits to system layouts, and editing mode retain saved positions and sizes.
 
 The overview uses actual existing metrics, trips, charging and vehicle status.
 Selected-vehicle identity and placeholder checks prevent displaying another
-vehicle's cached readings. Missing readings remain unknown, not zero. The full
-editable dashboard remains at `/d/dashboard`, as a data workspace within R.
-The first overview reading is total odometer mileage; estimated range stays with
-battery charge. Unit subscriptions retain the full preference object so changing
-efficiency display updates cards, charts and tables without a reload.
+vehicle's cached readings. Missing readings remain unknown, not zero. Home
+incorporates the chart workspace and dashboard tools; `/d/dashboard` redirects
+to `/` unless an exact dashboard ID or editing query was requested.
+The R2 vehicle widget owns the interactive stage and compact status summaries.
+Its poster and rotation canvas share a uniform 1.1 scale and a theme-token
+radial backdrop. This closer, soft-light treatment adds no assets or requests.
+Its primary cards show period trip distance, total trips and efficiency; SOC,
+estimated range and charging occupy a secondary strip. Linked drive, climate,
+tire and software summaries open Vehicle health. The door control opens a
+telemetry-driven diagram with separate closed and locked fields, including
+frunk and liftgate. Missing or unavailable closure fields remain unknown.
+Each closure displays its independent lock reading with an animated shackle;
+the overall lock and individual readings use the same availability checks.
+This is a status visualization, not a vehicle command or articulated photo.
+The presentation provider also applies inside dashboard copies and editing
+previews; other models retain their model-specific overhead annotations.
+
+The pending main-car articulation must represent API state, not play a demo.
+Render the initial snapshot directly; later changes affect only the corresponding
+front-left, front-right, rear-left, rear-right, frunk or rear-gate panel. Hold
+that position until its reading changes. Repeated snapshots, navigation and
+unrelated updates must not replay opening or closing. Lock changes alone must
+not change panel position, and unavailable readings must not imply closure.
+Any brief panel transition must follow a real position change. Preserve the
+artwork's aspect ratio and natural perspective; review recordings do not satisfy
+this independent-state contract.
+
+Assigned chart catalogs initialize their selection after saved favorites load.
+Without a saved favorite, the configured chart is selected and starred by
+default. Changing that favorite leaves independently pinned graph cards intact.
+
+Home renders the entire saved configuration through `DashboardRenderer`,
+including the vehicle widget. No fixed hero is injected outside that layout.
+The first vehicle widget supplies the page heading through app-local context;
+removing it leaves a normal Overview heading and dashboard tools. Visibility
+rules, ordering, sizes, addition and removal remain owned by the shared renderer.
+Only unchanged bundled geometry receives automatic section heights. Custom and
+edited system layouts retain their dimensions and scroll vehicle content within
+its widget. The bundled distance sensor uses `trip_miles` as total trip distance instead of
+cumulative `total_miles`. View, export and editing use the same saved config;
+there is no additional Home-only metric projection. Import validates existing YAML and
+creates a uniquely named personal copy through the existing dashboard API after
+the user confirms. Unit subscriptions retain the full preference object so
+changing efficiency display updates cards, charts and tables without a reload.
 
 R fixes all series, status, map and drive-mode tokens in both appearance modes.
 Its data palette provider selects categorical sensor slots consistently and reads
@@ -53,9 +93,32 @@ unchanged.
 
 ## Routes and settings
 
-Primary navigation has Overview, Trips, Charging, Efficiency and Explore.
-Explore links to Vehicle health, Battery, dashboard library, all settings and
+Desktop primary navigation has Home, Trips, Charging, Battery, Efficiency
+and Explore. Mobile uses five equally sized, labeled tabs: Home, Trips,
+Charging, Battery and Explore. Efficiency is reached from the Home summary or
+Explore and keeps Explore selected on mobile. Resizing restores its direct
+desktop tab without changing the route.
+Battery overview and Phantom drain share a visible section navigation, and both
+keep Battery selected in the primary bar. Explore retains direct Battery and
+Phantom drain links alongside Vehicle health, dashboard library, settings and
 permission-gated account administration.
+
+System dashboard baseline 9 adds nine pinned Home charts, five Battery charts,
+four Charging charts and four Efficiency charts. The existing catalog remains
+for additional assigned charts. Every original Overview chart type is pinned on
+at least one default page. Pinned widgets use a single assigned chart slug with
+`showPicker: false`; they keep the effective chart's saved definition and canonical
+renderer, ignore favorites for other slugs, and never substitute another chart
+when the requested one is unavailable. They are normal, removable widgets, not
+managed composition injected into personal layouts.
+
+The canonical JSON defaults and API mirrors remain synchronized. On API startup,
+the existing baseline mechanism updates system defaults once; this also replaces
+previous administrator edits to those system defaults. Personal dashboards are
+not replaced or populated with the new pinned charts. Their existing managed
+catalog migration is unchanged. Restore system default uses the same new baseline.
+Chart requests remain deferred until close to the viewport and use the existing
+query cache; no additional polling, collector or data service is enabled.
 
 Settings retain Vehicles, Dashboards, Charts, Units & time, Places, Charging,
 External connections, API access, Jobs, Raw data, Backups, Account and

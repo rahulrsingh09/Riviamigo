@@ -41,6 +41,7 @@ const customDashboard: DashboardConfig = {
 
 const dashboards = new Map<string, DashboardConfig>([
   ['dashboard', dashboard],
+  ['overview-fixture', { ...dashboard, slug: 'overview-fixture' }],
   ['battery', battery],
   ['charging', charging],
   ['efficiency', efficiency],
@@ -89,7 +90,7 @@ test.describe('dashboard editability in a browser', () => {
         side_bin_right_closed: false,
       },
     });
-    await page.goto('/d/dashboard');
+    await page.goto('/d/overview-fixture');
 
     const fallbackArtwork = page.locator('img[src="/vehicle-images/fallbacks/r1t/overview.webp"]').first();
     await expect(fallbackArtwork).toBeVisible();
@@ -252,20 +253,20 @@ test.describe('mobile app navigation', () => {
     expect(box.y).toBeGreaterThan(740);
     expect(box.x).toBeGreaterThanOrEqual(0);
     expect(box.x + box.width).toBeLessThanOrEqual(390);
-    const overview = navigation.getByRole('link', { name: 'Overview' });
+    const home = navigation.getByRole('link', { name: 'Home' });
     const explore = navigation.getByRole('link', { name: 'Explore' });
     const settings = page.getByRole('link', { name: 'Settings', exact: true });
     const signOut = page.getByRole('button', { name: 'Sign out' });
 
-    await expect(overview).toHaveAttribute('aria-current', 'page');
-    for (const control of [overview, explore, settings, signOut]) {
+    await expect(home).toHaveAttribute('aria-current', 'page');
+    for (const control of [home, explore, settings, signOut]) {
       const box = await control.boundingBox();
       expect(box).not.toBeNull();
       expect(box!.height).toBeGreaterThanOrEqual(44);
     }
 
     await explore.click();
-    await page.getByRole('link', { name: /Battery/ }).click();
+    await page.getByRole('main').getByRole('link', { name: /Battery/ }).click();
     await expect(page).toHaveURL(/\/battery$/);
     await expect(navigation).toBeVisible();
   });
@@ -306,7 +307,9 @@ test.describe('mobile dashboard chart viewer', () => {
     });
 
     await page.goto('/efficiency');
-    await page.getByRole('button', { name: 'Expand chart' }).click();
+    const chartCatalog = page.locator('[data-widget-id="d3000003-0000-0000-0000-000000000005"]');
+    await chartCatalog.scrollIntoViewIfNeeded();
+    await chartCatalog.getByRole('button', { name: 'Expand chart' }).click();
     await expect(page.getByText('Rotate for a wider chart')).toBeVisible();
 
     await page.setViewportSize({ width: 844, height: 390 });
@@ -336,7 +339,7 @@ test.describe('mobile dashboard chart viewer', () => {
     await page.getByRole('button', { name: 'Choose chart' }).click();
     await page.getByRole('option', { name: 'Efficiency by Temperature' }).click();
 
-    const allBars = page.locator('[data-efficiency-pill-bar="true"]');
+    const allBars = viewer.locator('[data-efficiency-pill-bar="true"]');
     const bars = [];
     for (let index = 0; index < await allBars.count(); index += 1) {
       const bar = allBars.nth(index);

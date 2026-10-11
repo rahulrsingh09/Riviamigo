@@ -1,7 +1,11 @@
 import React from 'react';
 import { DataPaletteProvider, type DataPaletteOverride } from '@riviamigo/ui/hooks';
+import { WidgetPresentationProvider } from '@riviamigo/dashboards';
+import { RDashboardVehicle } from './RDashboardVehicle';
 import { readRDataPalette } from './dataPalette';
 import './r-experience.css';
+
+const widgetPresentations = { 'custom:overview.vehicle': RDashboardVehicle };
 
 export function RExperienceRoot({ children }: { children: React.ReactNode }) {
   const [dataPalette, setDataPalette] = React.useState<DataPaletteOverride>({ palette: 'rad' });
@@ -28,5 +32,7 @@ export function RExperienceRoot({ children }: { children: React.ReactNode }) {
       document.removeEventListener('keydown', keyboard, true);
     };
   }, []);
-  return <DataPaletteProvider value={dataPalette}>{children}</DataPaletteProvider>;
+  return <DataPaletteProvider value={dataPalette}>
+    <WidgetPresentationProvider value={widgetPresentations}>{children}</WidgetPresentationProvider>
+  </DataPaletteProvider>;
 }

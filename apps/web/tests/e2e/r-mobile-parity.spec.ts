@@ -35,16 +35,16 @@ test('owner-configured R2 rotates on entry and yields immediately to touch', asy
   await expect(orbit).toHaveAttribute('aria-valuenow', '325');
 });
 
-test('phone overview leads with odometer and keeps controls above the dock', async ({ page }, testInfo) => {
+test('phone overview leads with trips and keeps controls above the dock', async ({ page }, testInfo) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await installRFixture(page, { unknownConfiguration: true, secondVehicle: true, odometer: 123456 });
   await page.goto('/');
-  await expect(page.locator('.r-car-readings > div').first()).toContainText('Total mileage');
-  await expect(page.locator('.r-car-readings > div').first()).toContainText('123,456');
+  await expect(page.locator('.r-trip-instrument').first()).toContainText('Trip distance');
+  await expect(page.locator('.r-snapshot-foot')).toContainText('Odometer 123,456');
   await expect(page.locator('.r-orbit-poster')).toBeVisible();
-  const bounds = await page.locator('.r-car-readings dd').first().evaluate(element => {
+  const bounds = await page.locator('.r-trip-instrument').first().evaluate(element => {
     const parent = element.getBoundingClientRect();
-    const value = element.firstElementChild!.getBoundingClientRect();
+    const value = element.querySelector('strong')!.getBoundingClientRect();
     return { fits: value.right <= parent.right + 1, overflow: element.scrollWidth > element.clientWidth + 1 };
   });
   expect(bounds).toEqual({ fits: true, overflow: false });

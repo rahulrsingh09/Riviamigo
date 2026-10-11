@@ -5,6 +5,8 @@ import './widgets/index';
 export { DashboardRenderer } from './DashboardRenderer';
 export { DashboardGrid } from './DashboardGrid';
 export { WidgetHost } from './WidgetHost';
+export { WidgetPresentationProvider } from './WidgetHost';
+export type { WidgetPresentationProps } from './WidgetHost';
 export { WidgetChrome } from './WidgetChrome';
 export {
   DashboardChartWidget,

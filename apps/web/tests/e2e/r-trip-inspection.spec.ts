@@ -144,6 +144,7 @@ for (const width of [393, 1440]) {
     await page.getByRole('button', { name: /^Metric/ }).click();
     await page.goto('/efficiency');
     const widget = page.locator('[data-widget-id="d3000003-0000-0000-0000-000000000005"]');
+    await widget.scrollIntoViewIfNeeded();
     const picker = widget.locator('button[aria-haspopup="listbox"]');
     for (const name of ['Efficiency Trend', 'Efficiency by Temperature', 'Efficiency by Drive Mode', 'Efficiency by Tag']) {
       await picker.click();
@@ -210,6 +211,7 @@ test.describe('high-density phone chart labels', () => {
     await installRFixture(page, { populatedAnalytics: true, populatedAdmin: true, mode: 'dark' });
     await page.goto('/efficiency');
     const widget = page.locator('[data-widget-id="d3000003-0000-0000-0000-000000000005"]');
+    await widget.scrollIntoViewIfNeeded();
     await widget.locator('button[aria-haspopup="listbox"]').click();
     await page.getByRole('option').filter({ hasText: 'Efficiency Trend' }).click();
     await widget.scrollIntoViewIfNeeded();

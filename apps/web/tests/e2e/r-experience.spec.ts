@@ -1,5 +1,7 @@
-import { expect, test } from '@playwright/test';
+import { expect, test, type Request } from '@playwright/test';
 import { installRFixture } from './r-experience.fixture';
+
+const orbitPackUrl = /\/r2-orbit(?:-[^/?]+)?\.bin(?:\?|$)/;
 
 for (const width of [390, 1280]) {
   for (const mode of ['dark', 'light'] as const) {
@@ -7,13 +9,19 @@ for (const width of [390, 1280]) {
       test.setTimeout(120_000);
       await page.setViewportSize({ width, height: 900 });
       const errors: string[] = [];
+      const requests = new Set<Request>();
       page.on('pageerror', error => errors.push(error.message));
+      page.on('request', request => {
+        if (/\/v[12]\//.test(request.url())) requests.add(request);
+      });
+      page.on('requestfinished', request => requests.delete(request));
+      page.on('requestfailed', request => requests.delete(request));
       await installRFixture(page, { mode, role: 'super_user', populatedAdmin: true });
       const paths = [
         '/', '/trips', '/charging', '/efficiency', '/battery', '/battery/phantom-drain', '/vehicle-health',
         '/trips/trip-1', '/charging/charge-1', '/explore', '/settings', '/users',
         ...['vehicles','dashboards','charts','units','places','charging','external','api','jobs','raw','backup','account','authentication'].map(section => `/settings?section=${section}`),
-        '/d/trips', '/admin/dashboards', '/connect', '/connect/otp?challenge_id=challenge-1',
+        '/d/dashboard', '/d/trips', '/admin/dashboards', '/connect', '/connect/otp?challenge_id=challenge-1',
       ];
       for (const path of paths) {
         await page.goto(path);
@@ -21,7 +29,7 @@ for (const width of [390, 1280]) {
         await expect(page.locator('h1').first()).toBeVisible();
         await expect(page.locator('html')).toHaveClass(new RegExp(mode));
         const primary = page.getByRole('navigation', { name: 'Primary navigation' });
-        for (const name of ['Overview','Trips','Charging','Efficiency','Explore']) {
+        for (const name of ['Home','Trips','Charging','Battery','Explore', ...(width > 900 ? ['Efficiency'] : [])]) {
           await expect(primary.getByRole('link', { name, exact: true })).toBeVisible();
         }
         await expect(page.getByText(/something went wrong/i)).toHaveCount(0);
@@ -29,6 +37,7 @@ for (const width of [390, 1280]) {
         if (['/', '/settings', '/vehicle-health', '/charging'].includes(path)) {
           await page.screenshot({ path: testInfo.outputPath(`${path.replaceAll('/', '') || 'overview'}.png`), fullPage: true });
         }
+        await expect.poll(() => requests.size).toBe(0);
       }
       expect(errors).toEqual([]);
     });
@@ -39,7 +48,7 @@ test('vehicle rotation loads once on interaction and works with light mode and r
   await installRFixture(page, { mode: 'dark' });
   await page.emulateMedia({ reducedMotion: 'reduce' });
   const packs: string[] = [];
-  page.on('request', request => { if (request.resourceType() === 'fetch' && request.url().includes('r2-orbit.bin')) packs.push(request.url()); });
+  page.on('request', request => { if (request.resourceType() === 'fetch' && orbitPackUrl.test(request.url())) packs.push(request.url()); });
   await page.goto('/');
   await expect(page.getByRole('heading', { name: 'Your Rivian' })).toBeVisible();
   const orbit = page.getByRole('slider', { name: 'Rotate vehicle' });
@@ -63,7 +72,7 @@ test('vehicle rotation loads once on interaction and works with light mode and r
   expect(await page.locator('.r-vehicle-stage').evaluate(element => getComputedStyle(element).backgroundColor))
     .toBe(await page.locator('body').evaluate(element => getComputedStyle(element).backgroundColor));
   await page.getByRole('link', { name: 'Explore', exact: true }).click();
-  await page.getByRole('link', { name: 'Overview', exact: true }).click();
+  await page.getByRole('link', { name: 'Home', exact: true }).click();
   await expect(page.locator('.r-orbit canvas')).toBeVisible();
   expect(packs).toHaveLength(1);
 });
@@ -92,12 +101,12 @@ test('settings navigation, search, units and compatibility URLs have no interfac
 test('changing vehicle clears old readings until the selected vehicle snapshot arrives', async ({ page }) => {
   await installRFixture(page, { secondVehicle: true, statusDelay: 1500 });
   await page.goto('/');
-  await expect(page.locator('.r-car-readings')).toContainText('68%');
+  await expect(page.locator('.r-soc-summary')).toContainText('68%');
   await page.getByLabel('Select vehicle', { exact: true }).click();
   await page.getByRole('option', { name: /Other vehicle/ }).click();
   await expect(page.getByRole('heading', { name: 'Other vehicle' })).toBeVisible();
-  await expect(page.locator('.r-car-readings')).not.toContainText('68%');
-  await expect(page.locator('.r-car-readings')).toContainText('20%');
+  await expect(page.locator('.r-soc-summary')).not.toContainText('68%');
+  await expect(page.locator('.r-soc-summary')).toContainText('20%');
   await expect(page.getByRole('slider', { name: 'Rotate vehicle' })).toHaveCount(0);
 });
 
@@ -157,7 +166,7 @@ test('failed rotation pauses until an explicit retry', async ({ page }) => {
   await page.emulateMedia({ reducedMotion: 'reduce' });
   await installRFixture(page);
   let failedLoads = 0;
-  await page.route('**/r2-orbit.bin*', async route => {
+  await page.route(orbitPackUrl, async route => {
     if (route.request().resourceType() !== 'fetch') return route.fallback();
     failedLoads++;
     return route.fulfill({ status: 503, body: 'Unavailable' });
@@ -175,6 +184,6 @@ test('cached vehicle readings retain visible browser reconnection status', async
   await installRFixture(page);
   await page.routeWebSocket('**/v1/vehicles/live**', socket => socket.close());
   await page.goto('/');
-  await expect(page.locator('.r-car-readings')).toContainText('68%');
+  await expect(page.locator('.r-soc-summary')).toContainText('68%');
   await expect(page.getByText('Reconnecting live updates · Showing last recorded readings.')).toBeVisible();
 });

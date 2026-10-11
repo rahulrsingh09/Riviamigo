@@ -14,6 +14,9 @@ describe('R bundled layout admission', () => {
     const moved = structuredClone(original);
     moved.widgets[0]!.layout.y += 2;
     expect(usesBundledLayout(moved)).toBe(false);
-    expect(usesBundledLayout(getDefaultBySlug('dashboard'))).toBe(false);
+    expect(usesBundledLayout(getDefaultBySlug('dashboard'))).toBe(true);
+    const overview = structuredClone(getDefaultBySlug('dashboard')!);
+    overview.widgets[0]!.layout.h += 1;
+    expect(usesBundledLayout(overview)).toBe(false);
   });
 });

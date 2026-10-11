@@ -1,45 +1,22 @@
 import React from 'react';
 import { Link } from '@tanstack/react-router';
 import { ArrowUpRight, ChevronRight, Route, Zap } from 'lucide-react';
-import { useChargeSessions, useCurrentVehicleStatus, useMetricBatch, useResolvedVehicleSelection, useTrips } from '@riviamigo/hooks';
-import { formatCurrency, formatDuration, formatEfficiency, formatEfficiencyValue, getEfficiencyUnitLabel, formatKwh, formatMiles, formatNumber } from '@riviamigo/ui/lib/utils';
+import { useChargeSessions, useTrips } from '@riviamigo/hooks';
+import { formatCurrency, formatDuration, formatEfficiency, formatKwh, formatMiles } from '@riviamigo/ui/lib/utils';
 import { formatAppDateTime } from '@riviamigo/ui/lib/dateTime';
 import type { DashboardPageShellRenderState } from '../../components/dashboard/dashboardShellTypes';
-import { getTimeframeLabel } from '../../lib/dates';
-import { finiteReading } from './readings';
-import { RVehicleStage } from './RVehicleStage';
+import { RHomeWorkspace } from './RHomeWorkspace';
 import './r-overview.css';
 
-const metrics = ['trip_miles', 'total_trips', 'avg_efficiency'].map(metric => ({
-  metric, include_latest: true, include_series: false,
-}));
-
 export function ROverview({ state, actions }: { state: DashboardPageShellRenderState; actions: React.ReactNode }) {
-  const { vehicles } = useResolvedVehicleSelection();
-  const vehicle = vehicles.find(item => item.id === state.vehicleId);
-  const snapshot = useCurrentVehicleStatus(state.vehicleId);
-  const status = !snapshot.isPlaceholderData && snapshot.data?.vehicle_id === state.vehicleId ? snapshot.data : null;
   const { from, to } = state.ctx;
-  const batch = useMetricBatch(state.vehicleId, metrics, from ?? null, to ?? null, state.timeframe.kind === 'lifetime');
   const trips = useTrips(state.vehicleId, from ?? null, to ?? null, 1, 2);
   const charges = useChargeSessions(state.vehicleId, from ?? null, to ?? null, 1, 1);
-  const metric = (name: string) => batch.isPlaceholderData ? null : finiteReading(batch.data?.values?.find(item => item.metric === name)?.value);
   const charge = charges.isPlaceholderData ? undefined : charges.data?.items?.[0];
-  if (!vehicle) return null;
   return (
-    <div className="r-overview">
-        <RVehicleStage vehicle={vehicle} status={status} actions={actions} efficiency={
-          <Link className="r-efficiency-card" to="/efficiency">
-            <span className="r-card-top">Efficiency <ArrowUpRight /></span>
-            <div><strong>{formatEfficiencyValue(metric('avg_efficiency'))}</strong><span className="r-metric-unit">{getEfficiencyUnitLabel()}</span></div>
-          </Link>
-        } />
-        <aside className="r-activity-rail" aria-label="Mileage and recent activity">
-          <section className="r-distance-card" aria-label="Distance summary">
-            <div><span>Distance this period</span><strong>{formatMiles(metric('trip_miles'))}</strong><small>{getTimeframeLabel(state.timeframe)}</small></div>
-            <div className="r-period-distance"><strong>{formatNumber(metric('total_trips'), 0)}</strong><small>Trips recorded</small></div>
-          </section>
-      {batch.isError && <p className="r-reading-note" role="alert">Period totals could not be loaded. <button type="button" onClick={() => void batch.refetch()}>Retry</button></p>}
+    <div className="r-home-dashboard">
+      <RHomeWorkspace state={state} actions={actions} />
+      <div className="r-home-activity">
       <section className="r-recent">
         <div className="r-section-heading"><h2>Recent trips</h2><Link to="/trips">All trips <ArrowUpRight /></Link></div>
         {trips.isLoading || trips.isPlaceholderData ? <p className="r-empty" role="status">Loading trips…</p>
@@ -62,8 +39,7 @@ export function ROverview({ state, actions }: { state: DashboardPageShellRenderS
             <span>{formatKwh(charge.energy_added_kwh)}<small>{formatCurrency(charge.cost_usd)}</small></span><ChevronRight />
           </Link>}
       </section>
-      <Link className="r-dashboard-link" to="/d/$slug" params={{ slug: 'dashboard' }}>Open full dashboard <ArrowUpRight /></Link>
-      </aside>
+      </div>
     </div>
   );
 }

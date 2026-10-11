@@ -80,19 +80,22 @@ for (const width of [1280, 390]) {
   for (const [label, locked] of [
     ['Locked', true],
     ['Unlocked', false],
-    ['Locks pending', null],
+    ['Locks unknown', null],
   ] as const) {
     test(`${label} is telemetry only at ${width}px`, async ({ page }) => {
       await page.setViewportSize({ width, height: 844 });
       const mutations = await installFixture(page, locked);
       await page.goto('/');
-      await expect(page.getByText(label, { exact: true })).toBeVisible();
-      const indicator = page.getByTitle('Tailgate lock', { exact: true });
-      await expect(indicator).toBeVisible();
+      const overview = page.getByRole('button', { name: /^Doors & locks:/ });
+      await expect(overview).toContainText(label);
+      mutations.length = 0;
+      await overview.click();
+      const dialog = page.getByRole('dialog');
+      const indicator = dialog.locator('.r-door-list > div').filter({ hasText: 'Rear gate' });
+      await expect(indicator.locator('.r-door-lock-reading')).toHaveText(locked === null ? 'Lock unknown' : label);
       await expect(
         page.getByRole('button', { name: /^(lock|unlock)( vehicle| doors)?$/i })
       ).toHaveCount(0);
-      mutations.length = 0;
       await indicator.click();
       await page.evaluate(
         () =>
@@ -101,7 +104,10 @@ for (const width of [1280, 390]) {
           )
       );
       expect(mutations).toEqual([]);
-      await expect(page.getByText(label, { exact: true })).toBeVisible();
+      await expect(indicator.locator('.r-door-lock-reading')).toHaveText(locked === null ? 'Lock unknown' : label);
+      await page.getByRole('button', { name: 'Close door status' }).click();
+      await expect(overview).toContainText(label);
+      expect(mutations).toEqual([]);
     });
   }
 }

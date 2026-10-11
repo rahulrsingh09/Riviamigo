@@ -58,6 +58,7 @@ beforeEach(() => {
     delete mockFavoriteState.chart_favorites[key];
   }
   mockUpdateDashboardChartFavorite.mockClear();
+  mockDashboardChartFavorites.mockReturnValue({ data: mockFavoriteState, isSuccess: true });
   mockEffectiveCharts.mockReset();
   mockEffectiveCharts.mockImplementation((placement: string | null) => ({
     data: chartSeeds
@@ -106,6 +107,35 @@ vi.mock('uplot', () => {
 });
 
 describe('DashboardChartWidget - smoothing controls', () => {
+  it('pins a default chart without a picker while retaining its edited production definition', () => {
+    const instance = getDefaultBySlug('dashboard')!.widgets.find(widget =>
+      widget.options?.chartId === 'battery-capacity-mileage' && widget.options?.showPicker === false)!;
+    const assigned = structuredClone(chartRecord('battery-capacity-mileage'));
+    assigned.config.series[0]!.color = { mode: 'token', token: 'sky' };
+    mockFavoriteState.chart_favorites[`dashboard:dashboard-a:${instance.id}`] = 'projected-range-mileage';
+    mockEffectiveCharts.mockReturnValue({
+      data: [chartRecord('projected-range-mileage'), assigned],
+      isSuccess: true, isLoading: false, isError: false,
+    });
+    renderWidget(instance, { ...CTX, dashboardSlug: 'dashboard' });
+    expect(screen.queryByRole('button', { name: 'Chart' })).not.toBeInTheDocument();
+    expect(screen.getByTestId('rich-chart')).toHaveAttribute('data-series', 'Usable Capacity|Mileage');
+    expect(screen.getByTestId('rich-chart').getAttribute('data-series-colors')).toContain('var(--rm-chart-sky)');
+    expect(mockUseChartDatasets).not.toHaveBeenCalled();
+  });
+
+  it('does not substitute another graph when the pinned chart is disabled or unassigned', () => {
+    const instance = getDefaultBySlug('dashboard')!.widgets.find(widget =>
+      widget.options?.chartId === 'battery-capacity-mileage' && widget.options?.showPicker === false)!;
+    mockEffectiveCharts.mockReturnValue({
+      data: [chartRecord('projected-range-mileage'), { ...chartRecord('battery-capacity-mileage'), isEnabled: false }],
+      isSuccess: true, isLoading: false, isError: false,
+    });
+    renderWidget(instance, { ...CTX, dashboardSlug: 'dashboard' });
+    expect(screen.getByText('No enabled charts are assigned to this dashboard.')).toBeVisible();
+    expect(screen.queryByTestId('rich-chart')).not.toBeInTheDocument();
+  });
+
   it('never changes the renderer for a bundled slug, even when its saved definition is edited', () => {
     const seed = chartRecord('battery-capacity-mileage');
     expect(usesBundledChartRenderer(seed)).toBe(true);
@@ -469,7 +499,7 @@ describe('DashboardChartWidget - smoothing controls', () => {
   });
   it('uses projected range by mileage as the Overview app default', () => {
     const overview = getDefaultBySlug('dashboard');
-    const chart = overview?.widgets.find((widget) => widget.definitionId === 'catalog');
+    const chart = overview?.widgets.find((widget) => widget.managedKey === 'overview.chart-catalog');
 
     expect((chart?.options as Record<string, unknown> | undefined)?.chartId).toBe(
       'projected-range-mileage'
@@ -485,13 +515,12 @@ describe('DashboardChartWidget - smoothing controls', () => {
     });
   });
 
-  it('does not include State of Charge aliases in bundled dashboard chart assignments', () => {
+  it('does not include retired range-history aliases in bundled dashboard chart assignments', () => {
     for (const slug of ['dashboard', 'battery'] as const) {
       const dashboard = getDefaultBySlug(slug);
       const chart = dashboard?.widgets.find((widget) => widget.definitionId === 'catalog');
       const chartIds = (chart?.options as { chartIds?: unknown[] } | undefined)?.chartIds ?? [];
 
-      expect(chartIds).not.toContain('soc-history');
       expect(chartIds).not.toContain('range-history');
     }
   });
@@ -577,6 +606,24 @@ describe('DashboardChartWidget - smoothing controls', () => {
     );
 
     expect(screen.getByRole('button', { name: 'Chart' })).toHaveTextContent('State of Charge');
+  });
+
+  it('restores the saved chart when favorites arrive after the assigned catalog', () => {
+    mockDashboardChartFavorites.mockReturnValue({ data: mockFavoriteState, isSuccess: false });
+    const instance = {
+      ...makeInstance('soc-history', true),
+      options: {
+        chartId: 'soc-history', chartIds: ['soc-history', 'projected-range-mileage'],
+        page: 'overview' as const, catalogMode: 'assigned', showPicker: true,
+      },
+    };
+    const ctx = { ...CTX, dashboardSlug: 'dashboard', dashboardConfigId: 'dashboard-a' };
+    const view = renderWidget(instance, ctx);
+    expect(screen.getByRole('button', { name: 'Chart' })).toHaveTextContent('State of Charge');
+    mockFavoriteState.chart_favorites['dashboard:dashboard-a:test-soc-history'] = 'projected-range-mileage';
+    mockDashboardChartFavorites.mockReturnValue({ data: mockFavoriteState, isSuccess: true });
+    view.rerender(<DashboardChartWidget instance={instance} ctx={ctx} />);
+    expect(screen.getByRole('button', { name: 'Chart' })).toHaveTextContent('Projected Range by Mileage');
   });
 
   it('keeps a saved favorite when a managed catalog gains a new chart', () => {

@@ -1,6 +1,6 @@
 import React from 'react';
 import { Link, useLocation, useNavigate } from '@tanstack/react-router';
-import { CarFront, Compass, Gauge, LogOut, Moon, Route, Settings2, Sun, Zap } from 'lucide-react';
+import { Battery, CarFront, Compass, Gauge, LogOut, Moon, Route, Settings2, Sun, Zap } from 'lucide-react';
 import { useAuth } from '@riviamigo/hooks';
 import { useDocumentTheme } from '@riviamigo/ui/hooks';
 import { useThemePreferenceController } from '../../hooks/useThemePreferenceController';
@@ -8,12 +8,21 @@ import { RMark } from './RMark';
 import { useRConnection } from './useRConnection';
 
 const navigation = [
-  { key: 'dashboard', label: 'Overview', to: '/', icon: CarFront },
+  { key: 'dashboard', label: 'Home', to: '/', icon: CarFront },
   { key: 'trips', label: 'Trips', to: '/trips', icon: Route },
   { key: 'charging', label: 'Charging', to: '/charging', icon: Zap },
+  { key: 'battery', label: 'Battery', to: '/battery', icon: Battery },
   { key: 'efficiency', label: 'Efficiency', to: '/efficiency', icon: Gauge },
   { key: 'explore', label: 'Explore', to: '/explore', icon: Compass },
 ] as const;
+
+function subscribeNavigationViewport(onChange: () => void) {
+  const media = window.matchMedia('(max-width: 900px)');
+  media.addEventListener('change', onChange);
+  return () => media.removeEventListener('change', onChange);
+}
+
+const compactNavigation = () => window.matchMedia('(max-width: 900px)').matches;
 
 export function RAppLayout({ children, activeKey }: { children: React.ReactNode; activeKey: string }) {
   const { pathname } = useLocation();
@@ -22,14 +31,17 @@ export function RAppLayout({ children, activeKey }: { children: React.ReactNode;
   const theme = useThemePreferenceController();
   const dark = useDocumentTheme();
   const connection = useRConnection();
-  const active = navigation.some(item => item.key === activeKey) ? activeKey : 'explore';
+  const compact = React.useSyncExternalStore(subscribeNavigationViewport, compactNavigation, () => false);
+  const destinations = compact ? navigation.filter(item => item.key !== 'efficiency') : navigation;
+  const active = activeKey.startsWith('battery') ? 'battery'
+    : destinations.some(item => item.key === activeKey) ? activeKey : 'explore';
   return (
     <div className="r-app" data-area={activeKey}>
       <a className="r-skip-link" href="#r-content">Skip to content</a>
       <header className="r-header">
         <Link to="/" aria-label="R overview" className="r-brand"><RMark /></Link>
         <nav className="r-navigation" aria-label="Primary navigation">
-          {navigation.map(({ key, label, to, icon: Icon }) => (
+          {destinations.map(({ key, label, to, icon: Icon }) => (
             <Link key={key} to={to} aria-label={label} aria-current={active === key ? 'page' : undefined}>
               <Icon aria-hidden="true" /><span>{label}</span>
             </Link>

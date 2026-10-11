@@ -1,5 +1,5 @@
 import React from 'react';
-import { createRoute, useNavigate, useParams, useSearch } from '@tanstack/react-router';
+import { createRoute, redirect, useNavigate, useParams, useSearch } from '@tanstack/react-router';
 import { z } from 'zod';
 import { rootRoute } from './__root';
 import {
@@ -20,6 +20,9 @@ export const userDashboardRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: '/d/$slug',
   validateSearch: searchSchema,
+  beforeLoad: ({ params, search }) => {
+    if (params.slug === 'dashboard' && !search.edit && !search.dashboardId) throw redirect({ to: '/', replace: true });
+  },
   component: UserDashboardPageWrapper,
 });
 
@@ -40,6 +43,7 @@ function UserDashboardPage() {
       navKey="dashboard"
       slug={slug}
       dashboardId={search.dashboardId}
+      showEfficiencyDisplayToggle
       isEditMode={isEditMode}
       onEditModeChange={(next) => {
         navigate({
