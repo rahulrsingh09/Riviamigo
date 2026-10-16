@@ -39,6 +39,17 @@ The [dated dependency review](../dependency-review-2026-10-05.md) records source
 - Run `node --test scripts/check-dependency-audits.test.mjs scripts/image-size-security.test.mjs` after a frozen install. Parser tests cover both CommonJS/ESM public buffer and file APIs, including zero/undersized/truncated ICNS, HEIF and JXL data and valid image dimensions.
 - Dependency install scripts are restricted to esbuild's binary setup. The unnecessary core-js banner/cache postinstall is explicitly denied. Re-review any change to the allowlist; do not auto-approve newly introduced scripts.
 
+## Release patches — 2026-10-16
+
+The Cargo lockfile updates `quinn-proto` from 0.11.16 to 0.11.18 and `rustls`
+from 0.23.45 to 0.23.46. These patch versions address
+[RUSTSEC-2026-0338](https://rustsec.org/advisories/RUSTSEC-2026-0338.html)
+through RUSTSEC-2026-0342 and
+[RUSTSEC-2026-0346](https://rustsec.org/advisories/RUSTSEC-2026-0346.html)
+through RUSTSEC-2026-0349, respectively. No advisory exception is added or
+extended. The existing RSA exception still applies, so a policy pass must not be
+reported as a scan with no findings.
+
 ## Maintenance register
 
 This register records accepted maintenance debt that is not release-blocking.
