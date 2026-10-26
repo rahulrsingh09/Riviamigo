@@ -133,11 +133,35 @@ pub struct TripDetectorState {
     // a backdated start also gets the matching start time and place.
     gear_at: Option<DateTime<Utc>>,
     last_parked_fix: Option<TrackPoint>,
+    // The first odometer increase seen without an awake power state. When the
+    // power stream goes quiet, this stands in for the gear shift.
+    #[serde(default)]
+    odometer_motion: Option<OdometerMotion>,
+}
+
+#[derive(Debug, Clone, Copy, Serialize, Deserialize)]
+struct OdometerMotion {
+    /// The reading before the increase.
+    odometer_mi: f64,
+    at: DateTime<Utc>,
+    soc: Option<f64>,
 }
 
 /// A gear shift older than this no longer describes the trip that starts
 /// now (a missed drive must not be attributed to a much later one).
 const GEAR_ANCHOR_MAX_AGE_SECS: i64 = 15 * 60;
+
+/// Smaller increases are unit-conversion noise between the two Rivian
+/// streams, not motion. Real odometer steps are whole kilometres.
+const MIN_ODOMETER_STEP_MI: f64 = 0.05;
+
+fn odometer_stepped(prior: Option<f64>, now: Option<f64>) -> bool {
+    matches!((prior, now), (Some(prior), Some(now)) if now - prior >= MIN_ODOMETER_STEP_MI)
+}
+
+fn anchor_is_fresh(at: DateTime<Utc>, now: DateTime<Utc>) -> bool {
+    at <= now && (now - at).num_seconds() <= GEAR_ANCHOR_MAX_AGE_SECS
+}
 
 impl TripDetectorState {
     pub fn new(vehicle_id: Uuid) -> Self {
@@ -164,6 +188,7 @@ impl TripDetectorState {
         self.gear_at = None;
         self.gear_odometer = None;
         self.last_parked_fix = None;
+        self.odometer_motion = None;
     }
 
     pub(super) fn close_interrupted_trip(&mut self, at: DateTime<Utc>) -> TripEvent {
@@ -181,7 +206,17 @@ impl TripDetectorState {
         if self.active_trip_id.is_some() {
             "already_active"
         } else if event.power_state.is_none() {
-            "power_missing"
+            // Without a power state, only an odometer increase confirms that
+            // the reported or derived speed is real motion.
+            if odometer_stepped(self.last_odometer, event.odometer_miles)
+                && event
+                    .speed_mph
+                    .is_some_and(|speed| speed > STOPPED_SPEED_MPH)
+            {
+                "eligible_odometer_motion"
+            } else {
+                "power_missing"
+            }
         } else if !matches!(
             event.power_state,
             Some(PowerState::Drive | PowerState::Go | PowerState::Ready)
@@ -232,6 +267,26 @@ impl TripDetectorState {
                 self.gear_at = None;
             }
             self.in_gear = in_gear;
+        }
+
+        if self.active_trip_id.is_none()
+            && !matches!(
+                power,
+                Some(PowerState::Drive | PowerState::Go | PowerState::Ready)
+            )
+        {
+            let anchored = self
+                .odometer_motion
+                .is_some_and(|motion| anchor_is_fresh(motion.at, ts));
+            if let Some(prior) = prior_odometer
+                .filter(|_| !anchored && odometer_stepped(prior_odometer, event.odometer_miles))
+            {
+                self.odometer_motion = Some(OdometerMotion {
+                    odometer_mi: prior,
+                    at: ts,
+                    soc: self.last_soc,
+                });
+            }
         }
 
         if self.active_trip_id.is_some() {
@@ -300,7 +355,10 @@ impl TripDetectorState {
 
         // Where the vehicle sat before shifting: the start of the next trip.
         // Fixes after the shift may already be on the road, unseen.
-        if self.active_trip_id.is_none() && !self.in_gear && !is_moving {
+        let moved_by_odometer = self
+            .odometer_motion
+            .is_some_and(|motion| anchor_is_fresh(motion.at, ts));
+        if self.active_trip_id.is_none() && !self.in_gear && !moved_by_odometer && !is_moving {
             if let Some((lat, lng)) = valid_location_pair(event.latitude, event.longitude) {
                 self.last_parked_fix = Some(TrackPoint {
                     ts,
@@ -313,14 +371,28 @@ impl TripDetectorState {
         }
 
         // ── Trip START ──────────────────────────────────────────────────────
-        if start_decision == "eligible" {
+        if matches!(start_decision, "eligible" | "eligible_odometer_motion") {
             let trip_id = Uuid::new_v4();
             self.active_trip_id = Some(trip_id);
             self.soc_at_start = self.last_soc;
-            let fresh =
-                |at: DateTime<Utc>| at <= ts && (ts - at).num_seconds() <= GEAR_ANCHOR_MAX_AGE_SECS;
+            let fresh = |at: DateTime<Utc>| anchor_is_fresh(at, ts);
             let gear_at = self.gear_at.take().filter(|at| fresh(*at));
             let gear_odometer = self.gear_odometer.take().filter(|_| gear_at.is_some());
+            let motion = self
+                .odometer_motion
+                .take()
+                .filter(|motion| fresh(motion.at));
+            let (gear_at, gear_odometer) = match (gear_at, motion) {
+                (None, Some(motion)) => {
+                    // Battery level is reported only on change; keep the
+                    // reading from where the trip is backdated to.
+                    if motion.soc.is_some() {
+                        self.soc_at_start = motion.soc;
+                    }
+                    (Some(motion.at), Some(motion.odometer_mi))
+                }
+                (at, _) => (at, gear_odometer),
+            };
             // Motion may first be seen after the odometer has already
             // advanced, or on a sample carrying no odometer at all; the
             // reading before that motion is the trip's true starting point.
@@ -896,5 +968,190 @@ mod tests {
             (d - 73.6).abs() < 1.0,
             "Expected ~73.6 straight-line miles, got {d}"
         );
+    }
+
+    fn odometer_sample(at: DateTime<Utc>, miles: f64, speed: Option<f64>) -> TelemetryEvent {
+        TelemetryEvent {
+            odometer_miles: Some(miles),
+            speed_mph: speed,
+            latitude: Some(30.267),
+            longitude: Some(-97.743),
+            ..TelemetryEvent::empty(Uuid::nil(), at)
+        }
+    }
+
+    #[test]
+    fn odometer_motion_starts_trip_without_power() {
+        let at: DateTime<Utc> = "2026-10-26T01:00:00Z".parse().unwrap();
+        let mut detector = TripDetectorState::new(Uuid::nil());
+        detector.process(&odometer_sample(at, 809.0, None));
+        let first = at + Duration::hours(3);
+        // The first step has no usable interval, so it carries no speed.
+        let step = odometer_sample(first, 809.6, None);
+        assert_eq!(detector.start_decision(&step), "power_missing");
+        assert_eq!(detector.process(&step), TripEvent::NoChange);
+        let moving = odometer_sample(first + Duration::seconds(60), 810.2, Some(37.0));
+        assert_eq!(detector.start_decision(&moving), "eligible_odometer_motion");
+        let TripEvent::TripStarted { started_at, .. } = detector.process(&moving) else {
+            panic!("odometer motion should start a trip");
+        };
+        assert_eq!(started_at, first);
+        detector.process(&odometer_sample(
+            first + Duration::seconds(120),
+            810.8,
+            Some(37.0),
+        ));
+        detector.process(&odometer_sample(
+            first + Duration::seconds(200),
+            810.8,
+            None,
+        ));
+        let TripEvent::TripEnded { trip } = detector.process(&odometer_sample(
+            first + Duration::seconds(500),
+            810.8,
+            None,
+        )) else {
+            panic!("trip should end after five stopped minutes");
+        };
+        assert_eq!(trip.started_at, first);
+        assert_eq!(trip.start_odometer_mi, Some(809.0));
+        assert_eq!(trip.end_odometer_mi, Some(810.8));
+    }
+
+    #[test]
+    fn missing_power_needs_odometer_increase_to_start() {
+        let at = Utc::now();
+        let mut detector = TripDetectorState::new(Uuid::nil());
+        detector.process(&odometer_sample(at, 100.0, None));
+        let gnss_only = TelemetryEvent {
+            speed_mph: Some(30.0),
+            ..TelemetryEvent::empty(Uuid::nil(), at + Duration::seconds(60))
+        };
+        assert_eq!(detector.start_decision(&gnss_only), "power_missing");
+        assert_eq!(detector.process(&gnss_only), TripEvent::NoChange);
+        let same = odometer_sample(at + Duration::seconds(120), 100.0, Some(30.0));
+        assert_eq!(detector.start_decision(&same), "power_missing");
+    }
+
+    #[test]
+    fn stale_odometer_anchor_does_not_backdate_a_later_trip() {
+        let at = Utc::now();
+        let mut detector = TripDetectorState::new(Uuid::nil());
+        detector.process(&odometer_sample(at, 100.0, None));
+        // A lone step (for example a late final reading) and no motion after.
+        detector.process(&odometer_sample(at + Duration::minutes(1), 100.6, None));
+        let later = at + Duration::hours(1);
+        detector.process(&odometer_sample(later, 101.2, None));
+        let TripEvent::TripStarted { started_at, .. } = detector.process(&odometer_sample(
+            later + Duration::seconds(60),
+            101.8,
+            Some(37.0),
+        )) else {
+            panic!("trip should start");
+        };
+        assert_eq!(started_at, later);
+    }
+
+    /// A checkpoint written before `odometer_motion` existed, mid-trip.
+    #[test]
+    fn pre_change_checkpoint_resumes_an_active_trip() {
+        let mut detector = TripDetectorState::new(Uuid::nil());
+        let TripEvent::TripStarted { trip_id, .. } =
+            detector.process(&mk_event(PowerState::Drive, 30.0, 0))
+        else {
+            panic!("trip should start");
+        };
+        detector.process(&mk_event(PowerState::Drive, 30.0, 60));
+        let mut value = serde_json::to_value(&detector).unwrap();
+        assert!(value
+            .as_object_mut()
+            .unwrap()
+            .remove("odometer_motion")
+            .is_some());
+        let mut restored: TripDetectorState = serde_json::from_value(value).unwrap();
+        assert_eq!(restored.active_trip_id(), Some(trip_id));
+        let TripEvent::TripEnded { trip } =
+            restored.process(&mk_event(PowerState::Sleep, 0.0, 120))
+        else {
+            panic!("restored trip should end on sleep");
+        };
+        assert_eq!(trip.trip_id, trip_id);
+        assert_eq!(trip.points.len(), 3);
+    }
+
+    #[test]
+    fn conversion_noise_is_not_odometer_motion() {
+        let at = Utc::now();
+        let mut detector = TripDetectorState::new(Uuid::nil());
+        detector.process(&odometer_sample(at, 809.025_292_293_008_8, None));
+        let noise = odometer_sample(at + Duration::seconds(60), 809.025_292_6, Some(5.0));
+        assert_eq!(detector.start_decision(&noise), "power_missing");
+        assert_eq!(detector.process(&noise), TripEvent::NoChange);
+        // No anchor was set, so a later real step still starts at that step.
+        let later = at + Duration::minutes(30);
+        detector.process(&odometer_sample(later, 809.65, None));
+        let TripEvent::TripStarted { started_at, .. } = detector.process(&odometer_sample(
+            later + Duration::seconds(60),
+            810.27,
+            Some(37.0),
+        )) else {
+            panic!("trip should start");
+        };
+        assert_eq!(started_at, later);
+    }
+
+    /// Shape of the 2026-10-25 R2 drive: Parallax last reported Sleep, went
+    /// quiet, and the legacy stream supplied only odometer, GNSS and battery.
+    #[test]
+    fn quiet_parallax_sleep_with_legacy_motion_records_the_drive() {
+        use crate::ingestion::trip_signals::TripSignalFusion;
+        let at: DateTime<Utc> = "2026-10-25T19:43:00Z".parse().unwrap();
+        let mut fusion = TripSignalFusion::default();
+        let mut detector = TripDetectorState::new(Uuid::nil());
+        let mut sleep = TelemetryEvent::empty(Uuid::nil(), at);
+        sleep.power_state = Some(PowerState::Sleep);
+        detector.process(&fusion.fuse_from(&sleep, true).0);
+        detector.process(
+            &fusion
+                .fuse_from(
+                    &odometer_sample(at + Duration::minutes(5), 809.0, None),
+                    false,
+                )
+                .0,
+        );
+        let first = at + Duration::hours(8);
+        let mut started = None;
+        let mut ended = None;
+        for step in 0..20 {
+            let mut sample = odometer_sample(
+                first + Duration::seconds(60 * step),
+                809.6 + 0.6 * step as f64,
+                None,
+            );
+            sample.longitude = Some(-97.743 + 0.01 * step as f64);
+            sample.battery_level = Some(70.0 - 0.3 * step as f64);
+            match detector.process(&fusion.fuse_from(&sample, false).0) {
+                TripEvent::TripStarted { started_at, .. } => started = Some(started_at),
+                TripEvent::TripEnded { .. } => panic!("trip ended while moving"),
+                TripEvent::NoChange => {}
+            }
+        }
+        let parked_at = first + Duration::seconds(60 * 19);
+        for minutes in 1..=7 {
+            let mut battery =
+                TelemetryEvent::empty(Uuid::nil(), parked_at + Duration::minutes(minutes));
+            battery.battery_level = Some(64.0);
+            if let TripEvent::TripEnded { trip } =
+                detector.process(&fusion.fuse_from(&battery, false).0)
+            {
+                ended = Some(trip);
+            }
+        }
+        assert_eq!(started, Some(first));
+        let trip = ended.expect("trip should end after the drive");
+        assert_eq!(trip.start_odometer_mi, Some(809.0));
+        assert!((trip.end_odometer_mi.unwrap() - 821.0).abs() < 1e-9);
+        assert_eq!(trip.soc_start, Some(70.0));
+        assert!(trip.points.len() >= 19);
     }
 }

@@ -2,6 +2,7 @@
 //! telemetry. Direct speed wins; plausible GNSS/odometer motion fills gaps.
 //! Power retention follows the source: Parallax reports changes, periodic legacy
 //! samples expire. History replay infers the source policy from each row's shape.
+//! Odometer motion releases a latched non-awake power state.
 
 use super::{location::valid_location_pair, trip_detector::haversine_miles};
 use crate::models::telemetry::{PowerState, TelemetryEvent};
@@ -57,6 +58,10 @@ pub struct TripSignalFusion {
     last_odometer: Option<(f64, DateTime<Utc>)>,
     moving_segments: u8,
     change_only_power: bool,
+    // The odometer interval that released a latched state. A non-awake frame
+    // observed before its end is older than that evidence; an awake frame
+    // from within the interval still describes the drive.
+    power_released: Option<(DateTime<Utc>, DateTime<Utc>)>,
 }
 
 impl TripSignalFusion {
@@ -83,7 +88,19 @@ impl TripSignalFusion {
         let mut diag = FusionDiagnostics::default();
         if let Some(power) = sample.power_state.as_ref() {
             let observed_at = sample.power_state_ts.unwrap_or(sample.ts);
-            if observed_at <= sample.ts + Duration::seconds(5)
+            let awake = matches!(
+                power,
+                PowerState::Drive | PowerState::Go | PowerState::Ready
+            );
+            let predates_release = self
+                .power_released
+                .is_some_and(|(from, to)| observed_at < if awake { from } else { to });
+            if predates_release {
+                joined.power_state = None;
+                joined.power_state_ts = None;
+                diag.reported_power_outcome = "before_odometer_release";
+                diag.power_outcome = "before_odometer_release";
+            } else if observed_at <= sample.ts + Duration::seconds(5)
                 && (change_only_power || sample.ts - observed_at <= POWER_MAX_AGE)
                 && self
                     .power
@@ -196,6 +213,8 @@ impl TripSignalFusion {
             joined.location_ts = None;
             diag.gnss_outcome = "invalid_or_incomplete";
         }
+        // Rate and start time of a valid odometer increase on this sample.
+        let mut odometer_motion = None;
         if let Some(odometer) = sample.odometer_miles.filter(|v| v.is_finite() && *v >= 0.0) {
             let odometer_at = sample.odometer_miles_ts.unwrap_or(sample.ts);
             if odometer_at <= sample.ts + Duration::seconds(5)
@@ -209,23 +228,24 @@ impl TripSignalFusion {
                     let miles = odometer - last_odometer;
                     diag.odometer_interval_seconds = Some(seconds);
                     diag.odometer_delta_miles = Some(miles);
-                    if joined.speed_mph.is_some() && !gps_derived_zero {
-                        diag.odometer_outcome = "speed_precedence";
-                    } else if sample.ts - odometer_at > FIX_MAX_AGE {
+                    let mph = miles * 3600.0 / seconds.max(1) as f64;
+                    if sample.ts - odometer_at > FIX_MAX_AGE {
                         diag.odometer_outcome = "stale";
                     } else if !(5..=MAX_FIX_INTERVAL.num_seconds()).contains(&seconds) {
                         diag.odometer_outcome = "interval_out_of_range";
                     } else if miles <= 0.0 {
                         diag.odometer_outcome = "no_increase";
+                    } else if !mph.is_finite() || mph > MAX_PLAUSIBLE_MPH {
+                        diag.odometer_outcome = "implausible";
                     } else {
-                        let mph = miles * 3600.0 / seconds as f64;
-                        if mph.is_finite() && mph <= MAX_PLAUSIBLE_MPH {
+                        odometer_motion = Some((mph, last_at, odometer_at));
+                        if joined.speed_mph.is_some() && !gps_derived_zero {
+                            diag.odometer_outcome = "speed_precedence";
+                        } else {
                             joined.speed_mph = Some(mph);
                             joined.speed_mph_ts = Some(odometer_at);
                             diag.speed_origin = "odometer";
                             diag.odometer_outcome = "derived";
-                        } else {
-                            diag.odometer_outcome = "implausible";
                         }
                     }
                 }
@@ -235,6 +255,33 @@ impl TripSignalFusion {
             }
         } else if sample.odometer_miles.is_some() {
             diag.odometer_outcome = "invalid";
+        }
+        // A change-only power state stays latched until the vehicle reports
+        // another one. When that stream goes quiet, an odometer increase that
+        // began after the state was reported proves the vehicle moved since,
+        // so a latched non-awake state no longer describes it. GNSS alone is
+        // not enough: a parked fix drifts.
+        let moved_since_power = odometer_motion.and_then(|(mph, from, to)| {
+            self.power
+                .as_ref()
+                .filter(|(_, observed_at, latched)| {
+                    *latched && mph > MOVING_MPH && from >= *observed_at
+                })
+                .map(|_| (from, to))
+        });
+        if let Some(interval) = moved_since_power.filter(|_| {
+            diag.power_origin == "carried_forward"
+                && !matches!(
+                    joined.power_state,
+                    Some(PowerState::Drive | PowerState::Go | PowerState::Ready)
+                )
+        }) {
+            self.power = None;
+            self.power_released = Some(interval);
+            joined.power_state = None;
+            joined.power_state_ts = None;
+            diag.power_origin = "absent";
+            diag.power_outcome = "contradicted_by_odometer";
         }
         diag.moving_segments = self.moving_segments;
         (joined, diag)
@@ -660,5 +707,143 @@ mod tests {
         }
         let started = started.expect("trip started");
         assert!(started > at - Duration::minutes(15), "{started}");
+    }
+
+    /// A quiet Parallax stream left the last reported Sleep latched while the
+    /// legacy stream kept reporting odometer steps for the whole drive.
+    #[test]
+    fn odometer_motion_releases_latched_sleep() {
+        let at = Utc::now();
+        let mut fusion = TripSignalFusion::default();
+        let mut sleep = TelemetryEvent::empty(Uuid::nil(), at);
+        sleep.power_state = Some(PowerState::Sleep);
+        fusion.fuse_from(&sleep, true);
+        fusion.fuse_from(&odometer(at + Duration::minutes(1), 809.0), false);
+        // Hours later: the first step has no usable interval yet.
+        let first = at + Duration::hours(3);
+        let (joined, _) = fusion.fuse_from(&odometer(first, 809.6), false);
+        assert_eq!(joined.power_state, Some(PowerState::Sleep));
+        let (joined, diag) =
+            fusion.fuse_from(&odometer(first + Duration::seconds(60), 810.2), false);
+        assert_eq!(joined.power_state, None);
+        assert_eq!(diag.power_outcome, "contradicted_by_odometer");
+        assert!(joined.speed_mph.is_some_and(|mph| mph > 30.0));
+        // Later partial frames must not bring the stale Sleep back.
+        let mut battery = TelemetryEvent::empty(Uuid::nil(), first + Duration::seconds(90));
+        battery.battery_level = Some(70.0);
+        assert_eq!(fusion.fuse_from(&battery, false).0.power_state, None);
+    }
+
+    #[test]
+    fn odometer_motion_releases_latched_sleep_when_gnss_sets_speed() {
+        let at = Utc::now();
+        let mut fusion = TripSignalFusion::default();
+        let mut sleep = TelemetryEvent::empty(Uuid::nil(), at);
+        sleep.power_state = Some(PowerState::Sleep);
+        fusion.fuse_from(&sleep, true);
+        let start = at + Duration::hours(2);
+        // GNSS motion alone leaves the latched state in place.
+        for (seconds, lon) in [(0, -97.0), (60, -96.99), (120, -96.98)] {
+            let sample = fix_with_odometer(start + Duration::seconds(seconds), lon, 100.0);
+            let joined = fusion.fuse_from(&sample, false).0;
+            assert_eq!(joined.power_state, Some(PowerState::Sleep));
+        }
+        let (joined, diag) = fusion.fuse_from(
+            &fix_with_odometer(start + Duration::seconds(180), -96.97, 100.6),
+            false,
+        );
+        assert_eq!(diag.speed_origin, "gnss");
+        assert_eq!(diag.odometer_outcome, "speed_precedence");
+        assert_eq!(joined.power_state, None);
+    }
+
+    #[test]
+    fn gnss_motion_alone_keeps_latched_sleep() {
+        let at = Utc::now();
+        let mut fusion = TripSignalFusion::default();
+        let mut sleep = TelemetryEvent::empty(Uuid::nil(), at);
+        sleep.power_state = Some(PowerState::Sleep);
+        fusion.fuse_from(&sleep, true);
+        let mut fix = TelemetryEvent::empty(Uuid::nil(), at);
+        fix.latitude = Some(30.0);
+        for (seconds, lon) in [(60, -97.0), (90, -96.999), (120, -96.998), (150, -96.997)] {
+            fix.ts = at + Duration::seconds(seconds);
+            fix.longitude = Some(lon);
+            fix.location_ts = Some(fix.ts);
+            let joined = fusion.fuse_from(&fix, false).0;
+            assert_eq!(joined.power_state, Some(PowerState::Sleep));
+        }
+    }
+
+    #[test]
+    fn odometer_motion_keeps_periodic_power() {
+        let at = Utc::now();
+        let mut fusion = TripSignalFusion::default();
+        fusion.fuse_from(&odometer(at, 100.0), false);
+        let mut sleep = odometer(at + Duration::seconds(30), 100.0);
+        sleep.power_state = Some(PowerState::Sleep);
+        fusion.fuse_from(&sleep, false);
+        let (joined, diag) = fusion.fuse_from(&odometer(at + Duration::seconds(90), 100.6), false);
+        assert_eq!(joined.power_state, Some(PowerState::Sleep));
+        assert_eq!(diag.power_outcome, "accepted");
+    }
+
+    /// Parallax reported Sleep at `at`; a delayed legacy frame then carries
+    /// an odometer step that happened before that Sleep.
+    #[test]
+    fn odometer_step_before_the_latched_state_does_not_release_it() {
+        let at = Utc::now();
+        let mut fusion = TripSignalFusion::default();
+        let mut parked = odometer(at - Duration::seconds(100), 100.0);
+        parked.odometer_miles_ts = Some(parked.ts);
+        fusion.fuse_from(&parked, false);
+        let mut sleep = TelemetryEvent::empty(Uuid::nil(), at);
+        sleep.power_state = Some(PowerState::Sleep);
+        fusion.fuse_from(&sleep, true);
+        let mut late = odometer(at + Duration::seconds(20), 100.3);
+        late.odometer_miles_ts = Some(at - Duration::seconds(40));
+        let (joined, diag) = fusion.fuse_from(&late, false);
+        assert!(joined.speed_mph.is_some_and(|mph| mph > 10.0));
+        assert_eq!(joined.power_state, Some(PowerState::Sleep));
+        assert_eq!(diag.power_outcome, "accepted");
+    }
+
+    #[test]
+    fn power_observed_before_a_release_is_rejected() {
+        let at = Utc::now();
+        let mut fusion = TripSignalFusion::default();
+        let mut sleep = TelemetryEvent::empty(Uuid::nil(), at);
+        sleep.power_state = Some(PowerState::Sleep);
+        fusion.fuse_from(&sleep, true);
+        let first = at + Duration::hours(1);
+        fusion.fuse_from(&odometer(first, 100.0), false);
+        let released = first + Duration::seconds(60);
+        assert_eq!(
+            fusion
+                .fuse_from(&odometer(released, 100.6), false)
+                .0
+                .power_state,
+            None
+        );
+        // A Parallax Sleep delayed in transit, observed before the release.
+        let mut delayed = TelemetryEvent::empty(Uuid::nil(), released + Duration::seconds(30));
+        delayed.power_state = Some(PowerState::Sleep);
+        delayed.power_state_ts = Some(released - Duration::seconds(30));
+        let (joined, diag) = fusion.fuse_from(&delayed, true);
+        assert_eq!(joined.power_state, None);
+        assert_eq!(diag.power_outcome, "before_odometer_release");
+        // A delayed Go from the moving interval still describes the drive.
+        delayed.power_state = Some(PowerState::Go);
+        assert_eq!(
+            fusion.fuse_from(&delayed, true).0.power_state,
+            Some(PowerState::Go)
+        );
+        // A newer state is accepted as usual.
+        delayed.power_state = Some(PowerState::Sleep);
+        delayed.power_state_ts = Some(delayed.ts);
+        assert_eq!(
+            fusion.fuse_from(&delayed, true).0.power_state,
+            Some(PowerState::Sleep)
+        );
     }
 }

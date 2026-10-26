@@ -77,9 +77,16 @@ field timestamps for the same change.
   live-session polling while a charge session is open.
 - `ingestion` `persistence` is `suppressed_duplicate`: the sample matched the
   stored state, so it left no new telemetry row.
+- `parallax_connection` rows with `silence_renewal`: no Parallax frame arrived
+  for 15 minutes, so the collector subscribed again. Repeated renewals while
+  the vehicle drives mean Rivian is not delivering Parallax frames.
 - `trip` rows: check the effective power source and freshness. Change-only
-  Parallax power remains latched until a newer state arrives; periodic legacy
-  `vehicleState` power is fresh for at most two minutes. Check that direct
+  Parallax power remains latched until a newer state arrives or a plausible
+  odometer increase contradicts a non-awake state (`contradicted_by_odometer`;
+  an older non-awake frame after that is `before_odometer_release`);
+  periodic legacy `vehicleState` power is fresh for at most two minutes. A
+  `eligible_odometer_motion` start decision means the trip started from an
+  odometer increase while power state was unknown. Check that direct
   speed is used when present and that a GNSS or odometer estimate is used only
   when direct speed is absent, then read the start decision and transition.
 

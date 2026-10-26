@@ -35,7 +35,10 @@ Connectivity as separate Wi-Fi signal, throughput, and Wi-Fi status metrics.
 Acquisition is the integrated Parallax subsystem's separate Rivian GraphQL WebSocket state:
 Connected means its handshake, subscription, and heartbeat are active, while
 Error means its latest token, socket, subscription, or heartbeat attempt
-failed and will be retried. Error does not by itself indicate a vehicle fault
+failed and will be retried. A subscription can stay open and still stop
+delivering frames. When no frame arrives for 15 minutes, the collector
+subscribes again. This also happens while a parked vehicle is quiet, and it
+is not an error. Error does not by itself indicate a vehicle fault
 or canonical telemetry failure; the Health info tooltip explains this alongside
 the latest frame and diagnostic counts.
 Legacy charging-session and repair-journal details are not part of that compact
@@ -70,6 +73,23 @@ fresh for at most two minutes. When both sources contribute, the newest
 accepted sample by source timestamp controls the cached state and its freshness
 rule follows that sample's source. Unrecognized power values remain unknown and
 do not become sleep or drive decisions.
+
+A Parallax state that is not awake (for example Sleep) stops being current
+when the odometer increases at a plausible driving rate, and the increase
+began after that state was reported. The power state then becomes unknown
+until the vehicle reports a newer one. A delayed non-awake frame observed
+before the odometer reading that released the state is not accepted; a delayed
+awake frame observed during that movement is. GNSS movement alone does not release the state,
+because a parked fix can drift.
+
+When power state is unknown, a trip starts only when the odometer increases by
+at least 0.05 miles and the speed is above the moving threshold. Smaller
+differences come from unit conversion, not motion. If the first such increase
+was at most 15 minutes earlier and no gear shift is known, the trip starts
+there, with the reading and battery level from that point. This keeps an R2
+drive recorded when the Parallax stream is quiet and the legacy stream reports
+only odometer, GNSS, and battery values. Such a trip ends after five stopped
+minutes, or when the vehicle reports Sleep.
 
 Trip processing uses the vehicle's direct numeric speed when one is present.
 Only when direct speed is absent can shared telemetry fusion estimate speed:
