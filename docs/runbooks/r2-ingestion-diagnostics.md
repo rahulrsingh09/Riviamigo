@@ -90,6 +90,23 @@ field timestamps for the same change.
   speed is used when present and that a GNSS or odometer estimate is used only
   when direct speed is absent, then read the start decision and transition.
 
+## Missed trips
+
+`GET /v1/vehicles/{id}/trip-gaps` replays stored telemetry from 6 hours before
+an hour-aligned 7-day window through `TripSignalFusion` and `TripDetectorState`
+(shared replay code in `ingestion::replay`). It lists drives that start inside
+the window, cover at least 1 odometer mile and have no recorded trip within
+2 minutes. Results are cached for 60 seconds per vehicle, and the route uses
+the heavy-read rate limit. It also reports `parallax_quiet` when an enabled
+Parallax collector has sent nothing for 15 minutes and the odometer has since
+advanced. `POST .../trip-gaps/{gap_id}/recover` runs in a detached task: it
+recomputes the list, then saves the drive and links its telemetry in one
+transaction. That transaction holds the per-vehicle trip-persistence lock that
+live completions also take, and saves nothing when a completion is pending
+(`409`) or a trip already overlaps (`404`). Use the Vehicle health card for
+owner-driven repair. Do not run `rebuild_vehicle_history` against production:
+it clears all trips first.
+
 ## Missing trip speed histogram
 
 Trip detection may use inferred movement while stored `speed_mph` remains null.

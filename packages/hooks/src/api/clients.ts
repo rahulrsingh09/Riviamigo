@@ -38,6 +38,7 @@ export const tripClient = client(
   'listTrips', 'getTripMap', 'getTrip', 'getTripDetailData', 'getTripTrack',
   'getSpeedProfile', 'getElevationProfile', 'getTripPowerProfile', 'getTripDetailSeries',
   'listTripTags', 'createTripTag', 'updateTripTag', 'deleteTripTag', 'updateTripTagAssignments',
+  'getTripGaps', 'recoverTripGap',
 );
 
 export const chargingClient = client(

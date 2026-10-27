@@ -1684,3 +1684,31 @@ export interface RivianStewardshipResponse {
   totals_24h: RivianStewardshipTotals;
   vehicles: RivianStewardshipVehicle[];
 }
+
+/** A drive that stored telemetry shows but no trip records. */
+export interface TripGap {
+  id: string;
+  started_at: string;
+  ended_at: string;
+  distance_miles: number;
+  duration_seconds: number;
+  soc_start: number | null;
+  soc_end: number | null;
+}
+
+/** Parallax stopped sending frames, and the odometer later shows movement. */
+export interface ParallaxQuiet {
+  last_frame_at: string;
+  moved_at: string;
+}
+
+export interface TripGapsResponse {
+  vehicle_id: string;
+  lookback_days: number;
+  gaps: TripGap[];
+  parallax_quiet: ParallaxQuiet | null;
+}
+
+export interface RecoveredTrip {
+  trip_id: string;
+}

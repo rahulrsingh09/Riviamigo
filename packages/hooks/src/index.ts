@@ -57,6 +57,7 @@ export { useSummaryStats } from './useStats';
 export { useMetricCatalog, useMetricValue, useMetricSeries, useMetricBatch } from './useMetrics';
 export { useVehicles, useDefaultVehicleId } from './useVehicles';
 export { useVehicleHealth } from './useHealth';
+export { useTripGaps, useRecoverTripGap } from './useTripGaps';
 export { useTelemetryLanes } from './useTelemetryLanes';
 export { BASEMAP_CONFIG_QUERY_KEY, useBasemapConfig } from './useBasemapConfig';
 export type { BasemapConfigPayload } from './useBasemapConfig';

@@ -5,6 +5,7 @@ import { ProtectedRoute } from '../components/layout/ProtectedRoute';
 import { DashboardPageShell } from '../components/dashboard/DashboardPageShell';
 import { useResolvedVehicleSelection } from '@riviamigo/hooks';
 import { createTripTagFilterAdapter, tripTagSearchSchema } from '../features/trip-tags/tripTagFilter';
+import { RMissedDriveBanner } from '../features/r-experience/RMissedDrives';
 
 export function TripsContent() {
   return <ProtectedRoute><TripsDashboardPage /></ProtectedRoute>;
@@ -27,6 +28,7 @@ function TripsDashboardPage() {
       slug="trips"
       title="Trips"
       showEfficiencyDisplayToggle
+      renderBeforeDashboard={({ vehicleId }) => <RMissedDriveBanner vehicleId={vehicleId} />}
       widgetCtx={{
         tripTagFilter,
         canManageTripTags,

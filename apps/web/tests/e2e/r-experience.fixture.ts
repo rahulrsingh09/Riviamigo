@@ -24,12 +24,24 @@ export async function installRFixture(page: Page, options: {
   odometer?: number;
   vehicleName?: string;
   role?: 'user' | 'super_user';
+  tripGaps?: boolean;
+  parallaxQuiet?: boolean;
 } = {}) {
   const writes: string[] = [];
   const metricRequests: Record<string, unknown>[] = [];
   const unsupportedRequests: string[] = [];
   const liveSockets = new Set<WebSocketRoute>();
   const chartFavorites: Record<string, string> = {};
+  const gapEnd = new Date(Date.now() - 2 * 60 * 60 * 1000);
+  let tripGaps = options.tripGaps ? [{
+    id: '0123456789abcdef0123456789abcdef',
+    started_at: new Date(gapEnd.getTime() - 69 * 60 * 1000).toISOString(),
+    ended_at: gapEnd.toISOString(),
+    distance_miles: 42.9,
+    duration_seconds: 69 * 60,
+    soc_start: 70.2,
+    soc_end: 51.9,
+  }] : [];
   let mode: 'light' | 'dark' | 'system' = options.mode ?? 'light';
   let timezone = options.timezone ?? 'UTC';
   const readJson = (path: string) => JSON.parse(readFileSync(new URL(path, import.meta.url), 'utf8'));
@@ -166,6 +178,18 @@ export async function installRFixture(page: Page, options: {
       vehicle_id: vehicle.id, history_backfilled_at: null, status: null,
       rivian_session_count: null, local_session_count: 0, missing_source_count: null,
     });
+    if (/\/vehicles\/[^/]+\/trip-gaps$/.test(path)) return json({
+      vehicle_id: vehicle.id, lookback_days: 7, gaps: tripGaps,
+      parallax_quiet: options.parallaxQuiet
+        ? { last_frame_at: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(), moved_at: new Date(Date.now() - 3 * 60 * 60 * 1000).toISOString() }
+        : null,
+    });
+    if (/\/vehicles\/[^/]+\/trip-gaps\/[0-9a-f]{32}\/recover$/.test(path) && request.method() === 'POST') {
+      const id = path.split('/').at(-2);
+      if (!tripGaps.some((gap) => gap.id === id)) return json({ error: 'not_found' }, 404);
+      tripGaps = tripGaps.filter((gap) => gap.id !== id);
+      return json({ trip_id: '99999999-9999-4999-8999-999999999999' });
+    }
     if (/\/vehicles\/[^/]+\/health$/.test(path)) return json({
       vehicle_id: vehicle.id, extended_telemetry: { collector: null },
       vehicle: { name: 'Your Rivian', model: 'R2', trim: 'Performance' },

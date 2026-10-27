@@ -82,7 +82,7 @@ import { NoVehicleState } from '../../components/layout/NoVehicleState';
 import { RHealthHero } from '../r-experience/RHealthHero';
 
 type BadgeVariant = NonNullable<BadgeProps['variant']>;
-type HealthState = { label: string; variant: BadgeVariant };
+export type HealthState = { label: string; variant: BadgeVariant };
 type DiagnosticState = {
   label: string;
   variant: BadgeVariant;
@@ -561,7 +561,7 @@ function formatParallaxState(status: string | undefined) {
   }
 }
 
-function formatAcquisitionState(extended: VehicleHealth['extended_telemetry'] | undefined) {
+export function formatAcquisitionState(extended: VehicleHealth['extended_telemetry'] | undefined) {
   // The collector state is the authoritative connection state. Parallax is a
   // compatibility fallback for older API responses, not a second status.
   return formatParallaxState(extended?.collector?.status ?? extended?.parallax?.status);
@@ -1070,7 +1070,7 @@ function LiftgateIcon({ className }: { className: string }) {
   );
 }
 
-function summarizeTires(
+export function summarizeTires(
   wheels: Array<ReturnType<typeof normalizeTireWheels>[number] & { availability: StatusAvailabilitySummary | null }>,
   targetPsi: number
 ): HealthState & { detail: string } {
@@ -1119,7 +1119,7 @@ const HEALTH_CLOSURE_DEFINITIONS: Array<Pick<HealthClosureRow, 'field' | 'label'
   { field: 'door_rear_right_closed', label: 'Rear right door' },
 ];
 
-function getHealthClosureRows(
+export function getHealthClosureRows(
   model: string | null | undefined,
   values: Record<HealthClosureField, boolean | null>,
   status: import('@riviamigo/types').VehicleStatus | null | undefined
@@ -1151,7 +1151,7 @@ function getHealthClosureRows(
   }));
 }
 
-function summarizeClosures(rows: HealthClosureRow[]) {
+export function summarizeClosures(rows: HealthClosureRow[]) {
   const values = rows.map((row) => row.value);
   const open = values.filter((value) => value === false).length;
   if (open > 0) return { label: `${open} open`, variant: 'warning' as const };
@@ -1161,21 +1161,21 @@ function summarizeClosures(rows: HealthClosureRow[]) {
     : { label: 'Unavailable', variant: 'info' as const };
 }
 
-function getCollectorState(value: string | null): HealthState {
+export function getCollectorState(value: string | null): HealthState {
   if (!value) return { label: 'Unknown', variant: 'default' };
   if (/connected|healthy|ok/i.test(value)) return { label: titleCase(value), variant: 'success' };
   if (/auth|error|failed/i.test(value)) return { label: titleCase(value), variant: 'danger' };
   return { label: titleCase(value), variant: 'warning' };
 }
 
-function getHealthState(value: string | null): HealthState {
+export function getHealthState(value: string | null): HealthState {
   if (!value) return { label: 'Unknown', variant: 'default' };
   if (/normal|good|ok/i.test(value)) return { label: titleCase(value), variant: 'success' };
   if (/critical|fault|fail/i.test(value)) return { label: titleCase(value), variant: 'danger' };
   return { label: titleCase(value), variant: 'warning' };
 }
 
-function getThermalState(value: string | null, count: number): HealthState {
+export function getThermalState(value: string | null, count: number): HealthState {
   if (value && /fault|fail|critical|error|overheat|warning/i.test(value))
     return { label: titleCase(value), variant: 'warning' };
   if (value && /^(off|none|inactive|normal|ok|good)$/i.test(value))
@@ -1239,7 +1239,7 @@ function getTireState(
   };
 }
 
-function summarizeDiagnostics(status: import('@riviamigo/types').VehicleStatus | null | undefined) {
+export function summarizeDiagnostics(status: import('@riviamigo/types').VehicleStatus | null | undefined) {
   const rows = [
     {
       label: 'Brake Fluid',
@@ -1361,7 +1361,7 @@ function titleCase(value: string) {
   return value.replace(/[_-]+/g, ' ').replace(/\b\w/g, (letter) => letter.toUpperCase());
 }
 
-function sanitizeUpdateVersion(version: string | null, currentVersion: string) {
+export function sanitizeUpdateVersion(version: string | null, currentVersion: string) {
   if (!version) return null;
   const normalized = version.trim();
   if (!normalized) return null;
@@ -1370,7 +1370,7 @@ function sanitizeUpdateVersion(version: string | null, currentVersion: string) {
   return normalized;
 }
 
-function dedupeSoftwareHistory(entries: import('@riviamigo/types').VehicleHealthSoftwareEntry[]) {
+export function dedupeSoftwareHistory(entries: import('@riviamigo/types').VehicleHealthSoftwareEntry[]) {
   const sorted = entries
     .slice()
     .sort((a, b) => new Date(b.installed_at).getTime() - new Date(a.installed_at).getTime());

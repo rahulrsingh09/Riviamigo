@@ -1,0 +1,93 @@
+/* R Vehicle health: one card language with Home and Battery. Tokens only. */
+.r-health-heading { display: flex; align-items: flex-end; justify-content: space-between; gap: 16px; flex-wrap: wrap; }
+.r-health { display: grid; gap: 16px; min-width: 0; }
+
+.r-health-tiles { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.r-health-tile { display: flex; flex-direction: column; gap: 6px; min-width: 0; padding: 16px; border: 1px solid var(--rm-border-default); border-radius: 12px; background: var(--rm-bg-surface); }
+.r-health-tile-label { display: flex; align-items: center; gap: 8px; color: var(--rm-text-secondary); font-size: 13px; }
+.r-health-tile-label svg { width: 16px; height: 16px; }
+.r-health-tile strong { font-size: 24px; font-weight: 450; letter-spacing: -0.4px; line-height: 1.15; overflow-wrap: anywhere; }
+.r-health-tile small { color: var(--rm-text-secondary); font-size: 12px; line-height: 1.4; }
+.r-health-tile strong::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 8px; border-radius: 99px; vertical-align: 0.2em; background: var(--rm-text-secondary); }
+.r-health-tile[data-tone="good"] strong::before { background: var(--rm-status-positive); }
+.r-health-tile[data-tone="warn"] strong::before { background: var(--rm-status-warning); }
+.r-health-tile[data-tone="alert"] strong::before { background: var(--rm-status-danger); }
+
+.r-health-columns { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 16px; align-items: start; }
+.r-health-stack { display: grid; gap: 16px; align-content: start; min-width: 0; }
+.r-health-card { min-width: 0; padding: 16px; border: 1px solid var(--rm-border-default); border-radius: 12px; background: var(--rm-bg-surface); }
+.r-health-card > header { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 12px; }
+.r-health-card h2 { font-size: 17px; font-weight: 500; }
+.r-health-foot { margin-top: 12px; color: var(--rm-text-secondary); font-size: 12px; }
+
+.r-health-chip { flex-shrink: 0; padding: 3px 10px; border-radius: 99px; border: 1px solid var(--rm-border-default); color: var(--rm-text-secondary); font-size: 12px; white-space: nowrap; }
+.r-health-chip[data-tone="good"] { color: var(--rm-status-positive); border-color: color-mix(in srgb, var(--rm-status-positive) 45%, transparent); }
+.r-health-chip[data-tone="warn"] { color: var(--rm-status-warning); border-color: color-mix(in srgb, var(--rm-status-warning) 45%, transparent); }
+.r-health-chip[data-tone="alert"] { color: var(--rm-status-danger); border-color: color-mix(in srgb, var(--rm-status-danger) 45%, transparent); }
+
+.r-health-tire-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+.r-health-tire { display: flex; flex-direction: column; gap: 4px; padding: 12px; border-radius: 10px; background: var(--rm-bg-elevated); }
+.r-health-tire span { color: var(--rm-text-secondary); font-size: 12px; }
+.r-health-tire strong { font-size: 22px; font-weight: 450; }
+.r-health-tire[data-tone="warn"] strong { color: var(--rm-status-warning); }
+.r-health-tire[data-tone="alert"] strong { color: var(--rm-status-danger); }
+
+.r-health-row { display: flex; align-items: center; gap: 12px; padding: 12px; border-radius: 10px; background: var(--rm-bg-elevated); }
+.r-health-row svg { width: 18px; height: 18px; flex-shrink: 0; color: var(--rm-text-secondary); }
+.r-health-doors[data-tone="good"] svg { color: var(--rm-status-positive); }
+.r-health-doors[data-tone="warn"] svg { color: var(--rm-status-warning); }
+.r-health-row strong { font-weight: 500; }
+
+.r-health-list { display: grid; }
+.r-health-list li { display: flex; align-items: center; justify-content: space-between; gap: 12px; min-height: 44px; padding: 10px 0; border-bottom: 1px solid var(--rm-border-default); font-size: 14px; }
+.r-health-list li:last-child { border-bottom: 0; }
+.r-health-list li > span:first-child { color: var(--rm-text-secondary); }
+.r-health-list li > span:last-child { text-align: right; }
+.r-health-software details summary { cursor: pointer; min-height: 44px; display: flex; align-items: center; color: var(--rm-text-secondary); font-size: 14px; }
+
+.r-health-notice { display: flex; gap: 12px; padding: 14px 16px; border-radius: 12px; border: 1px solid color-mix(in srgb, var(--rm-status-warning) 40%, transparent); background: color-mix(in srgb, var(--rm-status-warning) 8%, var(--rm-bg-surface)); font-size: 13px; line-height: 1.6; }
+.r-health-notice svg { width: 18px; height: 18px; flex-shrink: 0; margin-top: 2px; color: var(--rm-status-warning); }
+
+/* Missed drives: the one place on the page that asks for an action. */
+.r-missed { padding: 16px; border-radius: 12px; border: 1px solid color-mix(in srgb, var(--r-alert) 55%, transparent); border-left-width: 4px; background: color-mix(in srgb, var(--r-alert) 10%, var(--rm-bg-surface)); }
+.r-missed-header { display: flex; gap: 12px; }
+.r-missed-header > svg { width: 22px; height: 22px; flex-shrink: 0; color: var(--r-alert); }
+.r-missed-header h2 { font-size: 17px; font-weight: 500; }
+.r-missed-header p { margin-top: 4px; color: var(--rm-text-secondary); font-size: 13px; }
+.r-missed ul { display: grid; gap: 8px; margin-top: 14px; }
+.r-missed-drive { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 12px; border-radius: 10px; background: var(--rm-bg-surface); }
+.r-missed-drive[data-confirming] { flex-direction: column; align-items: stretch; }
+.r-missed-facts { display: grid; gap: 4px; min-width: 0; }
+.r-missed-facts strong { font-weight: 500; }
+.r-missed-facts span { color: var(--rm-text-secondary); font-size: 13px; }
+.r-missed-confirm p { color: var(--rm-text-secondary); font-size: 13px; line-height: 1.6; margin-bottom: 12px; }
+.r-missed-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.r-missed-note { color: var(--rm-text-secondary); font-size: 12px; }
+.r-recover { display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 44px; padding: 10px 18px; border-radius: 99px; background: var(--r-signal); color: var(--r-signal-ink); font-size: 14px; font-weight: 600; transition: filter 160ms ease, opacity 160ms ease; }
+.r-recover svg { width: 16px; height: 16px; }
+.r-recover:hover { filter: brightness(1.06); }
+.r-recover:disabled { opacity: 0.6; cursor: progress; }
+.r-quiet-action { min-height: 44px; padding: 10px 14px; border-radius: 99px; color: var(--rm-text-secondary); font-size: 14px; transition: background-color 160ms ease, color 160ms ease; }
+.r-quiet-action:hover { background: var(--rm-bg-elevated); color: var(--rm-text-primary); }
+
+.r-missed-banner { display: flex; align-items: center; gap: 12px; margin-bottom: 20px; padding: 12px 16px; border-radius: 12px; border: 1px solid color-mix(in srgb, var(--r-alert) 55%, transparent); border-left-width: 4px; background: color-mix(in srgb, var(--r-alert) 10%, var(--rm-bg-surface)); }
+.r-missed-banner > svg { width: 20px; height: 20px; flex-shrink: 0; color: var(--r-alert); }
+.r-missed-banner > span:first-of-type { display: grid; gap: 2px; min-width: 0; flex: 1; }
+.r-missed-banner strong { font-weight: 500; }
+.r-missed-banner small { color: var(--rm-text-secondary); font-size: 12px; }
+.r-missed-banner-action { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; font-size: 14px; font-weight: 500; }
+.r-missed-banner-action svg { width: 16px; height: 16px; }
+
+@media (max-width: 900px) {
+  .r-health-tiles { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .r-health-columns { grid-template-columns: minmax(0, 1fr); }
+}
+@media (max-width: 420px) {
+  .r-health-tile { padding: 14px; }
+  .r-health-tile strong { font-size: 20px; }
+  .r-missed-drive .r-missed-actions { width: 100%; }
+  .r-missed-drive .r-recover { flex: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .r-recover, .r-quiet-action { transition: none; }
+}

@@ -20,6 +20,14 @@ Open a trip and tap or drag on the main map to select a recorded point. Use
 keys step through recorded points. Charts and route selection share the time.
 
 **Explore** opens Vehicle health, Battery, the dashboard library and all settings.
+
+Vehicle health starts with four status tiles: data connection, 12V battery,
+HV thermal and software. Tires, doors and locks, diagnostics, signal details and
+software history follow. Doors and locks show one summary row. Diagnostics list
+only the sensors that the vehicle reports. When a drive has telemetry but no
+trip, a **Possible missed drive** card appears at the top, and Trips shows a
+short banner that opens it; see
+[Recover a missed drive](./extended-vehicle-telemetry.md#recover-a-missed-drive).
 **Open full dashboard** on the overview opens the editable data workspace.
 
 Settings form a searchable directory. Existing vehicle, chart, dashboard,

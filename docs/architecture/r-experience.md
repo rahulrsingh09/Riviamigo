@@ -24,7 +24,7 @@ mode retain saved positions and sizes.
 | `components/dashboard/DashboardPageShell.tsx` | Pass existing state/actions to R composition |
 | `components/dashboard/dashboardShellTypes.ts` | Shared types without a module/controller cycle |
 | `features/settings/SettingsPage.tsx` | R directory around existing sections and authority |
-| Health and chart editor composition | R identity while preserving workflows |
+| Health and chart editor composition | R identity while preserving workflows; `/vehicle-health` renders `RVehicleHealth`, which reuses the status helpers exported by the retained `VehicleHealthPage` |
 | `routes/settings.themes.$themeId.tsx` | Redirect retired appearance URLs |
 | Card, PageLayout, MetricTabs and WidgetHost attributes | Stable styling hooks |
 | `WidgetPresentationProvider` | Scoped vehicle presentation without changing widget definitions, data requirements, saved configuration or canonical charts |

@@ -53,6 +53,7 @@ pub mod schedules;
 pub mod settings;
 pub mod state_timeline;
 pub mod themes;
+pub mod trip_recovery;
 pub mod trip_tag_filter;
 pub mod trip_tags;
 pub mod trips;
@@ -277,6 +278,7 @@ pub fn build_router(state: AppState) -> Router {
         .merge(battery::router())
         .merge(trips::router())
         .merge(trip_tags::router())
+        .merge(trip_recovery::router())
         .merge(charging::router())
         .merge(charts::router())
         .merge(efficiency::router())
@@ -306,6 +308,7 @@ pub fn build_router(state: AppState) -> Router {
 
     let protected_heavy = Router::new()
         .merge(live::router())
+        .merge(trip_recovery::read_router())
         .layer(RequestBodyLimitLayer::new(64 * 1024));
 
     let protected_upload = backups::upload_router()
@@ -444,7 +447,10 @@ fn classify_rate_limit_class(method: &http::Method, path: &str) -> RateLimitClas
         return RateLimitClass::AuthMetadata;
     }
 
-    if path == "/v1/vehicles/live" || path.contains("/live-session") {
+    if path == "/v1/vehicles/live"
+        || path.contains("/live-session")
+        || (method == http::Method::GET && path.ends_with("/trip-gaps"))
+    {
         return RateLimitClass::HeavyRead;
     }
 

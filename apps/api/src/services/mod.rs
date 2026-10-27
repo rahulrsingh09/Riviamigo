@@ -35,5 +35,6 @@ pub mod s3_transport;
 pub mod security_audit;
 pub mod sessions;
 pub mod trip_enrichment;
+pub mod trip_gaps;
 pub mod trip_routes;
 pub mod weather_enrichment;

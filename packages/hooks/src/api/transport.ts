@@ -99,6 +99,8 @@ import type {
   TestExternalConnectionResponse,
   PurgeExternalConnectionCacheResponse,
   TripTag,
+  TripGapsResponse,
+  RecoveredTrip,
   TripTagAssignmentRequest,
   TripTagColorToken,
   ChargeSessionUpdate,
@@ -1416,6 +1418,24 @@ export class AuthenticatedTransport {
     });
   }
 
+  // The missed-drive card reports its own failures; no global error toast.
+  async getTripGaps(vehicleId: string) {
+    return this.request<TripGapsResponse>(
+      'GET', `/v1/vehicles/${vehicleId}/trip-gaps`, undefined, undefined, true, false,
+    );
+  }
+
+  async recoverTripGap(vehicleId: string, gapId: string) {
+    return this.request<RecoveredTrip>(
+      'POST',
+      `/v1/vehicles/${vehicleId}/trip-gaps/${encodeURIComponent(gapId)}/recover`,
+      undefined,
+      undefined,
+      true,
+      false,
+    );
+  }
+
   async listTripTags(vehicleId: string) {
     return this.request<TripTag[]>('GET', `/v1/vehicles/${vehicleId}/trip-tags`);
   }
@@ -2182,7 +2202,7 @@ function inferClientRateLimitClass(method: string, path: string) {
     return 'auth_metadata';
   }
 
-  if (path === '/v1/vehicles/live' || path.includes('/live-session')) {
+  if (path === '/v1/vehicles/live' || path.includes('/live-session') || (method === 'GET' && path.endsWith('/trip-gaps'))) {
     return 'heavy_read';
   }
 

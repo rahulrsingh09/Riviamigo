@@ -108,6 +108,37 @@ change-only frames and richer power rows as periodic telemetry. A legacy
 power-only row is indistinguishable, so this remains a replay limitation;
 live fusion uses the actual sample source.
 
+## Recover a missed drive
+
+Riviamigo compares stored telemetry with recorded trips for the last 7 days.
+It replays the stored readings through the same trip detection as live capture.
+A drive of at least 1 mile that no trip covers appears on **Vehicle health** as
+a **Possible missed drive**, with its time, distance, duration and battery use.
+Trips shows a banner that opens it. Drives that ended in the last 15 minutes, or
+that are still in progress, are left to live capture.
+
+1. Open **Vehicle health**.
+2. Check the time and distance of the missed drive.
+3. Select **Recover trip**, then **Confirm recovery**.
+
+Recovery saves one trip from the stored odometer, GPS and battery readings and
+links those readings to it, in one database transaction. It never changes or
+overlaps a recorded trip. If a trip already covers the drive, nothing is saved
+and the app reports that the drive is no longer listed. While a live trip is still being
+saved, recovery asks you to try again in a minute. Only owners and managers can
+recover; API keys cannot. Recorded speed is not available for such a drive, so
+its speed chart uses the GPS estimate. Address, weather and route details fill
+in through the normal background enrichment.
+
+**Dismiss** hides the card on that device only. A missed drive also stops
+appearing after 7 days. Trips cannot be deleted from the app, so check the drive
+before you confirm it.
+
+When Parallax stops sending frames and the odometer later shows movement,
+Vehicle health also shows a notice and reports the data connection as
+**Partial**. Riviamigo keeps renewing the subscription and records drives from
+the odometer meanwhile. No notice appears while Parallax is disabled.
+
 ## Investigate missing readings
 
 When a maintainer asks for evidence about a missing reading, record an

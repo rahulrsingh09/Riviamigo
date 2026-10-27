@@ -3010,6 +3010,38 @@ async fn persist_trip(
     trip: &crate::ingestion::trip_detector::CompletedTripData,
     distance: f64,
 ) -> anyhow::Result<()> {
+    persist_trip_with(pool, trip, distance, None)
+        .await
+        .map(|_| ())
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum RecoveredSave {
+    Saved,
+    /// A live trip completion for the vehicle is still pending.
+    Pending,
+    /// A recorded trip lies within the overlap margin.
+    Overlap,
+    TooShort,
+}
+
+/// Saves a trip rebuilt from stored telemetry and links that telemetry, in one
+/// transaction. Saves nothing when the drive is already being captured.
+pub(crate) async fn persist_recovered_trip(
+    pool: &PgPool,
+    trip: &crate::ingestion::trip_detector::CompletedTripData,
+    distance: f64,
+    overlap_margin: chrono::Duration,
+) -> anyhow::Result<RecoveredSave> {
+    persist_trip_with(pool, trip, distance, Some(overlap_margin)).await
+}
+
+async fn persist_trip_with(
+    pool: &PgPool,
+    trip: &crate::ingestion::trip_detector::CompletedTripData,
+    distance: f64,
+    recovery_margin: Option<chrono::Duration>,
+) -> anyhow::Result<RecoveredSave> {
     let duration = (trip.ended_at - trip.started_at).num_seconds() as i32;
     let max_speed = trip
         .points
@@ -3079,6 +3111,38 @@ async fn persist_trip(
     let route_preview = serde_json::to_value(build_route_preview(&route_points))?;
 
     let mut tx = pool.begin().await?;
+    // Serializes live completions with missed-trip recovery for this vehicle.
+    sqlx::query("SELECT pg_advisory_xact_lock(hashtext($1), hashtext($2))")
+        .bind("riviamigo-trip-persist")
+        .bind(trip.vehicle_id.to_string())
+        .execute(&mut *tx)
+        .await?;
+    if let Some(margin) = recovery_margin {
+        let (pending, overlap): (bool, bool) = sqlx::query_as(
+            "SELECT EXISTS(SELECT 1 FROM riviamigo.pending_trip_completions WHERE vehicle_id = $1), \
+             EXISTS(SELECT 1 FROM riviamigo.trips WHERE vehicle_id = $1 \
+                    AND started_at < $3 + $4 AND ended_at > $2 - $4)",
+        )
+        .bind(trip.vehicle_id)
+        .bind(trip.started_at)
+        .bind(trip.ended_at)
+        .bind(margin)
+        .fetch_one(&mut *tx)
+        .await?;
+        let refused = if pending {
+            Some(RecoveredSave::Pending)
+        } else if overlap {
+            Some(RecoveredSave::Overlap)
+        } else if distance < MIN_TRIP_DISTANCE_MILES {
+            Some(RecoveredSave::TooShort)
+        } else {
+            None
+        };
+        if let Some(refused) = refused {
+            tx.rollback().await?;
+            return Ok(refused);
+        }
+    }
     if distance >= MIN_TRIP_DISTANCE_MILES {
         sqlx::query(
         r#"INSERT INTO riviamigo.trips
@@ -3153,6 +3217,18 @@ async fn persist_trip(
         sqlx::query(
             "INSERT INTO riviamigo.weather_enrichment_jobs(trip_id) VALUES($1) ON CONFLICT(trip_id) DO NOTHING",
         ).bind(trip.trip_id).execute(&mut *tx).await?;
+        if recovery_margin.is_some() {
+            sqlx::query(
+                "UPDATE timeseries.telemetry SET trip_id = $1 \
+                 WHERE vehicle_id = $2 AND ts >= $3 AND ts <= $4 AND trip_id IS NULL",
+            )
+            .bind(trip.trip_id)
+            .bind(trip.vehicle_id)
+            .bind(trip.started_at)
+            .bind(trip.ended_at)
+            .execute(&mut *tx)
+            .await?;
+        }
     }
     sqlx::query(
         "DELETE FROM riviamigo.pending_trip_completions WHERE trip_id=$1 AND vehicle_id=$2",
@@ -3163,7 +3239,7 @@ async fn persist_trip(
     .await?;
     tx.commit().await?;
 
-    Ok(())
+    Ok(RecoveredSave::Saved)
 }
 
 /// Where a completed session happened. Charging frames rarely carry GPS, so

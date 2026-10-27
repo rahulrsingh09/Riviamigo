@@ -41,6 +41,7 @@ vi.mock('@riviamigo/ui/tables', () => ({
 vi.mock('@riviamigo/hooks', () => ({
   useAuth: () => ({ defaultVehicleId: 'vehicle-1' }),
   useMe: () => ({ data: { role: 'user' } }),
+  useTripGaps: () => ({ data: undefined }),
   useTrips: () => ({
     data: {
       items: [

@@ -190,3 +190,21 @@ test('cached vehicle readings retain visible browser reconnection status', async
   await expect(page.locator('.r-soc-summary')).toContainText('68%');
   await expect(page.getByText('Reconnecting live updates · Showing last recorded readings.')).toBeVisible();
 });
+
+for (const width of [390, 1280]) {
+  test(`missed drive is recovered from Trips through Vehicle health at ${width}px`, async ({ page }) => {
+    await page.setViewportSize({ width, height: 900 });
+    const fixture = await installRFixture(page, { mode: 'dark', tripGaps: true });
+    await page.goto('/trips');
+    await page.getByRole('link', { name: /1 possible missed drive/ }).click();
+    await expect(page).toHaveURL(/\/vehicle-health$/);
+    const card = page.getByRole('region', { name: 'Possible missed drive' });
+    await expect(card).toContainText('42.9 mi');
+    await card.getByRole('button', { name: 'Recover trip' }).click();
+    expect(fixture.writes.filter((write) => write.includes('/trip-gaps/'))).toHaveLength(0);
+    await card.getByRole('button', { name: 'Confirm recovery' }).click();
+    await expect(card).toHaveCount(0);
+    expect(fixture.writes).toContain('POST /v1/vehicles/owner-vehicle/trip-gaps/0123456789abcdef0123456789abcdef/recover');
+    expect(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth + 1)).toBe(true);
+  });
+}
